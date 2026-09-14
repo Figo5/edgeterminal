@@ -1,8 +1,8 @@
 # EdgeTerminal
 
-EdgeTerminal is a local sports-market research and analytics terminal. It compares stored prices with deterministic projections, exposes confidence and risk inputs, records odds history, and provides a tool-grounded chat analyst. It does **not** place bets.
+EdgeTerminal is a local **NFL-only** betting research and analytics terminal. It compares stored prices with deterministic projections, exposes confidence and risk inputs, records odds history, and provides a tool-grounded chat analyst. It does **not** place bets.
 
-The current complete vertical slice is NFL-first. CFB, NBA, and PGA provider/analytics abstractions are present but are secondary.
+The active product and UI are NFL-only. Reusable provider abstractions for other sports remain dormant for future expansion.
 
 ## Quick start
 
@@ -50,6 +50,8 @@ Copy `.env.example` to `.env`. All credentials remain server-side.
 - `OPENAI_MODEL`: centralized model selection; defaults to `gpt-4o-mini`.
 - ESPN public endpoints provide schedule/stats/news/injuries where supported.
 - Open-Meteo provides geocoding and kickoff weather for outdoor venues, without a key.
+- nflverse play-by-play adds locally cached EPA/play, EPA/dropback, EPA/rush,
+  success rates, CPOE, PROE, explosive-play rate, and no-huddle tendency.
 - `SEARCH_PROVIDER` selects optional web research.
 
 Without `OPENAI_API_KEY`, chat uses a deterministic router over the same backend analysis tools. Dashboard calculations never depend on OpenAI.
@@ -107,9 +109,28 @@ Provider failures are returned as structured per-sport errors. Missing data lowe
 With `DEMO_MODE=false`, NFL uses: The Odds API (when keyed) → ESPN consensus
 odds → labeled demo fallback. Schedule/results, standings-derived team summaries,
 injuries, and news come from ESPN; outdoor weather comes from Open-Meteo. These
-public endpoints are unofficial and can change or omit fields. Advanced EPA/PROE,
-complete role/snap data, and comprehensive player props are not claimed when the
+public endpoints are unofficial and can change or omit fields. Locally cached
+nflverse PBP augments ESPN team summaries where teams have current-season plays.
+Complete role/snap data and comprehensive player props are not claimed when the
 upstream feed does not provide them.
+
+### nflverse advanced NFL data
+
+EdgeTerminal uses the nflverse PBP release under CC-BY-4.0. The source is
+`https://github.com/nflverse/nflverse-data/releases/tag/pbp`; yearly CSV.GZ
+assets are aggregated locally and are never committed. Current-season data is
+mutable because NFL stat corrections are published after games. The cache stores
+the source URL, retrieval time, license, and SHA-256 of the exact archive.
+
+Acquire or refresh a season explicitly (normal dashboard refresh never downloads it):
+
+```bash
+.venv/bin/python -c "from edgeterminal.config import settings; from edgeterminal.providers.nflverse import load_team_features; print(len(load_team_features(2026, settings.nflverse_cache_dir, refresh=True)))"
+```
+
+For reproducible historical backtests, retain the generated metadata hash and
+freeze completed-season archives. nflverse documents its update schedule at
+`https://nflreadr.nflverse.com/articles/nflverse_data_schedule.html`.
 
 Odds expire after `ODDS_STALE_SECONDS` (default 900 seconds). Schedule/team data
 cache for 15 minutes, injuries/news for 30 minutes, and weather for 15 minutes.
@@ -129,6 +150,7 @@ Python code—not the LLM—calculates:
 - projection distributions and market probabilities
 - line movement and CLV
 - calibration from graded local history
+- Brier score, log loss, ROI, CLV, and confidence-bucket backtest summaries
 - parlay probability with explicit rule-based correlation adjustments
 
 Official picks require confidence `>= 80` by default. Confidence is trust in the estimate; edge is price value. Either can be high while the other is low.
@@ -142,6 +164,23 @@ Tests isolate SQLite in temporary files and do not call paid providers or OpenAI
 ```
 
 The suite covers pricing conversions, edge, unit sizing, confidence bounds, provider normalization, odds snapshot persistence/history, line movement, parlay correlation, deterministic chat routing, and the API/static-UI vertical slice.
+
+## Historical backtest (NFL)
+
+`edgeterminal.backtest` replays the *production* projection model over completed
+nflverse seasons with strictly point-in-time features (week W sees only weeks
+`< W`; week 1 falls back to the previous season and is labelled
+`basis="prior_season"`). It never tunes thresholds — it measures the model.
+
+```bash
+.venv/bin/python -m edgeterminal.backtest --seasons 2025 --prior-season 2024 --json
+```
+
+It reports margin/total MAE, margin bias, Brier score, home-win accuracy, and
+ATS / over-under hit rates against the closing `spread_line` and `total_line`.
+Downloaded schedules and play-by-play stay in `data/nflverse/` and are never
+committed. ATS grading follows the nflverse convention that `spread_line` is the
+home team's handicap and a **positive** value means the home team was favoured.
 
 ## Local storage
 
