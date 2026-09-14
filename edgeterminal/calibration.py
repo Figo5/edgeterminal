@@ -13,6 +13,7 @@ from . import db
 from .config import settings
 from .confidence import CONF_BUCKETS, bucket_of
 from .pricing import american_to_prob, clv_pct, ev_per_unit
+from .backtest import evaluate_rows
 
 MIN_BUCKET_N = 25          # below this we report, but never adjust
 MAX_DOWN, MAX_UP = -8.0, 4.0
@@ -96,10 +97,11 @@ def performance(scope: Optional[str] = None) -> Dict:
             groups.setdefault(str(key_fn(r)), []).append(r)
         by[label] = {k: summarise(v) for k, v in sorted(groups.items())}
 
+    scoring = evaluate_rows(graded)
     return dict(total_predictions=len(db.q("SELECT id FROM predictions")),
                 graded=len(graded), official_picks=len(picks),
                 overall=summarise(graded), picks_only=summarise(picks),
-                calibration=calibration_table(), **by)
+                scoring=scoring, calibration=calibration_table(), **by)
 
 
 def _odds_band(price: float) -> str:

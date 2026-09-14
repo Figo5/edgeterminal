@@ -14,6 +14,7 @@ import math
 from typing import Dict, List, Optional, Tuple
 
 from ..pricing import norm_cdf, prob_over, prob_over_count, push_adjusted_cover
+from .nfl_features import effective_sample_weight
 
 # Score distribution parameters. NFL margins are famously ~13.0-13.5 sd;
 # college is wider because team quality varies far more.
@@ -107,6 +108,17 @@ def project_game(sport: str, home: str, away: str, stats: Dict[str, Dict],
     ph = (h_off + a_def) / 2 + hfa / 2
     pa = (a_off + h_def) / 2 - hfa / 2
 
+    feature_groups: Dict[str, float] = {}
+    if sport == "NFL":
+        # One bounded efficiency group avoids independently over-weighting
+        # correlated EPA, success rate, yards/play and scoring inputs.
+        epa_gap = float(hs.get("epa_play", 0)) - float(as_.get("epa_play", 0))
+        success_gap = float(hs.get("success_rate", 0.45)) - float(as_.get("success_rate", 0.45))
+        efficiency_points = max(-3.0, min(3.0, epa_gap * 6.0 + success_gap * 8.0))
+        ph += efficiency_points / 2
+        pa -= efficiency_points / 2
+        feature_groups["efficiency_points"] = round(efficiency_points, 3)
+
     notes: List[str] = []
     inj = injuries or []
     h_inj, h_cert, h_notes = injury_adjustment(inj, home, sport)
@@ -126,6 +138,12 @@ def project_game(sport: str, home: str, away: str, stats: Dict[str, Dict],
     total = ph + pa
     sd_m = p["sd_margin"]
     sd_t = p["sd_total"]
+    sample_n = min(int(hs.get("games", 0) or 0), int(as_.get("games", 0) or 0))
+    sample = effective_sample_weight(sample_n)
+    uncertainty = sample["uncertainty"]
+    if sport == "NFL":
+        sd_m *= 1.0 + uncertainty * 0.15
+        sd_t *= 1.0 + uncertainty * 0.12
     # CFB: efficiency gaps are larger and less reliable -> widen a little
     if sport == "CFB":
         sd_m *= 1.03
@@ -134,12 +152,14 @@ def project_game(sport: str, home: str, away: str, stats: Dict[str, Dict],
         sport=sport, home=home, away=away,
         proj_home=round(ph, 2), proj_away=round(pa, 2),
         margin=round(margin, 2), total=round(total, 2),
-        sd_margin=sd_m, sd_total=sd_t,
+        sd_margin=round(sd_m, 4), sd_total=round(sd_t, 4),
         home_win_prob=round(1 - norm_cdf((0 - margin) / sd_m), 4),
         fair_home_spread=round(-margin * 2) / 2,
         fair_total=round(total * 2) / 2,
         availability_certainty=round(min(h_cert, a_cert), 3),
         weather_points=round(wx_adj, 2),
+        sample_size_n=sample_n, uncertainty=uncertainty,
+        feature_groups=feature_groups, feature_version="nfl-features-1" if sport == "NFL" else "base-1",
         notes=notes,
     )
 

@@ -15,6 +15,7 @@ import json
 import logging
 import time
 import uuid
+from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from . import db
@@ -22,6 +23,7 @@ from .agents import pipeline as ap
 from .analytics import football, nba
 from .analytics import golf as golfmod
 from .analytics.ratings import shrink_stats
+from .analytics.nfl_features import ranking_score, select_best_model_quote
 from .config import SPORTS, settings
 from .confidence import (ConfidenceInputs, agreement_from_signals, bucket_of,
                          data_quality_score, quality_tier, score)
@@ -132,6 +134,17 @@ def _venue_coords(ev: Dict) -> Tuple[Optional[float], Optional[float], bool]:
     return meta.get("lat"), meta.get("lon"), bool(meta.get("indoor"))
 
 
+def prior_feature_note(stats: Dict[str, Dict], event: Dict) -> Optional[str]:
+    """Name the teams in this event whose nflverse inputs came from last season."""
+    teams = sorted(t for t in {event.get("home_team"), event.get("away_team")} - {None, ""}
+                   if (stats.get(t) or {}).get("prior_season_features"))
+    if not teams:
+        return None
+    season = datetime.now(timezone.utc).year - 1
+    return (f"nflverse efficiency inputs for {', '.join(teams)} come from the {season} season — "
+            "those teams have not played enough of this season to be measured yet.")
+
+
 def build_context(event: Dict, want_weather: bool = True) -> Dict:
     """Gather every input an analysis needs, recording what succeeded."""
     restore_families()
@@ -175,6 +188,14 @@ def build_context(event: Dict, want_weather: bool = True) -> Dict:
                                    url="https://site.api.espn.com/apis/v2/sports/football/nfl/standings" if sport == "NFL" else None,
                                    publisher=src, retrieved_at=stats_at,
                                    trust="official" if not demo else "demo"))
+        if "nflverse" in src:
+            ctx["sources"].append(dict(
+                kind="stats", title="nflverse play-by-play advanced team features",
+                url="https://github.com/nflverse/nflverse-data/releases/tag/pbp",
+                publisher="nflverse", retrieved_at=stats_at, trust="reported"))
+            note = prior_feature_note(stats, event)
+            if note:
+                ctx["warnings"].append(note)
         if mean_w < 0.35:
             ctx["warnings"].append(
                 f"Season sample is thin (effective weight {mean_w:.2f}); team rates are heavily "
@@ -461,35 +482,41 @@ def evaluate_market(event: Dict, ctx: Dict, market: str, selection: str,
     is_golf = sport == "PGA"
 
     # Price every quote against the model at ITS OWN line, then take the best.
-    scored: List[Tuple[float, Dict, Dict]] = []
+    candidates: List[Dict] = []
+    distinct_books = len({q["book"] for q in quotes})
     for qr in quotes:
         line = qr.get("line")
         mp = (golf_model_probability(ctx, market, selection) if is_golf
               else model_probability(ctx, market, selection, line))
         if not mp:
             continue
-        ev = ev_per_unit(mp["prob"], qr["price"])
-        scored.append((ev, qr, mp))
-    if not scored:
+        market_prob = None if is_golf else _consensus_fair(
+            all_rows, market, event["id"], selection, line)
+        candidates.append(dict(quote=qr, model_result=mp,
+                               raw_model_prob=float(mp["prob"]), market_prob=market_prob))
+    if not candidates:
         return None
-    pref = settings.preferred_books
-    scored.sort(key=lambda t: (-t[0], pref.index(t[1]["book"].lower())
-                               if t[1]["book"].lower() in pref else len(pref)))
-    best_ev, best_q, mp = scored[0]
+    first_projection = candidates[0]["model_result"].get("projection") or {}
+    reliability = 1.0 - float(first_projection.get("uncertainty", 0.5))
+    picked = select_best_model_quote(candidates, reliability if sport == "NFL" else 1.0,
+                                     distinct_books if sport == "NFL" else 0)
+    best_q, mp = picked["quote"], picked["model_result"]
 
     price = float(best_q["price"])
     line = best_q.get("line")
-    model_p = float(mp["prob"])
+    raw_model_p = float(mp["prob"])
+    market_fair = picked.get("market_prob")
+    projection = mp.get("projection")
+    blend = picked.get("blend") if sport == "NFL" else None
+    model_p = blend["final_prob"] if blend else raw_model_p
     implied = american_to_prob(price)
     edge = edge_pct(model_p, price)
+    best_ev = ev_per_unit(model_p, price)
     fair = prob_to_american(model_p)
-    market_fair = None if is_golf else _consensus_fair(
-        all_rows, market, event["id"], selection, line)
 
     is_team_side = selection in (event.get("home_team"), event.get("away_team"))
     mv = _movement(event["id"], market, selection, line, price, is_team_side)
 
-    projection = mp.get("projection")
     player = mp.get("player")
     signals: List[AgentSignal] = [
         ap.quantitative(model_p, price, market_fair, projection, market, line),
@@ -560,7 +587,8 @@ def evaluate_market(event: Dict, ctx: Dict, market: str, selection: str,
         book=best_q["book"], price=price,
         all_quotes=sorted([dict(book=q["book"], price=q["price"], line=q.get("line"))
                            for q in quotes], key=lambda q: american_to_prob(q["price"])),
-        model_prob=round(model_p, 4), implied_prob=round(implied, 4), fair_price=fair,
+        model_prob=round(model_p, 4), raw_model_prob=round(raw_model_p, 4),
+        market_blend=blend, implied_prob=round(implied, 4), fair_price=fair,
         market_fair_prob=round(market_fair, 4) if market_fair is not None else None,
         edge_pct=round(edge, 2), ev_per_unit=round(best_ev, 4),
         confidence=conf.score, confidence_bucket=bucket_of(conf.score),
@@ -581,6 +609,10 @@ def evaluate_market(event: Dict, ctx: Dict, market: str, selection: str,
             s.get("trust") == "demo" for s in ctx.get("sources", [])),
         warnings=ctx.get("warnings", []),
     )
+    rec["rank_score"] = ranking_score(
+        confidence=conf.score, edge_pct=edge, ev_pct=best_ev * 100,
+        data_quality=dq, market_depth=distinct_books,
+        uncertainty=float((projection or {}).get("uncertainty", cv)))
     return rec
 
 
@@ -635,7 +667,8 @@ def analyze_event(event_id: str, persist: bool = True,
         if rec:
             recs.append(rec)
 
-    recs.sort(key=lambda r: (-_state_rank(r["state"]), -r["confidence"], -r["edge_pct"]))
+    recs.sort(key=lambda r: (-_state_rank(r["state"]), -r.get("rank_score", 0),
+                             -r["confidence"], -r["edge_pct"]))
     if persist:
         for r in recs:
             if r["state"] in ("OFFICIAL PICK", "LEAN", "WATCHLIST", "WAIT", "WAIT FOR PRICE"):
@@ -716,6 +749,9 @@ def slate(sport: Optional[str] = None, limit_events: int = 40) -> List[Dict]:
     out = []
     for e in evs:
         e = dict(e)
+        if str(e.get("status") or "").lower() in {
+                "status_final", "final", "completed", "post", "closed", "cancelled"}:
+            continue
         if _event_demo(e) != R.family_is_demo(e.get("sport")):
             continue
         rows = db.latest_odds(event_id=e["id"])
@@ -739,7 +775,10 @@ def analyze_slate(sports: Optional[List[str]] = None, max_events: int = 24,
     recs: List[Dict] = []
     seen = 0
     for sport in sports:
-        for ev in db.q("SELECT id, meta FROM events WHERE sport=? ORDER BY start_time ASC", (sport,)):
+        for ev in db.q("SELECT id, meta, status FROM events WHERE sport=? ORDER BY start_time ASC", (sport,)):
+            if str(ev.get("status") or "").lower() in {
+                    "status_final", "final", "completed", "post", "closed", "cancelled"}:
+                continue
             if _event_demo(dict(ev)) != R.family_is_demo(sport):
                 continue
             if seen >= max_events:
@@ -753,7 +792,8 @@ def analyze_slate(sports: Optional[List[str]] = None, max_events: int = 24,
                 log.warning("analysis failed for %s: %s", ev["id"], e)
                 continue
             recs += res.get("recommendations", [])
-    recs.sort(key=lambda r: (-_state_rank(r["state"]), -r["confidence"], -r["edge_pct"]))
+    recs.sort(key=lambda r: (-_state_rank(r["state"]), -r.get("rank_score", 0),
+                             -r["confidence"], -r["edge_pct"]))
     db.kv_set("last_slate_analysis", dict(at=time.time(), count=len(recs)))
     return recs
 
@@ -779,7 +819,8 @@ def cached_slate_recs(max_age_s: float = 1800, **kw) -> List[Dict]:
     if kw.get("sports"):
         allowed = set(kw["sports"])
         recs = [r for r in recs if r.get("sport") in allowed]
-    recs.sort(key=lambda r: (-_state_rank(r["state"]), -r["confidence"], -r["edge_pct"]))
+    recs.sort(key=lambda r: (-_state_rank(r["state"]), -r.get("rank_score", 0),
+                             -r["confidence"], -r["edge_pct"]))
     return recs
 
 

@@ -11,6 +11,7 @@ from __future__ import annotations
 
 import logging
 import time
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 from ..config import settings
@@ -128,7 +129,20 @@ def team_stats(sport: str) -> Tuple[Dict[str, Dict], str, bool]:
         cands.append(("espn-stats", EspnStats))
     if _use_demo(sport):
         cands.append(("demo-stats", D.DemoStats))
-    return _chain("stats", cands, lambda p: p.team_stats(sport))
+    stats, source, is_demo = _chain("stats", cands, lambda p: p.team_stats(sport))
+    if sport == "NFL" and not is_demo and settings.stats_provider in ("auto", "espn", "nflverse"):
+        from .nflverse import load_cached_team_features, merge_feature_seasons
+        season = datetime.now(timezone.utc).year
+        advanced = load_cached_team_features(season, settings.nflverse_cache_dir)
+        # Early in a season only some teams have plays; fill the gaps per team
+        # from the prior season rather than dropping the efficiency inputs.
+        prior = load_cached_team_features(season - 1, settings.nflverse_cache_dir)
+        advanced = merge_feature_seasons(advanced, prior, season=season)
+        if advanced:
+            stats = {team: dict(row, **advanced.get(team, {})) for team, row in stats.items()}
+            source = f"{source}+nflverse-pbp"
+            record("stats", source, True, detail="ESPN context merged with locally cached nflverse PBP")
+    return stats, source, is_demo
 
 
 def player_pool(sport: str, team: str) -> Tuple[List[Dict], str, bool]:

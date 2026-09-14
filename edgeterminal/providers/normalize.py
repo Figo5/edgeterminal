@@ -25,6 +25,7 @@ NFL_TEAMS = {
     "lv": "Las Vegas Raiders", "las vegas raiders": "Las Vegas Raiders",
     "lac": "Los Angeles Chargers", "la chargers": "Los Angeles Chargers", "los angeles chargers": "Los Angeles Chargers",
     "lar": "Los Angeles Rams", "la rams": "Los Angeles Rams", "los angeles rams": "Los Angeles Rams",
+    "la": "Los Angeles Rams",
     "mia": "Miami Dolphins", "miami dolphins": "Miami Dolphins",
     "min": "Minnesota Vikings", "minnesota vikings": "Minnesota Vikings",
     "ne": "New England Patriots", "new england patriots": "New England Patriots",
