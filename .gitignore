@@ -1,0 +1,49 @@
+# Secrets and local configuration
+.env
+.env.*
+!.env.example
+
+# Python environments and caches
+.venv/
+venv/
+__pycache__/
+**/__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+coverage.xml
+
+# Runtime data
+*.db
+*.db-*
+*.sqlite
+*.sqlite-*
+data/*.db
+data/*.db-*
+data/*.sqlite
+data/*.sqlite-*
+
+# Logs and temporary files
+*.log
+logs/
+*.tmp
+*.temp
+*.swp
+*.swo
+*~
+
+# Generated transcripts / prompt artifacts
+edgeterminal/web/20*.txt
+
+# Frontend dependencies, if introduced
+node_modules/
+
+# Editors and operating systems
+.DS_Store
+**/.DS_Store
+.idea/
+.vscode/
