@@ -71,3 +71,48 @@ def test_openai_failure_fallback_does_not_expose_exception_text(monkeypatch):
     result = llm.run_chat("What are the odds?")
     assert "secret-token-must-not-leak" not in json.dumps(result)
     assert result["llm_error"] == "RuntimeError"
+
+
+def _captured_openai_args(monkeypatch, prompt, supplied_args):
+    fake = FakeProvider([
+        {"content": "", "tool_calls": [{"id": "1", "name": "find_best_bets",
+                                          "arguments": json.dumps(supplied_args)}]},
+        {"content": "grounded", "tool_calls": []},
+    ])
+    captured = {}
+    monkeypatch.setattr(llm, "provider", lambda: fake)
+    monkeypatch.setattr(tools, "call", lambda name, args: captured.update(name=name, args=args) or
+                        {"bets": [], "official_pick_count": 0, "threshold": 80})
+    result = llm.run_chat(prompt)
+    return captured, result
+
+
+def test_best_nfl_bet_cannot_lower_production_threshold(monkeypatch):
+    captured, result = _captured_openai_args(
+        monkeypatch, "What's the best NFL bet right now?",
+        {"min_confidence": 60, "sport": "NFL", "limit": 1})
+    assert captured["name"] == "find_best_bets"
+    assert captured["args"]["min_confidence"] == 80
+    assert captured["args"].get("include_leans") is not True
+    assert result["tool_trace"][0]["arguments"]["min_confidence"] == 80
+
+
+def test_strongest_play_cannot_lower_production_threshold(monkeypatch):
+    captured, _ = _captured_openai_args(monkeypatch, "What's your strongest play?",
+                                         {"min_confidence": 65, "limit": 1})
+    assert captured["args"]["min_confidence"] == 80
+    assert captured["args"].get("include_leans") is not True
+
+
+def test_explicit_60_plus_request_preserves_lower_threshold(monkeypatch):
+    captured, _ = _captured_openai_args(monkeypatch, "Show me 60+ confidence NFL bets.",
+                                         {"min_confidence": 60, "sport": "NFL"})
+    assert captured["args"]["min_confidence"] == 60
+    assert captured["args"]["include_leans"] is True
+
+
+def test_explicit_lean_request_preserves_broader_search(monkeypatch):
+    captured, _ = _captured_openai_args(monkeypatch, "Show me leans.",
+                                         {"min_confidence": 60, "sport": "NFL"})
+    assert captured["args"]["include_leans"] is True
+    assert captured["args"]["only_leans"] is True

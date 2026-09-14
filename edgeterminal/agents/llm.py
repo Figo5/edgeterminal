@@ -34,6 +34,11 @@ Hard rules:
 - PASS is a valid and frequent answer. If nothing clears the threshold, say that
   plainly instead of manufacturing a play. Never lower the bar because the user
   asked for a pick.
+- Requests for a best bet/play, strongest bet/play, top play, or Official Pick must
+  use find_best_bets at the application's configured production threshold. Omit
+  min_confidence for those requests. Only request a lower threshold when the user
+  explicitly asks for leans, watchlist plays, broader opportunities, or a numeric
+  lower-confidence search. Never relabel a LEAN or WATCHLIST as an Official Pick.
 - Never use the words lock, guaranteed, can't miss, free money or risk-free.
   Speak in probabilities and ranges.
 - Distinguish reported/official sources from community chatter. Cite sources
@@ -111,6 +116,42 @@ def parse_args(raw: str) -> Dict:
 
 MAX_ROUNDS = 6
 
+_OFFICIAL_INTENT = re.compile(
+    r"\b(?:best|strongest|top)(?:\s+\w+){0,3}\s+(?:bet|play|wager|pick)\b|"
+    r"\bofficial\s+pick\b", re.I)
+_LOWER_INTENT = re.compile(
+    r"\b(?:leans?|watchlist|broader\s+opportunit(?:y|ies))\b|"
+    r"\b\d{2,3}\s*\+?\s*(?:confidence|conf)\b", re.I)
+
+
+def normalize_tool_args(name: str, args: Dict, user_message: str) -> Dict:
+    """Enforce user intent at the trusted tool boundary, not in model prose."""
+    clean = dict(args or {})
+    if name != "find_best_bets":
+        return clean
+    low_requested = bool(_LOWER_INTENT.search(user_message))
+    official_requested = bool(_OFFICIAL_INTENT.search(user_message)) and not low_requested
+    if official_requested:
+        supplied = clean.get("min_confidence")
+        try:
+            supplied_threshold = float(supplied) if supplied is not None else 0.0
+        except (TypeError, ValueError):
+            supplied_threshold = 0.0
+        clean["min_confidence"] = max(settings.official_pick_confidence, supplied_threshold)
+        clean.pop("include_leans", None)
+        clean.pop("only_leans", None)
+    elif low_requested:
+        clean["include_leans"] = True
+        if re.search(r"\bleans?\b", user_message, re.I):
+            clean["only_leans"] = True
+    else:
+        # Ambiguous ranked-bet searches use the production default, regardless of
+        # an unsolicited lower value from the model.
+        clean.pop("min_confidence", None)
+        clean.pop("include_leans", None)
+        clean.pop("only_leans", None)
+    return clean
+
 
 def run_chat(user_message: str, history: Optional[List[Dict]] = None,
              context_note: Optional[str] = None) -> Dict:
@@ -154,7 +195,7 @@ def run_chat(user_message: str, history: Optional[List[Dict]] = None,
                                                       "arguments": c["arguments"]}}
                                         for c in calls]})
         for c in calls:
-            args = parse_args(c["arguments"])
+            args = normalize_tool_args(c["name"], parse_args(c["arguments"]), user_message)
             result = T.call(c["name"], args)
             log.info("LLM tool call tool=%s ok=%s", c["name"], "error" not in result)
             trace.append(dict(tool=c["name"], arguments=args,

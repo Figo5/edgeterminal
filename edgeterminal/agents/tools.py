@@ -180,10 +180,13 @@ def run_golf_analysis(market: Optional[str] = None, min_price: Optional[int] = N
 
 def find_best_bets(min_confidence: Optional[float] = None, sport: Optional[str] = None,
                    market: Optional[str] = None, plus_money_only: bool = False,
-                   limit: int = 12) -> Dict:
+                   limit: int = 12, include_leans: bool = False,
+                   only_leans: bool = False) -> Dict:
     recs = engine.cached_slate_recs()
     thr = settings.official_pick_confidence if min_confidence is None else float(min_confidence)
-    out = [r for r in recs if r["confidence"] >= thr and r["state"] == "OFFICIAL PICK"]
+    allowed = {"LEAN"} if only_leans else ({"OFFICIAL PICK", "LEAN", "WATCHLIST"}
+                                                if include_leans else {"OFFICIAL PICK"})
+    out = [r for r in recs if r["confidence"] >= thr and r["state"] in allowed]
     if sport:
         out = [r for r in out if r["sport"] == sport.upper()]
     if market:
@@ -194,7 +197,10 @@ def find_best_bets(min_confidence: Optional[float] = None, sport: Optional[str] 
     return dict(threshold=thr, official_pick_count=len(official), returned=len(out[:limit]),
                 note=("No market currently clears the official-pick threshold. Saying so is the "
                       "correct answer; do not lower the bar to produce a play."
-                      if not official else ""),
+                      if not out and not include_leans else
+                      ("This is an explicitly requested lower-confidence search; entries retain "
+                       "their LEAN/WATCHLIST labels and are not Official Picks."
+                       if include_leans else "")),
                 bets=_trim([_slim(r) for r in out[:limit]]))
 
 
@@ -319,10 +325,16 @@ SCHEMAS: List[Dict] = [
          parameters=_p(required=("query",), query={"type": "string"}, player={"type": "string"})),
     dict(name="run_golf_analysis", description="Golf tournament pricing: outrights, top-5/10/20, matchups.",
          parameters=_p(market={"type": "string"}, min_price={"type": "integer"})),
-    dict(name="find_best_bets", description="Ranked qualifying bets across the whole slate.",
+    dict(name="find_best_bets", description=(
+             "Ranked slate recommendations. For best bet, best play, strongest bet/play, or "
+             "Official Pick requests, omit min_confidence: the tool defaults to the application's "
+             "configured production Official Pick threshold and returns only deterministically "
+             "qualified Official Picks. Never lower min_confidence unless the user explicitly "
+             "asks for a numeric lower threshold, leans, watchlist plays, or broader opportunities."),
          parameters=_p(min_confidence={"type": "number"}, sport=SPORT_ENUM,
                        market={"type": "string"}, plus_money_only={"type": "boolean"},
-                       limit={"type": "integer"})),
+                       limit={"type": "integer"}, include_leans={"type": "boolean"},
+                       only_leans={"type": "boolean"})),
     dict(name="get_watchlist", description="Markets that do not qualify yet and their trigger conditions.",
          parameters=_p(limit={"type": "integer"})),
     dict(name="get_line_moves", description="Largest observed line movement across stored snapshots.",
