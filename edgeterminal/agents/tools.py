@@ -284,7 +284,7 @@ REGISTRY: Dict[str, Callable[..., Dict]] = {
     "get_line_history": get_line_history, "get_team_stats": get_team_stats,
     "get_injuries": get_injuries, "get_news": get_news, "get_weather": get_weather,
     "run_game_analysis": run_game_analysis, "run_prop_analysis": run_prop_analysis,
-    "run_golf_analysis": run_golf_analysis, "find_best_bets": find_best_bets,
+    "find_best_bets": find_best_bets,
     "get_watchlist": get_watchlist, "get_line_moves": get_line_moves,
     "build_best_parlay": build_best_parlay, "get_model_performance": get_model_performance,
     "search_web": search_web, "get_provider_status": get_provider_status,
@@ -298,7 +298,7 @@ def _p(required=(), **props):
     return schema
 
 
-SPORT_ENUM = {"type": "string", "enum": list(SPORTS)}
+SPORT_ENUM = {"type": "string", "enum": ["NFL"]}
 
 SCHEMAS: List[Dict] = [
     dict(name="list_events", description="List stored events/slate with their best primary market prices.",
@@ -323,8 +323,7 @@ SCHEMAS: List[Dict] = [
                        markets={"type": "array", "items": {"type": "string"}})),
     dict(name="run_prop_analysis", description="Player prop markets for one game, optionally filtered to a player.",
          parameters=_p(required=("query",), query={"type": "string"}, player={"type": "string"})),
-    dict(name="run_golf_analysis", description="Golf tournament pricing: outrights, top-5/10/20, matchups.",
-         parameters=_p(market={"type": "string"}, min_price={"type": "integer"})),
+
     dict(name="find_best_bets", description=(
              "Ranked slate recommendations. For best bet, best play, strongest bet/play, or "
              "Official Pick requests, omit min_confidence: the tool defaults to the application's "

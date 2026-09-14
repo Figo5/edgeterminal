@@ -117,5 +117,6 @@ def test_frontend_script_exists_and_wires_required_flows(client):
     script = response.text
     for endpoint in ("/api/dashboard", "/api/refresh", "/api/event/", "/api/chat", "/api/parlay"):
         assert endpoint in script
-    for control in ("refreshBtn", "chatForm", "sportTabs"):
+    for control in ("refreshBtn", "chatForm", "providerHealth"):
         assert control in script
+    assert "sportTabs" not in script

@@ -54,6 +54,7 @@ class Settings:
     odds_regions = os.getenv("ODDS_REGIONS", "us,uk").strip()
     preferred_books = _csv("PREFERRED_BOOKS", "fanduel,bet365")
     stats_provider = os.getenv("STATS_PROVIDER", "auto").strip().lower()
+    nflverse_cache_dir = Path(os.getenv("NFLVERSE_CACHE_DIR", str(ROOT / "data/nflverse/pbp")))
     news_provider = os.getenv("NEWS_PROVIDER", "auto").strip().lower()
     injury_provider = os.getenv("INJURY_PROVIDER", "auto").strip().lower()
     weather_provider = os.getenv("WEATHER_PROVIDER", "auto").strip().lower()
@@ -65,6 +66,11 @@ class Settings:
     official_pick_confidence = _f("OFFICIAL_PICK_CONFIDENCE", 80)
     lean_confidence = _f("LEAN_CONFIDENCE", 65)
     min_edge_pct = _f("MIN_EDGE_PCT", 2.0)
+
+    # Product scope. Dormant families keep their provider/model code so a sport
+    # can be reactivated by adding it here, but only these are fetched,
+    # analysed, and served.
+    active_sports = ["NFL"]
 
     # freshness rules (seconds) -- see docs/Stale data protection
     stale_odds_s = _f("ODDS_STALE_SECONDS", 15 * 60)

@@ -9,12 +9,12 @@
 </head>
 <body>
 <header id="topbar">
-  <div class="brand"><span class="mark">▨</span> EDGE<span class="dim">TERMINAL</span></div>
-  <nav class="sports" id="sportTabs"></nav>
+  <div class="brand"><span class="mark">▨</span> EDGE<span class="dim">TERMINAL</span><small>NFL Research Terminal</small></div>
   <div class="topright">
     <span id="demoBadge" class="badge demo hidden">DEMO DATA</span>
     <span id="staleBadge" class="badge stale hidden">ODDS STALE</span>
     <span class="meta" id="lastUpdated">last updated —</span>
+    <button id="providerHealth" class="health" title="Provider status">DATA <span id="providerDots">—</span></button>
     <button id="refreshBtn" class="btn primary">Refresh Odds</button>
     <button id="chatToggle" class="btn">AI Analyst</button>
   </div>
@@ -23,17 +23,14 @@
 <div id="shell">
   <aside id="rail">
     <nav id="sections"></nav>
-    <div class="railgroup">
-      <div class="railtitle">Filters</div>
+    <details class="railgroup">
+      <summary class="railtitle">Research filters</summary>
       <label class="ctl">Min confidence <output id="confOut">80</output>
         <input type="range" id="confFilter" min="50" max="100" value="80" step="1"></label>
       <label class="ctl">Market
         <select id="marketFilter">
           <option value="">all</option><option value="moneyline">moneyline</option>
           <option value="spread">spread</option><option value="total">total</option>
-          <option value="player_prop">player prop</option><option value="outright">outright</option>
-          <option value="top5">top 5</option><option value="top10">top 10</option>
-          <option value="top20">top 20</option><option value="matchup">matchup</option>
         </select></label>
       <label class="ctl checkbox"><input type="checkbox" id="plusOnly"> plus money only</label>
       <label class="ctl checkbox"><input type="checkbox" id="dogsOnly"> underdogs only</label>
@@ -43,11 +40,8 @@
           <option value="units">units</option><option value="price">odds</option>
           <option value="start_time">start time</option>
         </select></label>
-    </div>
-    <div class="railgroup" id="providerPanel">
-      <div class="railtitle">Data providers</div>
-      <div id="providerList" class="providers"></div>
-    </div>
+    </details>
+    <div id="providerPanel" class="provider-pop hidden"><div id="providerList" class="providers"></div></div>
     <div class="railfoot">
       <div id="modelVersion" class="meta"></div>
       <div class="meta disclaimer">Research tool. No bets are placed. Probabilistic estimates only.</div>
@@ -65,7 +59,7 @@
     <div id="chatLog" class="chatlog"></div>
     <div class="suggest" id="suggest"></div>
     <form id="chatForm" class="chatform">
-      <textarea id="chatInput" rows="2" placeholder="Ask: what's the best bet tonight? · analyze Bengals vs Ravens · build the best parlay"></textarea>
+      <textarea id="chatInput" rows="2" placeholder="Ask: best NFL bet right now · analyze this game · what price makes this playable?"></textarea>
       <button class="btn primary" type="submit">Send</button>
     </form>
   </section>

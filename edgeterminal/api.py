@@ -11,17 +11,21 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import calibration, db, engine, parlay
+from . import calibration, db, engine, logs, parlay
 from .agents import llm
-from .config import ROOT, SPORTS, settings
+from .config import ROOT, settings
 from .providers import registry as R
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logs.install_redaction()
 log = logging.getLogger("edgeterminal.api")
 
 @asynccontextmanager
 async def _lifespan(_app: FastAPI):
+    # uvicorn installs its own handlers after this module is imported, so
+    # re-attach redaction once the real logging configuration exists.
+    logs.install_redaction()
     db.init()
     engine.restore_families(force=True)
     if not db.q1("SELECT id FROM events LIMIT 1"):
@@ -38,6 +42,17 @@ app = FastAPI(title="EdgeTerminal", version="0.4.0",
               lifespan=_lifespan)
 
 WEB = ROOT / "edgeterminal" / "web"
+
+
+def _active(sport: Optional[str]) -> Optional[List[str]]:
+    """Scope an optional `sport` argument to the active product sports."""
+    if not sport:
+        return list(settings.active_sports)
+    key = sport.upper()
+    if key not in settings.active_sports:
+        raise HTTPException(410, f"EdgeTerminal currently serves "
+                                 f"{'/'.join(settings.active_sports)} only — {key} is not active.")
+    return [key]
 
 
 # --------------------------------------------------------------------- models
@@ -70,7 +85,8 @@ def health() -> Dict:
 def config() -> Dict:
     lr = engine.last_refresh()
     return dict(
-        sports=list(SPORTS), preferred_books=settings.preferred_books,
+        sports=list(settings.active_sports), product_scope="NFL-only",
+        preferred_books=settings.preferred_books,
         official_pick_confidence=settings.official_pick_confidence,
         lean_confidence=settings.lean_confidence, min_edge_pct=settings.min_edge_pct,
         demo_mode=settings.demo_mode, llm_enabled=settings.has_llm(),
@@ -91,14 +107,21 @@ def providers() -> Dict:
 
 @app.post("/api/refresh")
 def refresh(body: RefreshBody) -> Dict:
-    sports = [s.upper() for s in (body.sports or list(SPORTS)) if s.upper() in SPORTS]
-    result = engine.refresh(sports or None)
+    requested = [s.upper() for s in (body.sports or settings.active_sports)]
+    sports = [s for s in requested if s in settings.active_sports]
+    ignored = sorted({s for s in requested if s not in settings.active_sports})
+    result = engine.refresh(sports or list(settings.active_sports))
     try:
-        engine.analyze_slate(sports=sports or None)
+        engine.analyze_slate(sports=sports or list(settings.active_sports))
     except Exception as e:  # noqa: BLE001
         log.warning("post-refresh analysis failed: %s", e)
         result["analysis_error"] = str(e)
-    return dict(result, odds_age_s=engine.odds_age_s())
+    out = dict(result, odds_age_s=engine.odds_age_s())
+    if ignored:
+        out["ignored_sports"] = ignored
+        out["ignored_note"] = ("Dormant sports are not fetched while the product scope is "
+                               + "/".join(settings.active_sports) + ".")
+    return out
 
 
 # ------------------------------------------------------------------ dashboard
@@ -119,11 +142,10 @@ def _headline(recs: List[Dict]) -> Dict:
 
 @app.get("/api/dashboard")
 def dashboard(sport: Optional[str] = None, refresh_analysis: bool = False) -> Dict:
-    sports = [sport.upper()] if sport else None
+    sports = _active(sport)
     recs = (engine.analyze_slate(sports=sports) if refresh_analysis
             else engine.cached_slate_recs(sports=sports))
-    if sports:
-        recs = [r for r in recs if r["sport"] in sports]
+    recs = [r for r in recs if r["sport"] in sports]
     picks = [r for r in recs if r["state"] == "OFFICIAL PICK"]
     watch = [r for r in recs if r["state"] in ("LEAN", "WATCHLIST", "WAIT", "WAIT FOR PRICE")][:18]
     try:
@@ -131,21 +153,17 @@ def dashboard(sport: Optional[str] = None, refresh_analysis: bool = False) -> Di
     except Exception as e:  # noqa: BLE001
         log.warning("parlay build failed: %s", e)
         best_parlay = None
-    golf_ev = db.q1("SELECT * FROM events WHERE sport='PGA' ORDER BY start_time LIMIT 1")
-    golf_recs = [r for r in recs if r["sport"] == "PGA"][:8]
     lr = engine.last_refresh() or {}
     refreshed = lr.get("sports", {})
-    active_sports = sports or list(SPORTS)
     serving_demo = settings.demo_mode or any(
-        bool(refreshed.get(s, {}).get("is_demo")) for s in active_sports)
+        bool(refreshed.get(s, {}).get("is_demo")) for s in sports)
     return dict(
         generated_at=time.time(), odds_age_s=engine.odds_age_s(),
         last_refresh=lr or None, demo_mode=serving_demo,
         headline=dict(_headline(recs), best_parlay=best_parlay),
         best_bets=picks[:25], watchlist=watch,
         line_moves=engine.line_moves(limit=10, sports=sports),
-        upcoming=engine.slate(sport=sport, limit_events=20),
-        golf=dict(event=dict(golf_ev) if golf_ev else None, recommendations=golf_recs),
+        upcoming=engine.slate(sport=sports[0], limit_events=20),
         counts=dict(total=len(recs),
                     official=len(picks),
                     leans=len([r for r in recs if r["state"] == "LEAN"]),
@@ -156,8 +174,7 @@ def dashboard(sport: Optional[str] = None, refresh_analysis: bool = False) -> Di
 
 @app.get("/api/slate")
 def slate(sport: Optional[str] = None, limit: int = 40) -> Dict:
-    return dict(events=engine.slate(sport=sport.upper() if sport else None,
-                                    limit_events=limit),
+    return dict(events=engine.slate(sport=_active(sport)[0], limit_events=limit),
                 odds_age_s=engine.odds_age_s())
 
 
@@ -166,6 +183,7 @@ def event(event_id: str, refresh_odds: bool = False) -> Dict:
     row = db.q1("SELECT sport FROM events WHERE id=?", (event_id,))
     if not row:
         raise HTTPException(404, f"unknown event {event_id}")
+    _active(row["sport"])
     if refresh_odds:
         engine.refresh([row["sport"]])
     try:
@@ -179,11 +197,11 @@ def event(event_id: str, refresh_odds: bool = False) -> Dict:
 def best_bets(min_confidence: Optional[float] = None, sport: Optional[str] = None,
               market: Optional[str] = None, plus_money_only: bool = False,
               limit: int = 40) -> Dict:
-    recs = engine.cached_slate_recs()
+    sports = _active(sport)
+    recs = engine.cached_slate_recs(sports=sports)
+    recs = [r for r in recs if r["sport"] in sports]
     thr = settings.official_pick_confidence if min_confidence is None else min_confidence
     out = [r for r in recs if r["confidence"] >= thr and r["state"] == "OFFICIAL PICK"]
-    if sport:
-        out = [r for r in out if r["sport"] == sport.upper()]
     if market:
         out = [r for r in out if r["market"] == market]
     if plus_money_only:
@@ -193,14 +211,13 @@ def best_bets(min_confidence: Optional[float] = None, sport: Optional[str] = Non
 
 @app.get("/api/watchlist")
 def watchlist(limit: int = 30, sport: Optional[str] = None) -> Dict:
-    rows = engine.watchlist(limit=limit, sports=[sport.upper()] if sport else None)
+    rows = engine.watchlist(limit=limit, sports=_active(sport))
     return dict(count=len(rows), watchlist=rows)
 
 
 @app.get("/api/line-moves")
 def line_moves(limit: int = 25, sport: Optional[str] = None) -> Dict:
-    return dict(moves=engine.line_moves(limit=limit,
-                                        sports=[sport.upper()] if sport else None))
+    return dict(moves=engine.line_moves(limit=limit, sports=_active(sport)))
 
 
 @app.get("/api/line-history")
@@ -212,7 +229,7 @@ def line_history(event_id: str, market: str, selection: str,
 @app.get("/api/parlay")
 def build_parlay(max_legs: int = 3, sport: Optional[str] = None,
                  event_id: Optional[str] = None, min_confidence: float = 70.0) -> Dict:
-    sports = [sport.upper()] if sport else None
+    sports = _active(sport)
     recs = engine.cached_slate_recs(sports=sports)
     res = parlay.build_best(recs, max_legs=max_legs, min_conf=min_confidence,
                             sports=sports,
@@ -226,10 +243,8 @@ def build_parlay(max_legs: int = 3, sport: Optional[str] = None,
 
 @app.get("/api/golf")
 def golf() -> Dict:
-    ev = db.q1("SELECT * FROM events WHERE sport='PGA' ORDER BY start_time LIMIT 1")
-    if not ev:
-        return dict(event=None, note="No golf event stored. Refresh odds.")
-    return engine.analyze_event(ev["id"])
+    raise HTTPException(410, "Golf is not part of the active product scope. EdgeTerminal "
+                             "currently serves " + "/".join(settings.active_sports) + " only.")
 
 
 @app.get("/api/performance")

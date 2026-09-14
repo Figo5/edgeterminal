@@ -20,7 +20,10 @@ from . import tools as T
 
 log = logging.getLogger("edgeterminal.llm")
 
-SYSTEM = """You are the analyst inside EdgeTerminal, a sports-market research terminal.
+SYSTEM = """You are the analyst inside EdgeTerminal, an NFL-only betting research terminal.
+
+Product scope: analyze NFL only. Do not analyze or recommend other sports.
+Dormant backend adapters are retained for future expansion but are not active.
 
 Hard rules:
 - You have NO knowledge of current odds, injuries, statistics, schedules, scores,
@@ -156,6 +159,11 @@ def normalize_tool_args(name: str, args: Dict, user_message: str) -> Dict:
 def run_chat(user_message: str, history: Optional[List[Dict]] = None,
              context_note: Optional[str] = None) -> Dict:
     """One user turn. Returns answer text plus the full tool trace."""
+    if re.search(r"\b(?:cfb|ncaaf|college football|nba|basketball|pga|golf)\b",
+                 user_message, re.I):
+        return dict(answer="EdgeTerminal is currently NFL-only. No analysis or recommendation "
+                           "was generated for that sport.", tool_trace=[],
+                    provider="scope-router", model=None)
     p = provider()
     trace: List[Dict] = []
     if p is None:
@@ -213,7 +221,7 @@ ROUTES: List[Tuple[str, str]] = [
     (r"\bwatchlist\b|close to becoming|almost a play", "get_watchlist"),
     (r"\bmoved\b|line move|movement|steam", "get_line_moves"),
     (r"\bcalibrat|performance|hit rate|clv|track record", "get_model_performance"),
-    (r"\bgolf\b|\bpga\b|outright|top ?(5|10|20)|tournament", "run_golf_analysis"),
+
     (r"\bprop\b|receiving|rushing|passing yards|rebounds|assists", "run_prop_analysis"),
     (r"\banaly[sz]e\b|\bvs\b|\bversus\b|\bat\b.*\b(game|matchup)\b", "run_game_analysis"),
     (r"best bet|strongest|top play|what should i|any value|plus money|\+money",
@@ -224,8 +232,7 @@ ROUTES: List[Tuple[str, str]] = [
     (r"\bweather\b|\bwind\b|\brain\b", "get_weather"),
     (r"\bprovider|\bdata source|\bstale\b", "get_provider_status"),
 ]
-SPORT_WORDS = {"NFL": ["nfl"], "CFB": ["cfb", "college", "ncaa"],
-               "NBA": ["nba", "basketball"], "PGA": ["pga", "golf"]}
+SPORT_WORDS = {"NFL": ["nfl", "football"]}
 
 
 def _route(msg: str) -> Tuple[str, Dict]:

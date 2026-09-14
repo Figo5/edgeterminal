@@ -116,3 +116,22 @@ def test_explicit_lean_request_preserves_broader_search(monkeypatch):
                                          {"min_confidence": 60, "sport": "NFL"})
     assert captured["args"]["include_leans"] is True
     assert captured["args"]["only_leans"] is True
+
+
+def test_active_chat_tools_expose_only_nfl_sport():
+    sport_schemas = []
+    for schema in tools.SCHEMAS:
+        sport = schema.get("parameters", {}).get("properties", {}).get("sport")
+        if sport:
+            sport_schemas.append(sport["enum"])
+    assert sport_schemas
+    assert all(enum == ["NFL"] for enum in sport_schemas)
+
+
+def test_deterministic_chat_refuses_dormant_sports(monkeypatch):
+    monkeypatch.setattr(llm, "provider", lambda: None)
+    result = llm.run_chat("Show me PGA outrights")
+    assert result["provider"] == "scope-router"
+    assert result["tool_trace"] == []
+    assert "NFL-only" in result["answer"]
+    assert "run_golf_analysis" not in tools.REGISTRY
