@@ -59,11 +59,25 @@ This is opt-in and reversible; nothing is installed unless you run it:
 This beta deliberately refuses to produce some numbers rather than guess them.
 
 - **Anytime-TD outcomes are not mutually exclusive.** Player probabilities are never
-  normalised against each other and do not sum to 1. A fair (no-vig) probability is
-  estimated only from the **same player's** Yes and No prices at the **same book**.
-  In practice no book currently returns a No price for anytime TD, so no fair market
-  probability is available and **no anytime-TD recommendation can qualify**. Verified
-  prices and the experimental model are still shown, clearly labelled.
+  normalised against each other and do not sum to 1.
+
+Two *independent* conditions each block a recommendation. They are different problems
+with different fixes, and they are reported separately rather than merged into one
+"insufficient data" message:
+
+1. **No same-player No quote → no two-sided market de-vig.** A fair (no-vig) probability
+   is estimated only from the *same player's* Yes and No at the *same book*, which is a
+   genuinely complementary pair. No book currently returns a No price for anytime TD, so
+   `market_prob` is `null`. This is a *market coverage* limitation. An opposing price is
+   never fabricated, and Yes quotes from other books do not substitute for it.
+2. **Insufficient or unvalidated modelling → no defensible model-based recommendation.**
+   The touchdown model is an uncalibrated rate projection, and a player with no usable
+   usage yields no model at all (`model_prob: null`) rather than a floor value. This is a
+   *modelling* limitation and would remain even if every book posted a No price.
+
+Either condition alone leaves the row `NOT RECOMMENDABLE`. Verified sportsbook prices
+stay visible in both cases, with the book, the quote, and that quote's own implied
+probability. Thresholds were not lowered to compensate for either.
 - **First-TD and last-TD are disabled.** They settle differently and the race model
   behind them is unvalidated. Anytime probabilities are never reused for them.
 - **Edge, EV and fair price appear only** where a model *and* a fair market

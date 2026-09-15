@@ -445,7 +445,12 @@ def _build_board(*, event: Dict, players: List[Dict], rows: List[Dict], usage_ro
             if side != "yes":
                 continue        # a No quote informs the de-vig, it is not a pick
             runner = td_prices.get(player)
-            if runner is None or float(row["price"]) < float(runner["price"]):
+            # Best = highest payout, i.e. lowest implied probability -- the same test
+            # best_prices() uses. Comparing the raw numbers picked the most negative
+            # price, so a -500 quote beat -330 and the worst available price on the
+            # board was reported as the best one.
+            if runner is None or american_to_prob(float(row["price"])) < american_to_prob(
+                    float(runner["price"])):
                 td_prices[player] = row
     normalised = tdmod.no_vig_td_market(td_quotes) if td_quotes else dict(usable=False,
                                                                           reason="no anytime-TD market returned")

@@ -225,7 +225,12 @@ def td_board(players: Iterable[Dict], market: Dict, model_reliability: float = 0
         if not entry or price is None:
             continue
         price = float(price)
-        implied = entry["raw_implied"]
+        # The implied probability shown must be the one belonging to the exact quote
+        # shown. entry["raw_implied"] is the median across books: a consensus that
+        # generally matches no displayed price, so pairing it with best_price printed
+        # "-500 (77.7%)" when -500 is 83.3%. The median is kept alongside, labelled.
+        implied = american_to_prob(price)
+        market_median_implied = entry["raw_implied"]
         market_prob = entry["no_vig"]
         share = float(player.get("opportunity_share") or 0)
         team_tds = float(player.get("team_tds") or 0)
@@ -252,7 +257,8 @@ def td_board(players: Iterable[Dict], market: Dict, model_reliability: float = 0
             ev = round(final * (american_to_decimal(price) - 1) - (1 - final), 4)
             fair = fair_price(final)
         reasons = [f"Best price {price:+.0f} at {player.get('book')} "
-                   f"({implied * 100:.1f}% implied, vig included)"]
+                   f"({implied * 100:.1f}% implied, vig included; "
+                   f"{market_median_implied * 100:.1f}% median across books)"]
         if market_prob is not None:
             reasons.append(f"No-vig {market_prob * 100:.1f}% from {entry['two_sided_books']} "
                            f"book(s) quoting this player's Yes and No")
@@ -263,7 +269,8 @@ def td_board(players: Iterable[Dict], market: Dict, model_reliability: float = 0
         rows.append(dict(
             player=name, team=player.get("team"), market="player_anytime_td",
             best_price=price, book=player.get("book"),
-            implied_prob=implied, model_prob=model["prob"] if model else None,
+            implied_prob=round(implied, 6), market_median_implied=market_median_implied,
+            model_prob=model["prob"] if model else None,
             market_prob=market_prob, final_prob=final, probability_basis=basis,
             fair_price=fair, edge_pct=edge, ev_per_unit=ev,
             expected_tds=model["expected_tds"] if model else None,

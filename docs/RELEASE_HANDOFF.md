@@ -90,6 +90,36 @@ present verbatim, and the system prompt states that confidence is a data-quality
 that anytime probabilities never sum to 1, and that a null `market_prob` forbids any
 edge claim.
 
+### 5. Closeout: price/probability pairing
+The release report read "Jahmyr Gibbs -500 (77.7% implied)". -500 is 83.3%, so the pair
+was inconsistent. `american_to_prob` was verified correct (-500 -> 5/6, -350 -> 7/9,
++200 -> 1/3), so this was neither a report typo nor a conversion bug. It was two real
+defects, both now fixed:
+
+- **Worst price selected as best.** The anytime-TD loop compared raw American numbers,
+  so `-500 < -350` and the least valuable quote won. Best now means lowest implied
+  probability, the same test `best_prices()` already used. On a reproduction of the live
+  book spread the selection moves from -500 (83.3%) to -330 (76.7%).
+- **Implied probability did not belong to the displayed quote.** The board paired
+  `best_price` with `raw_implied`, the *median across books* (0.776529 - exactly the
+  77.7% that was reported). `implied_prob` is now computed from the displayed quote, and
+  the cross-book median is retained separately as `market_median_implied`.
+
+Tests cover the exact conversions, American/decimal/probability round trips (the +100 and
+-100 evens boundary is asserted by value, since `prob_to_american` canonicalises to -100),
+and that every board row's implied probability matches its own displayed price.
+
+### 6. Why a recommendation is blocked: two separate conditions
+These are distinct and are reported separately, never merged:
+1. **No same-player No quote** -> no two-sided de-vig is possible, `market_prob` is null.
+   A market-coverage limitation. No opposing price is fabricated.
+2. **Insufficient or unvalidated modelling** -> no defensible model-based recommendation;
+   missing usage yields `model_prob: null`, not a floor. A modelling limitation that
+   would persist even with full No coverage.
+
+Either one alone leaves the row NOT RECOMMENDABLE with its verified price still visible.
+No threshold was lowered and no new model was introduced during closeout.
+
 ## Verification
 ```
 .venv/bin/python -m pytest -q                 # 172 passed

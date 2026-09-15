@@ -305,3 +305,42 @@ def test_board_probabilities_and_fair_prices_stay_in_bounds():
         assert row["final_prob"] is None or 0 < row["final_prob"] < 1
         if row["fair_price"] is not None:
             assert abs(row["fair_price"]) >= 100
+
+
+# ------------------------------------------------- price <-> probability integrity
+@pytest.mark.parametrize("odds,expected", [
+    (-500, 5 / 6), (-350, 7 / 9), (200, 1 / 3), (-110, 110 / 210), (150, 0.4), (100, 0.5),
+])
+def test_american_to_prob_exact_values(odds, expected):
+    from edgeterminal.pricing import american_to_prob
+    assert american_to_prob(odds) == pytest.approx(expected, abs=1e-12)
+
+
+@pytest.mark.parametrize("odds", [-2000, -500, -350, -110, 100, 150, 200, 900, 2500])
+def test_american_decimal_probability_round_trips(odds):
+    from edgeterminal.pricing import (american_to_decimal, american_to_prob,
+                                      decimal_to_american, prob_to_american)
+    assert decimal_to_american(american_to_decimal(odds)) == odds
+    # At evens, +100 and -100 are the same wager and prob_to_american canonicalises
+    # to -100, so the round trip is checked by value rather than by sign.
+    assert american_to_prob(prob_to_american(american_to_prob(odds))) == pytest.approx(
+        american_to_prob(odds), abs=1e-9)
+    # decimal and probability must describe the same wager
+    assert american_to_prob(odds) == pytest.approx(1 / american_to_decimal(odds), abs=1e-12)
+
+
+def test_board_implied_probability_belongs_to_the_displayed_quote():
+    """A -500 row must read 83.3%, never the cross-book median."""
+    from edgeterminal.pricing import american_to_prob
+    books = [("dk", -340), ("fd", -350), ("mgm", -345), ("bol", -500), ("bov", -330)]
+    market = td.no_vig_td_market(
+        {"Gibbs": [dict(book=b, side="yes", price=p) for b, p in books]})
+    for book, price in books:
+        board = td.td_board([dict(name="Gibbs", team="DET", team_tds=3.0,
+                                  opportunity_share=0.25, best_price=price, book=book)],
+                            market)
+        row = board["rows"][0]
+        assert row["implied_prob"] == pytest.approx(american_to_prob(price), abs=1e-6)
+    # the median is still reported, but under its own name
+    assert row["market_median_implied"] == market["players"]["Gibbs"]["raw_implied"]
+    assert row["market_median_implied"] != row["implied_prob"]
