@@ -228,8 +228,14 @@ class TheOddsApi(OddsProvider):
                     continue
                 for oc in mk.get("outcomes", []) or []:
                     if raw in ("player_anytime_td", "player_1st_td"):
-                        player = (oc.get("description") or oc.get("name") or "").strip()
-                        side = None
+                        # Yes/No markets: `name` is the side, `description` is the
+                        # player. Falling back to `name` for the player invents a
+                        # scorer literally called "Yes", and dropping the side
+                        # merges a Yes and a No quote into one price series.
+                        player = (oc.get("description") or "").strip()
+                        side = (oc.get("name") or "").strip().lower() or None
+                        if side not in ("yes", "no"):
+                            side = None
                     else:
                         player = (oc.get("description") or "").strip()
                         side = (oc.get("name") or "").strip().lower() or None

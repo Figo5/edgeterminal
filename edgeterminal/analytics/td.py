@@ -9,8 +9,14 @@ TD probability = Poisson race over expected opportunities:
     expected_tds = team_tds x opportunity_share x bounded multipliers
     p(at least one) = 1 - exp(-expected_tds)
 
-First-TD is the same race evaluated over the whole game, so the first-scorer
-probabilities of every player sum to at most one.
+This is an **experimental** model, not a calibrated one.
+
+Anytime-TD outcomes are not mutually exclusive, so player probabilities are
+never normalised against each other; see `no_vig_td_market`.
+
+First-TD is **disabled for this release**: `first_td_probabilities` is retained
+and unit-tested but is deliberately wired to no recommendation path, and the
+prop workflow refuses the `player_1st_td` market outright.
 """
 from __future__ import annotations
 
@@ -79,7 +85,13 @@ def anytime_td_probability(team_tds: float, opportunity_share: float,
 
 
 def first_td_probabilities(players: Iterable[Dict]) -> Dict[str, float]:
-    """First-scorer probability from a race among every expected scorer."""
+    """First-scorer probability from a race among every expected scorer.
+
+    DISABLED for this release: no caller in the recommendation path. First-TD
+    settles on a single game-level event, and this race share has never been
+    validated against realised first scorers, so it must not price a pick.
+    Anytime probabilities are never substituted for it.
+    """
     rows = [dict(p) for p in players if float(p.get("expected_tds") or 0) > 0]
     if not rows:
         return {}
@@ -92,41 +104,98 @@ def first_td_probabilities(players: Iterable[Dict]) -> Dict[str, float]:
 
 
 # --------------------------------------------------------------------- market
-def no_vig_td_market(quotes: Dict[str, List[float]], min_outcomes: int = 3,
-                     full_coverage_books: int = 2) -> Dict:
-    """Normalise a juiced multi-outcome TD market into fair probabilities.
+def _median(values: List[float]) -> float:
+    ordered = sorted(values)
+    mid = len(ordered) // 2
+    return ordered[mid] if len(ordered) % 2 else (ordered[mid - 1] + ordered[mid]) / 2
 
-    Method: convert each book's prices to implied probability, take the per-player
-    median across books, then remove the overround proportionally (the standard
-    multiplicative no-vig method). Consensus across books beats one book's juice.
+
+def no_vig_td_market(quotes: Dict[str, List], full_coverage_books: int = 2) -> Dict:
+    """Fair anytime-TD probabilities, estimated one player at a time.
+
+    Anytime-TD outcomes are **not mutually exclusive**: several players score in
+    the same game, so their Yes probabilities legitimately sum far above 1.
+    Normalising them against each other (dividing by their sum) is therefore
+    invalid, and it makes every player's number depend on which other players
+    happen to be priced. This function never does that.
+
+    The only de-vig performed here is the two-outcome kind that is actually
+    complementary: the **same player's** Yes and No from the **same book**, where
+    Yes and No do partition the outcome space. Those two prices are de-vigged
+    proportionally and the fair Yes is the median across the books that quote
+    both sides.
+
+    When a player has no No price anywhere, a market no-vig probability is
+    *unavailable* -- it is reported as `None`, not guessed. Yes quotes from other
+    books do not supply the missing No, and no No price is ever fabricated. The
+    raw (vig-inclusive) implied probability is still reported for display, and is
+    always an over-estimate of the true probability.
+
+    `quotes` maps player -> list of rows, each `{"book", "side", "price"}`.
+    A bare number is accepted and treated as an unattributed Yes price.
     """
-    probs: Dict[str, float] = {}
-    books = 0
-    for player, prices in (quotes or {}).items():
-        usable = [american_to_prob(float(p)) for p in (prices or [])]
-        if not usable:
+    players: Dict[str, Dict] = {}
+    max_books = 0
+    for player, entries in (quotes or {}).items():
+        by_book: Dict[str, Dict[str, float]] = {}
+        for entry in entries or []:
+            if isinstance(entry, (int, float)):
+                book, side, price = "_", "yes", float(entry)
+            else:
+                if entry.get("price") is None:
+                    continue
+                price = float(entry["price"])
+                book = (entry.get("book") or "_").strip().lower() or "_"
+                side = (entry.get("side") or "yes").strip().lower()
+            if side not in ("yes", "no"):
+                continue
+            # Keep the friendliest price per side per book.
+            current = by_book.setdefault(book, {}).get(side)
+            if current is None or american_to_prob(price) < american_to_prob(current):
+                by_book[book][side] = price
+        yes_probs: List[float] = []
+        paired: List[float] = []
+        overrounds: List[float] = []
+        for sides in by_book.values():
+            if "yes" in sides:
+                yes_probs.append(american_to_prob(sides["yes"]))
+            if "yes" in sides and "no" in sides:
+                p_yes = american_to_prob(sides["yes"])
+                p_no = american_to_prob(sides["no"])
+                total = p_yes + p_no
+                if total <= 0:
+                    continue
+                paired.append(devig([p_yes, p_no])[0])
+                overrounds.append(total - 1.0)
+        if not yes_probs:
             continue
-        books = max(books, len(usable))
-        usable.sort()
-        mid = len(usable) // 2
-        median = usable[mid] if len(usable) % 2 else (usable[mid - 1] + usable[mid]) / 2
-        probs[player] = median
-    if len(probs) < min_outcomes:
-        return dict(probs={}, overround=None, books=books, coverage="insufficient",
-                    usable=False, method="proportional",
-                    reason=f"a normalised market needs at least {min_outcomes} priced outcomes, "
-                           f"got {len(probs)}")
-    raw_sum = sum(probs.values())
-    if raw_sum <= 0:
-        return dict(probs={}, overround=None, books=books, coverage="insufficient",
-                    usable=False, method="proportional", reason="prices contained no usable outcomes")
-    coverage = "full" if books >= full_coverage_books else "thin"
-    names = list(probs)
-    fair = devig([probs[name] for name in names])
-    return dict(probs={name: round(value, 6) for name, value in zip(names, fair)},
-                overround=round(raw_sum - 1.0, 6), books=books, coverage=coverage,
-                usable=True, method="proportional",
-                reason="implied probabilities normalised proportionally across priced outcomes")
+        max_books = max(max_books, len(by_book))
+        players[player] = dict(
+            raw_implied=round(_median(yes_probs), 6),
+            no_vig=round(_median(paired), 6) if paired else None,
+            overround=round(_median(overrounds), 6) if overrounds else None,
+            books=len(by_book), two_sided_books=len(paired),
+            basis="two_sided_devig" if paired else "raw_implied_with_vig")
+    priced = len(players)
+    with_no_vig = sum(1 for row in players.values() if row["no_vig"] is not None)
+    if not priced:
+        return dict(players={}, probs={}, raw_probs={}, books=0, priced=0,
+                    no_vig_players=0, coverage="insufficient", usable=False,
+                    method="same-player-two-sided",
+                    reason="no usable anytime-TD prices were returned")
+    if with_no_vig:
+        reason = (f"{with_no_vig} of {priced} player(s) had a same-book Yes and No "
+                  f"quote, so a fair probability was estimated for those only")
+    else:
+        reason = ("no book returned a No price for any player, so market no-vig "
+                  "probabilities are unavailable; raw implied prices still include the vig")
+    return dict(players=players,
+                probs={name: row["no_vig"] for name, row in players.items()
+                       if row["no_vig"] is not None},
+                raw_probs={name: row["raw_implied"] for name, row in players.items()},
+                books=max_books, priced=priced, no_vig_players=with_no_vig,
+                coverage="full" if max_books >= full_coverage_books else "thin",
+                usable=True, method="same-player-two-sided", reason=reason)
 
 
 def fair_price(prob: float) -> Optional[int]:
@@ -135,52 +204,90 @@ def fair_price(prob: float) -> Optional[int]:
 
 def td_board(players: Iterable[Dict], market: Dict, model_reliability: float = 0.5,
              market_weight_floor: float = 0.35) -> Dict:
-    """Rank TD scorers, separating likelihood from betting value."""
-    if not market.get("usable") or market.get("coverage") == "thin":
-        return dict(rows=[], most_likely=None, best_value=None, state="INSUFFICIENT DATA",
-                    reason="market coverage is too thin to estimate a fair TD price"
-                           + (f": {market['reason']}" if market.get("reason") else ""),
-                    market=market)
+    """Rank anytime-TD scorers, keeping three states strictly apart.
+
+    A. verified price  -- every priced player is listed, always.
+    B. experimental    -- a model probability, only where usage supports one.
+    C. recommendable   -- only where a model *and* a same-player no-vig market
+                          probability both exist; `edge_pct`/`ev_per_unit` are
+                          `None` otherwise rather than filled with a guess.
+
+    Edge is never derived from the market alone: comparing a no-vig probability
+    against the vigged price it came from yields the vig back as fake "edge".
+    """
+    market = market or {}
+    entries = market.get("players") or {}
     rows: List[Dict] = []
     for player in players:
         name = player.get("name")
-        model = anytime_td_probability(team_tds=float(player.get("team_tds") or 0),
-                                       opportunity_share=float(player.get("opportunity_share") or 0),
-                                       multipliers=player.get("multipliers"))
-        market_prob = market["probs"].get(name)
-        if market_prob is None or not player.get("best_price"):
+        entry = entries.get(name)
+        price = player.get("best_price")
+        if not entry or price is None:
             continue
-        blend = blend_market_model(model["prob"], market_prob,
-                                   max(0.0, min(1.0, model_reliability)), market["books"])
-        final = blend["final_prob"]
-        price = float(player["best_price"])
-        implied = american_to_prob(price)
-        edge = (final - implied) * 100
-        fair = fair_price(final)
+        price = float(price)
+        implied = entry["raw_implied"]
+        market_prob = entry["no_vig"]
+        share = float(player.get("opportunity_share") or 0)
+        team_tds = float(player.get("team_tds") or 0)
+        # No opportunity input means no model. A floor probability here would be a
+        # number invented from absent usage, so the model stays unavailable.
+        model = (anytime_td_probability(team_tds=team_tds, opportunity_share=share,
+                                        multipliers=player.get("multipliers"))
+                 if share > 0 and team_tds > 0 else None)
+        if model is not None and market_prob is not None:
+            blend = blend_market_model(model["prob"], market_prob,
+                                       max(0.0, min(1.0, model_reliability)), entry["books"])
+            final, basis = blend["final_prob"], "model+market"
+            model_weight = blend.get("model_weight")
+        elif model is not None:
+            final, basis, model_weight = model["prob"], "model-only", 1.0
+        else:
+            final, basis, model_weight = None, "market-only", None
+        edge = ev = fair = None
+        # Edge and EV are recommendation numbers. They are computed only where a
+        # model AND a same-player no-vig market probability both exist; an
+        # uncalibrated model measured against a vigged price is not "value".
+        if model is not None and market_prob is not None and final is not None:
+            edge = round((final - implied) * 100, 2)
+            ev = round(final * (american_to_decimal(price) - 1) - (1 - final), 4)
+            fair = fair_price(final)
+        reasons = [f"Best price {price:+.0f} at {player.get('book')} "
+                   f"({implied * 100:.1f}% implied, vig included)"]
+        if market_prob is not None:
+            reasons.append(f"No-vig {market_prob * 100:.1f}% from {entry['two_sided_books']} "
+                           f"book(s) quoting this player's Yes and No")
+        else:
+            reasons.append("No-vig unavailable: no book quoted a No price for this player")
+        reasons.append(f"Model {model['prob'] * 100:.1f}%" if model else
+                       "Model unavailable: no usable opportunity input")
         rows.append(dict(
             player=name, team=player.get("team"), market="player_anytime_td",
-            best_price=price, book=player.get("book"), implied_prob=round(implied, 4),
-            model_prob=model["prob"], market_prob=market_prob, final_prob=round(final, 4),
-            fair_price=fair, edge_pct=round(edge, 2),
-            expected_tds=model["expected_tds"],
-            ev_per_unit=round(final * (american_to_decimal(price) - 1) - (1 - final), 4),
-            adjustments=model["adjustments"],
-            provenance=dict(source="deterministic-model",
-                            market="theoddsapi", model="poisson-race",
-                            model_weight=blend.get("model_weight")),
-            reasons=[f"Model {model['prob'] * 100:.1f}% vs no-vig market "
-                     f"{market_prob * 100:.1f}%",
-                     f"Best price {price:+.0f} at {player.get('book')}",
-                     f"{market['books']} book(s) priced this market"]))
+            best_price=price, book=player.get("book"),
+            implied_prob=implied, model_prob=model["prob"] if model else None,
+            market_prob=market_prob, final_prob=final, probability_basis=basis,
+            fair_price=fair, edge_pct=edge, ev_per_unit=ev,
+            expected_tds=model["expected_tds"] if model else None,
+            recommendable=bool(model is not None and market_prob is not None),
+            books=entry["books"], adjustments=model["adjustments"] if model else [],
+            provenance=dict(source="deterministic-model", market="theoddsapi",
+                            model="poisson-race" if model else None,
+                            market_method=entry["basis"], model_weight=model_weight),
+            reasons=reasons))
     if not rows:
-        return dict(rows=[], most_likely=None, best_value=None, state="INSUFFICIENT DATA",
-                    reason="no player with both a model input and a priced market outcome",
+        return dict(rows=[], most_likely=None, most_likely_market=None, best_value=None,
+                    state="INSUFFICIENT DATA",
+                    reason=market.get("reason") or "no priced anytime-TD outcome",
                     market=market)
-    rows.sort(key=lambda r: -r["final_prob"])
-    most_likely = rows[0]
-    valued = sorted([r for r in rows if r["edge_pct"] > 0], key=lambda r: -r["ev_per_unit"])
-    return dict(rows=rows, most_likely=most_likely, best_value=valued[0] if valued else None,
-                state="OK", market=market)
+    rows.sort(key=lambda r: -(r["final_prob"] if r["final_prob"] is not None
+                              else r["implied_prob"]))
+    modelled = [r for r in rows if r["model_prob"] is not None]
+    valued = sorted([r for r in rows if r["recommendable"] and (r["edge_pct"] or 0) > 0],
+                    key=lambda r: -r["ev_per_unit"])
+    return dict(rows=rows,
+                most_likely=modelled[0] if modelled else None,
+                most_likely_market=max(rows, key=lambda r: r["implied_prob"]),
+                best_value=valued[0] if valued else None,
+                modelled=len(modelled), state="OK", market=market)
 
 
 # --------------------------------------------------------------------- props

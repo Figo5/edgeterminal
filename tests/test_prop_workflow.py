@@ -53,17 +53,37 @@ def _rb_plays():
     return rows
 
 
-def _td_rows(prices=None):
+def _paired_no(yes_price, hold=0.06):
+    """The No price a book would post alongside this Yes, carrying `hold` vig."""
+    from edgeterminal.pricing import american_to_prob, prob_to_american
+    fair_yes = american_to_prob(yes_price) / (1.0 + hold)
+    return prob_to_american(min(0.98, (1.0 - fair_yes) * (1.0 + hold)))
+
+
+def _td_rows(prices=None, two_sided=True):
+    """Anytime-TD quotes.
+
+    `two_sided=True` posts the No alongside each Yes, which is what makes a
+    same-player no-vig probability (and therefore a recommendation) possible.
+    With `two_sided=False` only Yes exists, so the board must fall back to
+    verified-price browsing.
+    """
     prices = prices or {"Big Ben Rusher": [120, 130], "Wide Out One": [150, 160],
                         "Qb One": [400, 420], "Opp Rusher": [280, 300],
                         "Depth Guy": [900, 950]}
     rows = []
     for player, books in prices.items():
         for i, price in enumerate(books):
-            rows.append(dict(event_id="evt1", sport="NFL", book="fanduel" if i == 0 else "bet365",
+            book = "fanduel" if i == 0 else "bet365"
+            rows.append(dict(event_id="evt1", sport="NFL", book=book,
                              market="player_anytime_td", api_market="player_anytime_td",
-                             selection=player, player=player, side=None, line=None,
+                             selection=player, player=player, side="yes", line=None,
                              price=price, captured_at=1000.0))
+            if two_sided:
+                rows.append(dict(event_id="evt1", sport="NFL", book=book,
+                                 market="player_anytime_td", api_market="player_anytime_td",
+                                 selection=player, player=player, side="no", line=None,
+                                 price=_paired_no(price), captured_at=1000.0))
     return rows
 
 
@@ -135,8 +155,10 @@ def test_prop_workflow_never_promotes_without_market_coverage(event):
     single = [r for r in _td_rows() if r["book"] == "fanduel"]
     out = props.analyze_props(event, category="td", deps=_deps(single), now=1000.0)
     assert out["market"]["coverage"] == "thin"
-    assert out["state"] == "INSUFFICIENT DATA"
     assert out["official"] == []
+    # One book is never enough to grade a prop: nothing may leave INSUFFICIENT DATA.
+    assert all(r["state"] == "INSUFFICIENT DATA" for r in out["recommendations"])
+    assert out["state"] != "OFFICIAL PICK"
 
 
 def test_prop_workflow_is_insufficient_data_without_usage(event):
@@ -372,3 +394,36 @@ def test_prop_fetch_authenticates_and_records_quota(monkeypatch):
     assert captured["params"]["markets"] == "player_anytime_td"
     assert out["quota"]["remaining"] == "342"
     assert out["quota"]["used"] == "158"
+
+def test_yes_only_td_market_browses_prices_but_recommends_nothing(event):
+    """No book posts a No price -> no fair probability, so no recommendation."""
+    out = props.analyze_props(event, category="td",
+                              deps=_deps(_td_rows(two_sided=False)), now=1000.0)
+    assert out["market"]["usable"] is True          # prices are still usable to look at
+    assert out["market"]["no_vig_players"] == 0
+    assert out["recommendations"] == []
+    assert out["official"] == []
+    assert out["prices"], "verified prices must still be browsable"
+    for row in out["prices"]:
+        assert row["state"] == "NOT RECOMMENDABLE"
+        assert row["market_prob"] is None
+        assert 0 < row["implied_prob"] < 1
+    # "most likely by the market" is still answerable without any model.
+    assert out["market_favourite"]["player"] == BIG_BEN
+
+
+def test_first_td_prices_never_enter_the_anytime_board(event):
+    """player_1st_td settles differently and is disabled for this release."""
+    first_td = [dict(r, market="player_1st_td", api_market="player_1st_td",
+                     price=r["price"] * 4 if r["price"] > 0 else r["price"])
+                for r in _td_rows(two_sided=False)]
+    baseline = props.analyze_props(event, category="td", deps=_deps(_td_rows()), now=1000.0)
+    polluted = props.analyze_props(event, category="td",
+                                   deps=_deps(_td_rows() + first_td), now=1000.0)
+
+    def _probs(out):
+        return {r["player"]: r["market_prob"] for r in out["recommendations"]}
+
+    assert _probs(baseline) == _probs(polluted), "first-TD quotes moved anytime probabilities"
+    emitted = [r["market"] for r in polluted["recommendations"] + polluted["prices"]]
+    assert "player_1st_td" not in emitted

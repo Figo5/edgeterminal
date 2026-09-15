@@ -245,6 +245,7 @@ def analyze_props(event_id: str, category: Optional[str] = None, research: bool 
                     generated_at=stamp, category=category or "all", markets_requested=markets,
                     price_source=source, is_demo=is_demo, state=identity["state"],
                     identity=identity, recommendations=[], most_likely=None, best_value=None,
+                    prices=[], market_favourite=None,
                     official=[], skipped=[], players=0, warnings=[reason],
                     research=dict(steps=[], citations=[], queries_used=0, conflicts=[]),
                     gaps=[], debug=trace,
@@ -295,7 +296,12 @@ def analyze_props(event_id: str, category: Optional[str] = None, research: bool 
                    role_stable=usage_games >= rplanner.MIN_USAGE_GAMES,
                    has_implied_total=environment["available"],
                    has_matchup=bool(injuries), has_weather=False),
-        players=[p["name"] for p in players[:3]], team=event.get("home_team"))
+        players=[p["name"] for p in players[:3]],
+        # Team-level gaps (weather, injuries, implied total) concern the fixture, so
+        # they fall back to the event name. Player-level gaps use the team structured
+        # usage resolved for that player, never an arbitrary side of the game.
+        team=None, player_teams=_resolve_player_teams(
+            [p["name"] for p in players[:3]], usage_rows, prior_usage_rows))
     trace["stages"].append(dict(stage="plan", gaps=[s["gap"] for s in plan],
                                 queries=[s["query"] for s in plan]))
 
@@ -382,6 +388,7 @@ def _build_board(*, event: Dict, players: List[Dict], rows: List[Dict], usage_ro
                  citations: List[Dict]) -> Dict:
     grouped = group_quotes([r for r in rows if r.get("player") or r.get("selection")])
     recommendations: List[Dict] = []
+    prices: List[Dict] = []          # verified sportsbook prices, no recommendation
     skipped: List[Dict] = []
     player_verdicts: List[Dict] = []
     citations_by_url = {c["url"]: c for c in citations if c.get("url")}
@@ -420,23 +427,28 @@ def _build_board(*, event: Dict, players: List[Dict], rows: List[Dict], usage_ro
         return chosen, chosen["basis"], verdict
 
     # --- touchdown markets -------------------------------------------------
-    td_quotes: Dict[str, List[float]] = {}
+    td_quotes: Dict[str, List[Dict]] = {}
     td_prices: Dict[str, Dict] = {}
     for key, rows_ in grouped.items():
-        if rows_[0].get("market") not in TD_MARKETS:
+        # ANYTIME ONLY. player_1st_td is a different settlement event at much
+        # longer odds; pooling it here contaminated the anytime price series and
+        # re-labelled first-TD quotes as anytime picks.
+        if rows_[0].get("market") != "player_anytime_td":
             continue
-        # Every book in the group counts: the no-vig estimate is a consensus, and
-        # coverage is one of the prop gates.
         for row in rows_:
             if row.get("price") is None:
                 continue
             player = row.get("player") or row.get("selection")
-            td_quotes.setdefault(player, []).append(float(row["price"]))
+            side = (row.get("side") or "yes").strip().lower()
+            td_quotes.setdefault(player, []).append(
+                dict(book=row.get("book"), side=side, price=float(row["price"])))
+            if side != "yes":
+                continue        # a No quote informs the de-vig, it is not a pick
             runner = td_prices.get(player)
             if runner is None or float(row["price"]) < float(runner["price"]):
                 td_prices[player] = row
     normalised = tdmod.no_vig_td_market(td_quotes) if td_quotes else dict(usable=False,
-                                                                          reason="no TD markets returned")
+                                                                          reason="no anytime-TD market returned")
     if td_quotes and normalised.get("usable"):
         candidates = []
         for player in players:
@@ -471,6 +483,18 @@ def _build_board(*, event: Dict, players: List[Dict], rows: List[Dict], usage_ro
             feature = per_player_features.get(name) or {}
             usage, basis, _verdict = _usage_for(name)
             books = len({q["book"] for q in grouped.get(_price_key(td_prices[name]), [])})
+            if not row.get("recommendable"):
+                # State A/B: a verified price, and the model detail we do have.
+                # Without both a model and a same-player no-vig probability there
+                # is no defensible edge, so this is browsable but never a pick.
+                prices.append(dict(
+                    market="player_anytime_td", player=name, team=row.get("team"),
+                    price=row["best_price"], book=row["book"],
+                    implied_prob=row["implied_prob"], model_prob=row["model_prob"],
+                    market_prob=row["market_prob"], state="NOT RECOMMENDABLE",
+                    probability_basis=row["probability_basis"], books=books,
+                    reasons=row["reasons"], captured_at=td_prices[name].get("captured_at")))
+                continue
             conf = prop_confidence(
                 games=int((usage or {}).get("games") or 0),
                 role_stable=bool(feature.get("source_agreement") and
@@ -496,11 +520,22 @@ def _build_board(*, event: Dict, players: List[Dict], rows: List[Dict], usage_ro
                 now=now, usage_basis=basis))
 
     # --- two-sided yardage / count markets --------------------------------
-    for key, quotes in grouped.items():
+    # Group by (player, market, line) and NOT by side: `grouped` keys include the
+    # side, so a per-key group only ever held Over or Under. De-vigging one side
+    # against itself returned market_prob = 1.0 for every yardage prop.
+    sided: Dict[tuple, List[Dict]] = {}
+    for row in rows:
+        market_name = row.get("market")
+        if market_name in TD_MARKETS or row.get("price") is None:
+            continue
+        name = row.get("player") or row.get("selection")
+        if not name:
+            continue
+        sided.setdefault((name, market_name, row.get("line")), []).append(row)
+
+    for key, quotes in sided.items():
         sample = quotes[0]
         market_name = sample.get("market")
-        if market_name in TD_MARKETS:
-            continue
         player_name = sample.get("player") or sample.get("selection")
         usage, basis, verdict = _usage_for(player_name)
         if not usage:
@@ -531,6 +566,22 @@ def _build_board(*, event: Dict, players: List[Dict], rows: List[Dict], usage_ro
         if not sides or line is None:
             continue
         implied = {side: american_to_prob(float(q["price"])) for side, q in sides.items()}
+        if len(sides) < 2:
+            # One side alone cannot be de-vigged: dividing it by itself returns
+            # 1.0, i.e. a certainty invented from a single price. Show the price,
+            # recommend nothing.
+            side, quote = next(iter(sides.items()))
+            prices.append(dict(
+                market=market_name, player=player_name, team=(usage or {}).get("team"),
+                side=side.title(), line=line, price=float(quote["price"]),
+                book=quote.get("book"), implied_prob=round(implied[side], 4),
+                model_prob=round(tdmod.prop_probability(projection, side, float(line)), 4),
+                market_prob=None, state="NOT RECOMMENDABLE",
+                probability_basis="model-only", books=books,
+                captured_at=quote.get("captured_at"),
+                reasons=[f"Only the {side.title()} side is priced at {line}",
+                         "No-vig unavailable: de-vig needs both Over and Under"]))
+            continue
         overround = sum(implied.values())
         market_prob = {side: value / overround for side, value in implied.items()}
         for side, quote in sides.items():
@@ -572,10 +623,20 @@ def _build_board(*, event: Dict, players: List[Dict], rows: List[Dict], usage_ro
     most_likely = max(td_rows, key=lambda r: r["final_prob"]) if td_rows else None
     valued = [r for r in td_rows if r["edge_pct"] > 0]
     best_value = max(valued, key=lambda r: r["ev_per_unit"]) if valued else None
+    # Market-implied favourite, for when no model is supportable. This is a
+    # likelihood read off the price (vig included), never a recommendation.
+    td_prices_shown = [p for p in prices if p["market"] == "player_anytime_td"]
+    market_favourite = (max(td_prices_shown + td_rows,
+                            key=lambda r: r.get("implied_prob") or 0)
+                        if (td_prices_shown or td_rows) else None)
+    # A board full of INSUFFICIENT DATA rows has not "qualified" anything; it is
+    # still insufficient. Verified browse-only prices do count as something to show.
+    graded = [r for r in recommendations if r["state"] != "INSUFFICIENT DATA"]
     state = ("OFFICIAL PICK" if any(r["state"] == "OFFICIAL PICK" for r in recommendations)
-             else "NO QUALIFYING PROP" if recommendations else "INSUFFICIENT DATA")
+             else "NO QUALIFYING PROP" if graded or prices else "INSUFFICIENT DATA")
     board = dict(recommendations=recommendations, most_likely=most_likely,
-                 best_value=best_value, state=state,
+                 best_value=best_value, state=state, prices=prices,
+                 market_favourite=market_favourite,
                  official=[r for r in recommendations if r["state"] == "OFFICIAL PICK"],
                  market=normalised, players=len(players), skipped=skipped)
     board["player_identity"] = dict(
@@ -601,18 +662,56 @@ def _best_reliability(feature: Dict) -> Optional[str]:
     return best
 
 
+# League-average team touchdowns per game, on the same basis team_td_environment
+# uses (league total / points per TD). The player's rate is expressed relative to
+# this so the environment adjustment does not double-count.
+LEAGUE_BASELINE_TEAM_TDS = 22.5 / 6.95
+
+
+def _resolve_player_teams(names: Iterable[str], usage_rows: Dict,
+                          prior_usage_rows: Optional[Dict] = None) -> Dict[str, str]:
+    """Map each player to the team its structured usage resolved to.
+
+    A name that matches more than one player, or none, is simply left out: an
+    unknown team is better than the wrong team.
+    """
+    out: Dict[str, str] = {}
+    for name in names or []:
+        teams = set()
+        for source in (usage_rows or {}, prior_usage_rows or {}):
+            for row in usagemod.find_candidates(source, name):
+                if row.get("team"):
+                    teams.add(row["team"])
+        if len(teams) == 1:
+            out[name] = teams.pop()
+    return out
+
+
 def _td_opportunity_share(usage: Dict, team_total: Optional[float] = None) -> float:
-    """Red-zone/goal-line workload share, floored by the player's TD share."""
-    touches = float(usage.get("touches") or 0)
-    rz = float(usage.get("red_zone_touches") or 0)
-    gl = float(usage.get("goal_line_touches") or 0)
+    """Share of team touchdowns, from the player's own realised scoring rate.
+
+    `td_board` computes expected_tds = team_tds * share, so returning
+    `td_per_game / LEAGUE_BASELINE_TEAM_TDS` makes that product equal the player's
+    observed touchdowns per game, scaled by how this game's projected scoring
+    environment compares with an average one. That is a rate projection: defensible,
+    dimensionally consistent, and impossible to saturate.
+
+    The previous formula, `(red_zone * 1.4 + goal_line * 2.0) / touches * 0.9`, was a
+    per-touch ratio, not a share of team touchdowns. A depth player with a handful of
+    touches near the goal line reached the 0.6 cap and came out at the model's 75%
+    ceiling -- for players the market priced around +350 (about 18%).
+
+    A player with no touchdowns in the sample returns 0.0, which leaves the model
+    unavailable rather than inventing a floor probability.
+
+    ponytail: red-zone share is richer than a raw TD rate but needs a real
+    opportunity model to avoid the saturation above; revisit with sample-size
+    shrinkage if TD props ever become recommendable.
+    """
     td_rate = float(usage.get("td_per_game") or 0)
-    share = 0.0
-    if touches:
-        share = min(0.6, (rz * 1.4 + gl * 2.0) / max(1.0, touches) * 0.9)
-    if td_rate:
-        share = max(share, min(0.6, td_rate / 2.5))
-    return round(max(0.02, min(0.6, share)), 4)
+    if td_rate <= 0:
+        return 0.0
+    return round(min(0.6, td_rate / LEAGUE_BASELINE_TEAM_TDS), 4)
 
 
 def _model_reliability(usage_rows: Dict, environment: Dict, market: Dict) -> float:
