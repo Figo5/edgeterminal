@@ -240,9 +240,14 @@ _LOWER_INTENT = re.compile(
 # Tools that act on one specific event. Their event id is validated, never trusted.
 EVENT_SCOPED = {"analyze_td_scorers": "event_id", "analyze_player_prop": "event_id",
                 "find_best_player_props": "event_id", "get_player_props": "event_id",
-                "run_game_analysis": "query", "run_prop_analysis": "query",
+                "run_game_analysis": "query", "run_prop_analysis": "event_id",
                 "get_current_odds": "query", "get_event": "query",
                 "get_weather": "query", "get_line_history": "query"}
+# Tools that act within one market. The resolved market is pinned the same way
+# the resolved event is: a model that answers the right game in the wrong market
+# is still answering a different question than the one asked.
+MARKET_SCOPED = {"run_prop_analysis", "get_player_props", "find_best_player_props",
+                 "analyze_player_prop"}
 
 
 def enforce_event_scope(name: str, args: Dict, ctx: Optional[Dict]) -> Dict:
@@ -265,6 +270,37 @@ def enforce_event_scope(name: str, args: Dict, ctx: Optional[Dict]) -> Dict:
                     name, supplied[:12], resolved[:12])
     args = dict(args)
     args[field] = resolved
+    # run_prop_analysis historically took the id in `query`; clear it so the same
+    # id cannot be re-resolved by fuzzy name matching into a different game.
+    if name == "run_prop_analysis":
+        args.pop("query", None)
+    if name in MARKET_SCOPED:
+        args = _enforce_market_scope(name, args, ctx)
+    return args
+
+
+def _enforce_market_scope(name: str, args: Dict, ctx: Optional[Dict]) -> Dict:
+    """Pin the market/category the request actually resolved to.
+
+    "What about receiving yards" reached the tool as category="all", so a market
+    switch returned the entire prop board. The resolved market wins, and a
+    category is never widened to everything.
+    """
+    market = (ctx or {}).get("market")
+    category = (ctx or {}).get("category")
+    if not market:
+        return args
+    args = dict(args)
+    if str(args.get("category") or "").lower() in ("all", "best", ""):
+        args.pop("category", None)
+    if category:
+        supplied = args.get("category")
+        if supplied and supplied != category:
+            log.warning("blocked category from model tool=%s supplied=%s resolved=%s",
+                        name, supplied, category)
+        args["category"] = category
+    if name == "run_prop_analysis":
+        args["market"] = market
     return args
 
 
@@ -301,7 +337,8 @@ def normalize_tool_args(name: str, args: Dict, user_message: str,
 def run_chat(user_message: str, history: Optional[List[Dict]] = None,
              context_note: Optional[str] = None,
              selected_event_id: Optional[str] = None,
-             now: Optional[float] = None) -> Dict:
+             now: Optional[float] = None,
+             prior_context: Optional[Dict] = None) -> Dict:
     """One user turn. Returns answer text plus the full tool trace."""
     if re.search(r"\b(?:cfb|ncaaf|college football|nba|basketball|pga|golf)\b",
                  user_message, re.I):
@@ -310,7 +347,7 @@ def run_chat(user_message: str, history: Optional[List[Dict]] = None,
                     provider="scope-router", model=None)
     from . import context as C
     try:
-        ctx = C.build(user_message, history, selected_event_id, now)
+        ctx = C.build(user_message, history, selected_event_id, now, prior=prior_context)
     except Exception as e:  # noqa: BLE001 - context must never break a turn
         log.error("context build failed: %s", type(e).__name__)
         ctx = None
@@ -365,8 +402,9 @@ def run_chat(user_message: str, history: Optional[List[Dict]] = None,
                             + "\n\n_Partial answer: this response could not be validated "
                               "against the resolved game (" + "; ".join(check["problems"])
                             + "). Treat the game-specific details above with caution._",
-                            tool_trace=trace, provider=p.name,
+                            tool_trace=_public_trace(trace), provider=p.name,
                             model=getattr(p, "model", None), validation=check,
+                            context=_state(ctx, validated=False),
                             elapsed_s=round(time.time() - started, 2))
             # Only an answer that is actually about one game gets the matchup header;
             # "are the providers up?" is not an event-specific question.
@@ -375,8 +413,9 @@ def run_chat(user_message: str, history: Optional[List[Dict]] = None,
             if event_specific and res_name and res_name.lower() not in answer.lower():
                 answer = _event_header(ctx) + answer
             answer = _schedule_banner(ctx) + answer
-            return dict(answer=answer, tool_trace=trace, validation=check,
+            return dict(answer=answer, tool_trace=_public_trace(trace), validation=check,
                         schedule=(ctx or {}).get("schedule"),
+                        context=_state(ctx, validated=True),
                         provider=p.name, model=getattr(p, "model", None),
                         elapsed_s=round(time.time() - started, 2))
         messages.append({"role": "assistant", "content": out.get("content") or None,
@@ -386,11 +425,22 @@ def run_chat(user_message: str, history: Optional[List[Dict]] = None,
                                         for c in calls]})
         for c in calls:
             args = normalize_tool_args(c["name"], parse_args(c["arguments"]), user_message, ctx)
+            # After pinning, two differently-worded calls can become the same
+            # call. Running it twice costs quota and can double-charge a provider
+            # for one question, so the first result is reused.
+            signature = (c["name"], json.dumps(args, sort_keys=True, default=str))
+            done = next((t for t in trace if t.get("_sig") == signature), None)
+            if done is not None:
+                log.info("duplicate tool call skipped tool=%s", c["name"])
+                messages.append({"role": "tool", "tool_call_id": c["id"],
+                                 "content": done.get("_payload", "{}")})
+                continue
             result = T.call(c["name"], args)
             log.info("LLM tool call tool=%s ok=%s", c["name"], "error" not in result)
-            trace.append(dict(tool=c["name"], arguments=args,
-                              ok="error" not in result,
-                              result_preview=json.dumps(result, default=str)[:400]))
+            entry = dict(tool=c["name"], arguments=args, ok="error" not in result,
+                          result_preview=json.dumps(result, default=str)[:400])
+            entry["_sig"] = signature
+            trace.append(entry)
             trimmed = T._trim(result)
             # Hand the model the application's own rendering alongside the JSON, as a
             # field *inside* it so the payload stays valid JSON. Every number the model
@@ -410,9 +460,11 @@ def run_chat(user_message: str, history: Optional[List[Dict]] = None,
                                                    "is absent from it, such as overround or a "
                                                    "book count.")
             payload = json.dumps(trimmed, default=str)
+            entry["_payload"] = payload
             messages.append({"role": "tool", "tool_call_id": c["id"], "content": payload})
     return dict(answer="Stopped after the tool-call limit. Narrow the question and try again.",
-                tool_trace=trace, provider=p.name, elapsed_s=round(time.time() - started, 2))
+                tool_trace=_public_trace(trace), provider=p.name, context=_state(ctx, validated=False),
+                elapsed_s=round(time.time() - started, 2))
 
 
 # ------------------------------------------------------- no-key fallback router
@@ -484,6 +536,26 @@ RENDERED_TOOLS = frozenset({
     "get_player_props", "find_best_bets", "build_best_parlay",
     "get_player_usage", "search_player_context",
 })
+
+
+def _public_trace(trace: List[Dict]) -> List[Dict]:
+    """Drop the bookkeeping keys used for de-duplication before the trace ships.
+
+    `_payload` is the full tool result handed to the model; sending it to the
+    browser as well would duplicate the whole board in every response.
+    """
+    return [{k: v for k, v in t.items() if not k.startswith("_")} for t in trace]
+
+
+def _state(ctx: Optional[Dict], validated: bool) -> Optional[Dict]:
+    """Conversation state for the client to echo back on the next turn."""
+    if not ctx:
+        return None
+    from . import context as C
+    try:
+        return C.conversation_state(ctx, validated=validated)
+    except Exception:  # noqa: BLE001 - never fail a turn on bookkeeping
+        return None
 
 
 def validate_answer(answer: str, ctx: Optional[Dict], trace: List[Dict]) -> Dict:
@@ -645,8 +717,9 @@ def fallback_answer(user_message: str, trace: List[Dict],
                     f"({when}). {sched.get('note') or ''}\n\n"
                     "Prices can still be browsed, but a staked recommendation needs a "
                     "confirmed kickoff and event identity. Refresh and ask again."),
-            tool_trace=trace, provider="deterministic-router", model=None,
-            schedule=sched, recommendation_withheld=True)
+            tool_trace=_public_trace(trace), provider="deterministic-router", model=None,
+            schedule=sched, recommendation_withheld=True,
+            context=_state(ctx, validated=True))
     # Only a request that genuinely needs one specific game is blocked on event
     # resolution. Slate-wide tools (best bets, parlays, watchlist) scan every game and
     # must still run when one particular day happens to be empty.
@@ -665,9 +738,10 @@ def fallback_answer(user_message: str, trace: List[Dict],
                                   dict(state=res.get("state"), event_id=res.get("event_id"),
                                        reason=res.get("reason"),
                                        reasons=res.get("reasons")), default=str)[:400]))
-            return dict(answer=_schedule_banner(ctx) + answered, tool_trace=trace,
+            return dict(answer=_schedule_banner(ctx) + answered, tool_trace=_public_trace(trace),
                         provider="deterministic-router", model=None,
-                        event_state=res.get("state"), schedule=ctx.get("schedule"))
+                        event_state=res.get("state"), schedule=ctx.get("schedule"),
+                        context=_state(ctx, validated=True))
     # The UI supplies an explicit event context. Keep ambiguous "this game"
     # questions scoped to that event instead of silently answering slate-wide.
     resolved = ((ctx or {}).get("resolution") or {}).get("event_id")
@@ -678,6 +752,8 @@ def fallback_answer(user_message: str, trace: List[Dict],
                                                            user_message.lower()):
         tool, args = "run_game_analysis", {"query": resolved}
     args = normalize_tool_args(tool, args, user_message, ctx)
+    if resolved and tool in MARKET_SCOPED and (ctx or {}).get("market"):
+        args = _enforce_market_scope(tool, args, ctx)
     if resolved and EVENT_SCOPED.get(tool):
         # Pin from the resolved id itself, not only via ctx: if context building failed
         # the selected game must still not be dropped in favour of the next kickoff.
@@ -685,8 +761,9 @@ def fallback_answer(user_message: str, trace: List[Dict],
     result = T.call(tool, args)
     trace.append(dict(tool=tool, arguments=args, ok="error" not in result,
                       result_preview=json.dumps(result, default=str)[:400]))
-    return dict(answer=_schedule_banner(ctx) + format_result(tool, result), tool_trace=trace,
+    return dict(answer=_schedule_banner(ctx) + format_result(tool, result), tool_trace=_public_trace(trace),
                 provider="deterministic-router", model=None, schedule=sched or None,
+                context=_state(ctx, validated=True),
                 note="No OPENAI_API_KEY configured — answering directly from the analytics "
                      "engine without natural-language synthesis.")
 

@@ -1,6 +1,7 @@
 "use strict";
 
-const state = { sport: "NFL", section: "overview", dashboard: null, config: null, eventId: null, history: [] };
+// chatContext: this tab's conversation state, echoed back each turn (see sendChat).
+const state = { sport: "NFL", section: "overview", dashboard: null, config: null, eventId: null, history: [], chatContext: null };
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? "—").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
 const pct = (v) => v == null ? "—" : `${(Number(v) * 100).toFixed(1)}%`;
@@ -122,7 +123,11 @@ async function loadProps(category) {
 
 function md(text) { return esc(text).replace(/^### (.+)$/gm,"<h3>$1</h3>").replace(/^\*\*(.+?)\*\*/gm,"<b>$1</b>").replace(/\*\*(.+?)\*\*/g,"<b>$1</b>").replace(/^[-•] (.+)$/gm,"<div>• $1</div>").replace(/\n\n/g,"</p><p>").replace(/\n/g,"<br>"); }
 function addMessage(role,text,trace=[]) { const el=document.createElement("div"); el.className=`msg ${role}`; el.innerHTML=`<div class="who">${role==="user"?"You":"EdgeTerminal"}</div><div class="bubble"><p>${md(text)}</p>${trace.length?`<details class="trace"><summary>${trace.length} application tool call(s)</summary>${trace.map(t=>`<div>${esc(t.tool)} ${esc(JSON.stringify(t.arguments||{}))}</div>`).join("")}</details>`:""}</div>`; $("chatLog").appendChild(el); $("chatLog").scrollTop=$("chatLog").scrollHeight; return el; }
-async function sendChat(message) { if(!message.trim())return; addMessage("user",message); state.history.push({role:"user",content:message}); const thinking=addMessage("bot","Analyzing from stored application data…"); thinking.querySelector(".bubble").classList.add("thinking"); try { const out=await api("/api/chat",{method:"POST",body:JSON.stringify({message,history:state.history.slice(-8),event_id:state.eventId})}); thinking.remove(); addMessage("bot",out.answer,out.tool_trace||[]); state.history.push({role:"assistant",content:out.answer}); } catch(e){thinking.remove();addMessage("bot",`Unavailable: ${e.message}`);} }
+// The conversation's own state travels with it: the server returns `context`
+// and the next turn sends it straight back. An answer names a matchup, not its
+// id, so history text alone can never tell the next turn which game we are on.
+// This lives in `state`, so two tabs are two conversations.
+async function sendChat(message) { if(!message.trim())return; addMessage("user",message); state.history.push({role:"user",content:message}); const thinking=addMessage("bot","Analyzing from stored application data…"); thinking.querySelector(".bubble").classList.add("thinking"); try { const out=await api("/api/chat",{method:"POST",body:JSON.stringify({message,history:state.history.slice(-8),event_id:state.eventId,context:state.chatContext||null})}); thinking.remove(); if(out.context) state.chatContext=out.context; addMessage("bot",out.answer,out.tool_trace||[]); state.history.push({role:"assistant",content:out.answer}); } catch(e){thinking.remove();addMessage("bot",`Unavailable: ${e.message}`);} }
 async function refreshOdds() { const b=$("refreshBtn"); b.disabled=true;b.textContent="Refreshing…"; try { const out=await api("/api/refresh",{method:"POST",body:JSON.stringify({sports:["NFL"]})}); const r=out.sports?.NFL||{}; await loadDashboard(true); toast(`NFL: stored ${r.odds_rows||0} odds rows via ${r.odds_source||"provider"}${r.odds_error?` · ${r.odds_error}`:""}`,!!r.odds_error); } catch(e){toast(`Odds refresh failed: ${e.message}`,true);} finally{b.disabled=false;b.textContent="Refresh Odds";} }
 async function loadDashboard(force=false) { $("main").innerHTML='<div class="loading">Loading NFL slate…</div>'; state.dashboard=await api(`/api/dashboard?sport=NFL${force?"&refresh_analysis=true":""}`); renderDashboard(); }
 async function loadParlay() { try { const p=await api(`/api/parlay?max_legs=5&sport=NFL`); if(!p.parlay) toast(p.note); else { state.dashboard.headline.best_parlay=p.parlay; renderDashboard(); } } catch(e){toast(e.message,true);} }

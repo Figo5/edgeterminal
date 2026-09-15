@@ -212,7 +212,7 @@ reproduced exactly. A visual UI regression would not be caught by this.
 
 ## Verification
 ```
-.venv/bin/python -m pytest -q                 # 232 passed
+.venv/bin/python -m pytest -q                 # 246 passed
 .venv/bin/python -m compileall -q edgeterminal tools
 node --check edgeterminal/web/app.js
 bash -n tools/edgeterminal.sh
@@ -354,3 +354,96 @@ work.
   the feed omits it, age falls back to our retrieval time, which understates how
   long a price has actually been sitting.
 - No rendered-browser verification was performed in this pass.
+
+## Multi-turn conversation repair
+
+The previous pass reported follow-ups as working. They were not. The user's
+browser conversation failed on turn 2:
+
+```
+T1 "Who might score a touchdown in the Thursday night game" -> Lions @ Bills  (right)
+T2 "What about receiving yards in that game"                -> Vikings @ Bears (wrong)
+T3 "Show me the available prices ..."                        -> Vikings moneyline (wrong)
+```
+
+**Why the earlier tests missed it.** Every existing test seeded each turn with
+its own correct event. None carried turn 1's *result* into turn 2, so the turn
+boundary itself — the only place the bug lived — was never exercised.
+
+### Root causes (four, all required)
+1. **Nothing carried the conversation's event.** `_history_event` scraped a
+   32-hex id out of previous answer text, but an answer names a matchup, not an
+   id, so it always returned None. There was no other carrier.
+2. **"That game" resolved to the dashboard.** With no conversation event, the
+   `_THIS_GAME` branch fell through to `selected_event_id` — which the frontend
+   attaches to *every* payload whether or not the user touched it. The sticky
+   Vikings selection therefore won every follow-up.
+3. **`run_prop_analysis` took an untyped `query`** doing two jobs at once, a
+   natural-language game name *and* an opaque event id. A correct id was
+   re-resolved by fuzzy name matching, and the function delegated to
+   `run_game_analysis`, which is why turn 3 produced a **moneyline** board.
+4. **Market scope was never enforced.** "Receiving yards" reached the tool as
+   `category="all"`, and asking to see prices reset the market entirely.
+
+### The fix
+`POST /api/chat` now accepts and returns a compact, validated, conversation-
+scoped `context`: conversation id, resolved event, market/category, player,
+task, turn, and the selection seen on that turn. It lives in the client
+(`state.chatContext`), so two tabs are two conversations and no server-side
+mutable state is shared between them. It is validated on arrival like any other
+client input — the event must exist, the market must be known.
+
+Precedence below an explicit day/team request:
+1. a selection the user **just changed** (a real instruction)
+2. the event the conversation already settled on
+3. a selection merely re-attached to every payload
+
+That third distinction is the heart of the bug: `selection_changed` compares
+this turn's `event_id` against the one recorded last turn, so intentional
+selection still works while a sticky value no longer overrides "that game".
+
+Market is inherited unless the message names a new one, so switching market
+keeps the event and asking for prices keeps the market. `run_prop_analysis`
+takes a typed `event_id` plus `market`/`category`, refuses a non-prop market,
+refuses an unknown event, ignores unknown model kwargs, and never widens a
+category to "all". `_enforce_market_scope` pins the category the same way the
+event id is pinned. Identical tool calls within one turn are de-duplicated after
+pinning, so one question cannot be billed twice.
+
+Context is committed **only after validation**: an answer rejected for naming
+the wrong game leaves the prior event in place rather than becoming the
+conversation's authoritative state.
+
+### Verification, reported separately
+- **Mocked HTTP (14 tests, `tests/test_chat_multiturn_http.py`)**: the exact
+  three turns through FastAPI serialization, carrying context forward with no
+  per-turn seeding. Plus conflicting sticky selection, explicit game switch,
+  intentional new selection, explicit moneyline switch, OpenAI outage on turn 2,
+  separate conversations, missing receiving prices, and a rejected wrong-event
+  answer not poisoning state. **9 of 10 failed before the fix.**
+- **Rendered browser (`tests/browser/three_turn.mjs`, Playwright/Chromium)**:
+  drives the real UI, clicks a game card, types all three turns, reads what is
+  painted. Against the pre-fix frontend it reproduces the exact reported failure
+  (turn 2 Vikings, turn 3 market null); after the fix all three turns stay on
+  Lions @ Bills. Run with
+  `NODE_PATH=$HOME/.hermes/hermes-agent/node_modules node tests/browser/three_turn.mjs`
+  (Playwright is not a project dependency).
+- **Live (real OpenAI + real Odds API, 3 turns, 6 requests)**: T1 resolved
+  Lions @ Bills with the Raiders/Chargers card selected; T2 called
+  `run_prop_analysis{event_id=56e88976…, market=player_reception_yards,
+  category=receiving}` — one call, right game, right market; T3 kept both, showed
+  an "Updated" column, and named no other game and no moneyline.
+- **Executed tool contract**: `run_prop_analysis` shipped with `propsmod` out of
+  scope and **every mocked test still passed**, because they all mock
+  `tools.call`. Tests that execute the function now exist.
+
+### Limitations
+- Conversation state lives in the browser tab. A page reload starts a new
+  conversation; there is no server-side persistence and none was added.
+- `context` is client-supplied and therefore validated, not trusted. A client
+  can only select among events that actually exist.
+- Odds credits consumed by this pass are **not precisely reconstructable**
+  (per-process fetch records were lost across a restart, and no pre-task quota
+  baseline was taken). Best estimate 4-6 credits from cache-state evidence.
+  **Baseline recorded for next time: used 415 / remaining 85 at the end of this
+  pass** (read via the quota-free `/v4/sports` endpoint, cost 0).

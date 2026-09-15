@@ -21,6 +21,7 @@ from __future__ import annotations
 import datetime as dt
 import logging
 import re
+import uuid
 from typing import Dict, List, Optional
 from zoneinfo import ZoneInfo
 
@@ -47,17 +48,41 @@ TASKS = (
     ("research", r"\b(injur|role|snap|usage|news|report|status|workload|depth chart)\w*\b"),
 )
 MARKETS = (
-    ("player_anytime_td", r"\b(touchdown|td|anytime|score a td|scorer)s?\b"),
-    ("player_reception_yards", r"\b(receiving|reception)\s*yards?\b"),
-    ("player_receptions", r"\breceptions?\b"),
+    # Longest/most specific first: "receiving yards" must not be read as "receptions".
+    ("player_reception_yards", r"\b(receiving|reception)\s*yards?\b|\brec\s*yds?\b"),
     ("player_rush_yards", r"\brush(?:ing)?\s*yards?\b"),
     ("player_pass_yards", r"\bpass(?:ing)?\s*yards?\b"),
+    ("player_receptions", r"\breceptions?\b|\bcatches\b"),
+    ("player_anytime_td", r"\b(touchdown|td|anytime|score a td|scorer)s?\b"),
+    ("moneyline", r"\bmoney\s?lines?\b|\bml\b|\bwho wins\b|\bto win\b"),
+    ("spread", r"\bspreads?\b|\bagainst the spread\b|\bats\b|\bhandicap\b"),
+    ("total", r"\btotals?\b|\bover\/under\b|\bo\/u\b"),
 )
+# Prop markets, and the provider category each belongs to. A request for
+# "receiving yards" is a request for the receiving category -- never the whole
+# board, which is how a market switch turned into an unrelated moneyline list.
+PROP_MARKETS = {
+    "player_anytime_td": "td",
+    "player_reception_yards": "receiving",
+    "player_receptions": "receiving",
+    "player_rush_yards": "rushing",
+    "player_pass_yards": "passing",
+}
+GAME_MARKETS = {"moneyline", "spread", "total"}
+
+
+def market_category(market: Optional[str]) -> Optional[str]:
+    """Provider prop category for a market, or None for game markets."""
+    return PROP_MARKETS.get(market or "")
 # An explicit request overrides stale UI/history context; these say "a different game".
 _EXPLICIT_DAY = re.compile(
     r"\b(tonight|today|tomorrow|this weekend|next week|"
     r"mon|tues|wednes|thurs|fri|satur|sun)\w*\b|\btnf\b|\bsnf\b|\bmnf\b", re.I)
-_THIS_GAME = re.compile(r"\b(this|that|the current|the selected)\s+(game|matchup|one)\b", re.I)
+_THIS_GAME = re.compile(r"\b(this|that|the current|the selected|the same)\s+"
+                        r"(game|matchup|one|fixture)\b", re.I)
+# "that game"/"the same game" points backwards at the conversation. "this game"
+# is the one genuinely ambiguous form: it can mean the game on screen.
+_THAT_GAME = re.compile(r"\b(that|the same)\s+(game|matchup|one|fixture)\b", re.I)
 
 
 def _tz() -> ZoneInfo:
@@ -324,8 +349,17 @@ def resolve_event(ctx: Dict) -> Dict:
         return dict(state="OK", event_id=chosen["id"], event=chosen,
                     source="explicit-team", reasons=reasons)
 
-    for key, source in (("selected_event_id", "selected-ui-event"),
-                        ("history_event_id", "conversation-context")):
+    # Order of authority below an explicit request:
+    #   1. a selection the user just changed (a real instruction)
+    #   2. the event this conversation already settled on
+    #   3. a selection that has merely been re-attached to every payload
+    # "that game" points backwards and never outranks the conversation.
+    order: List[tuple] = []
+    if ctx.get("selection_changed") and not ctx.get("refers_to_conversation"):
+        order.append(("selected_event_id", "changed-ui-selection"))
+    order.append(("history_event_id", "conversation-context"))
+    order.append(("selected_event_id", "selected-ui-event"))
+    for key, source in order:
         candidate = ctx.get(key)
         if candidate:
             hit = next((e for e in events if e["id"] == candidate), None)
@@ -333,6 +367,11 @@ def resolve_event(ctx: Dict) -> Dict:
                 reasons.append(f"no explicit day/team; using {source}")
                 return dict(state="OK", event_id=hit["id"], event=hit,
                             source=source, reasons=reasons)
+            if key == "history_event_id":
+                # The conversation's game is gone from the schedule. Say so rather
+                # than quietly sliding to whatever is selected.
+                reasons.append("the game this conversation was about is no longer "
+                               "in the schedule")
     if events:
         chosen = events[0]
         reasons.append("no explicit request and no selected game; using the next kickoff")
@@ -345,8 +384,15 @@ def resolve_event(ctx: Dict) -> Dict:
 
 def build(user_message: str, history: Optional[List[Dict]] = None,
           selected_event_id: Optional[str] = None,
-          now: Optional[float] = None, allow_refresh: bool = True) -> Dict:
-    """The compact structured context for one turn."""
+          now: Optional[float] = None, allow_refresh: bool = True,
+          prior: Optional[Dict] = None) -> Dict:
+    """The compact structured context for one turn.
+
+    `prior` is the conversation state this same conversation was given at the end
+    of its last turn. It is the only carrier of "what we were talking about":
+    scraping ids out of answer text never worked, because an answer names the
+    matchup, not its id.
+    """
     now_local = local_now(now)
     teams_known = [r["home_team"] for r in db.q(
         "SELECT DISTINCT home_team FROM events WHERE sport='NFL'")] + \
@@ -355,7 +401,21 @@ def build(user_message: str, history: Optional[List[Dict]] = None,
 
     explicit = bool(_EXPLICIT_DAY.search(user_message))
     this_game = bool(_THIS_GAME.search(user_message))
+    that_game = bool(_THAT_GAME.search(user_message))
     teams = _teams_in(user_message, teams_known)
+    prior = _clean_prior(prior)
+
+    # A selection the user actually changed is an instruction. The same value
+    # re-attached to every payload by the frontend is not: the browser sends
+    # `event_id` on every turn whether or not anyone touched it, and treating
+    # that as intent is what made "that game" jump to the dashboard's game.
+    selection_changed = bool(
+        selected_event_id
+        and prior is not None
+        and prior.get("selected_event_id") != selected_event_id)
+    # With no prior turn there is nothing to be sticky *about*.
+    if prior is None and selected_event_id:
+        selection_changed = True
     ctx = dict(
         message=user_message,
         task=_task(user_message),
@@ -366,12 +426,28 @@ def build(user_message: str, history: Optional[List[Dict]] = None,
         now_local=now_local,
         timezone=settings.timezone,
         selected_event_id=selected_event_id,
-        history_event_id=_history_event(history),
+        history_event_id=(prior or {}).get("event_id") or _history_event(history),
         explicit_day=explicit, refers_to_selected=this_game,
+        refers_to_conversation=that_game,
+        selection_changed=selection_changed,
+        prior=prior,
+        conversation_id=(prior or {}).get("conversation_id") or uuid.uuid4().hex[:16],
+        turn=int((prior or {}).get("turn") or 0) + 1,
     )
-    # "This game" is the one case where the selected event outranks a stray weekday
-    # word; an explicit day otherwise outranks stale UI and history context.
-    if this_game and not explicit and selected_event_id:
+    # A market named in this message wins; otherwise the conversation keeps the
+    # one it was already on. Asking to *see prices* changes the action, not the
+    # market -- that reset is what produced a moneyline board mid-conversation.
+    if ctx["market"] is None and prior and prior.get("market"):
+        ctx["market"] = prior["market"]
+        ctx["market_source"] = "conversation"
+    else:
+        ctx["market_source"] = "message" if ctx["market"] else None
+    ctx["category"] = market_category(ctx["market"])
+    if ctx.get("player") is None and prior and prior.get("player") and not teams:
+        ctx["player"] = prior.get("player")
+    # A bare conversational reference carries no day or team of its own, so any
+    # stray weekday word in it must not be read as a new constraint.
+    if (this_game or that_game) and not explicit and (selected_event_id or ctx["history_event_id"]):
         ctx["day_constraint"], ctx["teams"] = None, []
     ctx["resolution"] = resolve_event(ctx)
     ctx["schedule"] = _ensure_fresh_schedule(ctx, allow_refresh=allow_refresh)
@@ -441,6 +517,65 @@ def _ensure_fresh_schedule(ctx: Dict, allow_refresh: bool = True) -> Dict:
     if problems:
         out["note"] = ("the resolved game changed during refresh: " + "; ".join(problems))
     return out
+
+
+def _clean_prior(prior: Optional[Dict]) -> Optional[Dict]:
+    """Validate the conversation state the client echoed back.
+
+    It arrives over the wire like `history` and `event_id`, so it is checked, not
+    trusted: the event must still exist and the market must be one we know.
+    """
+    if not isinstance(prior, dict):
+        return None
+    out: Dict = {}
+    eid = prior.get("event_id")
+    if isinstance(eid, str) and eid:
+        row = db.q1("SELECT id, name FROM events WHERE id=?", (eid,))
+        if row:
+            out["event_id"] = row["id"]
+            out["event_name"] = row["name"]
+    market = prior.get("market")
+    if isinstance(market, str) and (market in PROP_MARKETS or market in GAME_MARKETS):
+        out["market"] = market
+    for key in ("conversation_id", "player", "task", "selected_event_id"):
+        value = prior.get(key)
+        if isinstance(value, str) and value:
+            out[key] = value[:80]
+    try:
+        out["turn"] = max(0, int(prior.get("turn") or 0))
+    except (TypeError, ValueError):
+        out["turn"] = 0
+    return out or None
+
+
+def conversation_state(ctx: Dict, validated: bool = True) -> Dict:
+    """The compact state this conversation carries into its next turn.
+
+    Only written when the turn actually validated. An answer that was rejected
+    for naming the wrong game must not leave that game behind as the
+    conversation's authoritative event.
+    """
+    res = ctx.get("resolution") or {}
+    prior = ctx.get("prior") or {}
+    keep_event = res.get("event_id") if (validated and res.get("state") == "OK") \
+        else prior.get("event_id")
+    keep_name = (res.get("event") or {}).get("name") if (validated and res.get("state") == "OK") \
+        else prior.get("event_name")
+    return dict(
+        conversation_id=ctx.get("conversation_id"),
+        turn=ctx.get("turn"),
+        event_id=keep_event,
+        event_name=keep_name,
+        market=ctx.get("market") if validated else prior.get("market"),
+        category=market_category(ctx.get("market") if validated else prior.get("market")),
+        player=ctx.get("player") if validated else prior.get("player"),
+        task=ctx.get("task"),
+        # What the dashboard had selected on THIS turn, so the next turn can tell
+        # a changed selection from the same value re-sent.
+        selected_event_id=ctx.get("selected_event_id"),
+        source=res.get("source") if validated else prior.get("source"),
+        validated=bool(validated),
+    )
 
 
 def _history_event(history: Optional[List[Dict]]) -> Optional[str]:

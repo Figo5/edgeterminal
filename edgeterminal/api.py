@@ -64,6 +64,10 @@ class ChatBody(BaseModel):
     message: str
     history: List[Dict[str, Any]] = Field(default_factory=list)
     event_id: Optional[str] = None
+    # Conversation-scoped state returned by the previous turn and echoed back by
+    # the client. Validated server-side like any other client input; it is what
+    # carries "the game we were talking about" across a turn boundary.
+    context: Optional[Dict[str, Any]] = None
 
 
 class GradeBody(BaseModel):
@@ -347,7 +351,8 @@ def chat(body: ChatBody) -> Dict:
                     f"{body.event_id}.")
     try:
         return llm.run_chat(body.message, body.history, note,
-                            selected_event_id=body.event_id)
+                            selected_event_id=body.event_id,
+                            prior_context=body.context)
     except Exception as e:  # noqa: BLE001
         log.error("chat failed: %s", type(e).__name__)
         return JSONResponse(status_code=500,

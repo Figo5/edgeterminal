@@ -144,18 +144,46 @@ def run_game_analysis(query: str, markets: Optional[List[str]] = None) -> Dict:
                 recommendations=_trim([_slim(r) for r in recs[:18]]))
 
 
-def run_prop_analysis(query: str, player: Optional[str] = None) -> Dict:
-    res = run_game_analysis(query, markets=["player_prop"])
-    if "error" in res:
-        return res
-    recs = res.get("recommendations", [])
+def run_prop_analysis(query: Optional[str] = None, player: Optional[str] = None,
+                      event_id: Optional[str] = None, market: Optional[str] = None,
+                      category: Optional[str] = None, **_ignored) -> Dict:
+    """Player prop markets for ONE game, in ONE market category.
+
+    `event_id` is the typed field and is authoritative. `query` remains accepted
+    because the model and older callers still send it, but it was doing two jobs
+    at once -- natural-language game name *and* opaque event id -- which is how a
+    correct id ended up being re-resolved into a different game. It is now only a
+    fallback, and a category is never silently widened to the whole board: asking
+    for receiving yards must not return every market in the fixture.
+    """
+    from . import context as C
+    from .. import props as propsmod
+    target = event_id or query
+    if not target:
+        return dict(error="run_prop_analysis needs an event_id.")
+    ev = db.q1("SELECT * FROM events WHERE id=?", (target,)) or _find_event(str(target))
+    if not ev:
+        return dict(error=f"No stored event matches '{target}'.")
+    ev = dict(ev)
+    # Market scope is validated the same way event scope is. An unknown market is
+    # refused rather than widened to "all".
+    cat = category if category in ("td", "passing", "rushing", "receiving") else None
+    if cat is None and market:
+        cat = C.market_category(market)
+        if cat is None:
+            return dict(error=f"'{market}' is not a player prop market.",
+                        event_id=ev["id"], event=ev.get("name"))
+    out = propsmod.analyze_props(ev["id"], category=cat)
     if player:
-        recs = [r for r in recs if player.lower() in r["selection"].lower()]
+        recs = [r for r in (out.get("recommendations") or [])
+                if player.lower() in str(r.get("selection", "")).lower()]
         if not recs:
-            return dict(error=f"No priced prop market found for '{player}' in this event. "
-                              f"The prop may not be offered, or usage data is missing — "
-                              f"do not invent a projection.")
-    return dict(res, recommendations=recs)
+            return dict(out, recommendations=[],
+                        note=f"No priced prop market found for '{player}' in "
+                             f"{ev.get('name')}. The prop may not be offered, or usage "
+                             f"data is missing — do not invent a projection.")
+        out = dict(out, recommendations=recs)
+    return dict(out, event_id=ev["id"], requested_market=market, requested_category=cat)
 
 
 def run_golf_analysis(market: Optional[str] = None, min_price: Optional[int] = None) -> Dict:
@@ -600,8 +628,15 @@ SCHEMAS: List[Dict] = [
     dict(name="run_game_analysis", description="Full analysis pipeline for one game: projection, every market priced, confidence, states, sources.",
          parameters=_p(required=("query",), query={"type": "string"},
                        markets={"type": "array", "items": {"type": "string"}})),
-    dict(name="run_prop_analysis", description="Player prop markets for one game, optionally filtered to a player.",
-         parameters=_p(required=("query",), query={"type": "string"}, player={"type": "string"})),
+    dict(name="run_prop_analysis", description=(
+        "Player prop markets for ONE game and ONE category. Pass event_id (the "
+        "validated event id) and market (e.g. player_reception_yards) or category "
+        "(td/passing/rushing/receiving). Never widen to the whole board when the "
+        "user asked for one market."),
+         parameters=_p(event_id={"type": "string"}, query={"type": "string"},
+                       player={"type": "string"}, market={"type": "string"},
+                       category={"type": "string",
+                                 "enum": ["td", "passing", "rushing", "receiving"]})),
 
     dict(name="find_best_bets", description=(
              "Ranked slate recommendations. For best bet, best play, strongest bet/play, or "
