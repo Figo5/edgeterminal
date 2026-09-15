@@ -49,3 +49,7 @@ node_modules/
 **/.DS_Store
 .idea/
 .vscode/
+
+# Process control
+*.pid
+data/*.pid

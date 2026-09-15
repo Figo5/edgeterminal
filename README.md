@@ -1,5 +1,10 @@
 # EdgeTerminal
 
+> **Status: personal research beta.** The touchdown model is explicitly experimental
+> and has not been calibrated or shown to be profitable. Several recommendation paths
+> are deliberately disabled (see *Release limits* below). Use it to browse verified
+> prices and research a game, not as a source of betting advice.
+
 EdgeTerminal is a local **NFL-only** betting research and analytics terminal. It compares stored prices with deterministic projections, exposes confidence and risk inputs, records odds history, and provides a tool-grounded chat analyst. It does **not** place bets.
 
 The active product and UI are NFL-only. Reusable provider abstractions for other sports remain dormant for future expansion.
@@ -20,6 +25,54 @@ PORT=8799 .venv/bin/python -m uvicorn edgeterminal.api:app --host 127.0.0.1 --po
 Open <http://127.0.0.1:8799>.
 
 Port `8799` is EdgeTerminal's default; `8787` is reserved for CivicFolio.
+
+## Running it as a service
+
+`tools/edgeterminal.sh` wraps the same virtualenv and `.env` loading. Credentials are
+never passed as arguments: the app reads `.env` itself. The script identifies its own
+process by PID file and a verified command line, so it never runs a broad `pkill` that
+could hit CivicFolio or another uvicorn.
+
+```bash
+./tools/edgeterminal.sh start      # background, logs to data/edgeterminal.log
+./tools/edgeterminal.sh status     # pid, port and /api/health
+./tools/edgeterminal.sh restart
+./tools/edgeterminal.sh stop
+```
+
+Foreground (the exact command, useful when debugging startup):
+
+```bash
+PORT=8799 .venv/bin/python -m uvicorn edgeterminal.api:app --host 127.0.0.1 --port 8799
+```
+
+To survive terminal closure and restart at login, install the optional launchd agent.
+This is opt-in and reversible; nothing is installed unless you run it:
+
+```bash
+./tools/edgeterminal.sh install-service     # writes ~/Library/LaunchAgents/com.edgeterminal.app.plist
+./tools/edgeterminal.sh uninstall-service   # unloads and removes it
+```
+
+## Release limits
+
+This beta deliberately refuses to produce some numbers rather than guess them.
+
+- **Anytime-TD outcomes are not mutually exclusive.** Player probabilities are never
+  normalised against each other and do not sum to 1. A fair (no-vig) probability is
+  estimated only from the **same player's** Yes and No prices at the **same book**.
+  In practice no book currently returns a No price for anytime TD, so no fair market
+  probability is available and **no anytime-TD recommendation can qualify**. Verified
+  prices and the experimental model are still shown, clearly labelled.
+- **First-TD and last-TD are disabled.** They settle differently and the race model
+  behind them is unvalidated. Anytime probabilities are never reused for them.
+- **Edge, EV and fair price appear only** where a model *and* a fair market
+  probability both exist. Elsewhere they are `null`, not estimated.
+- **Confidence is a 0-100 data-quality score, not a win probability.**
+- The touchdown model is an uncalibrated Poisson rate projection. No profitability or
+  calibration claim is made.
+- Parlays remain PASS unless supported; prices from different books are never combined
+  into a quoted ticket.
 
 ## Demo mode
 
