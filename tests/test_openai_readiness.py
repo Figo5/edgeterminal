@@ -135,3 +135,22 @@ def test_deterministic_chat_refuses_dormant_sports(monkeypatch):
     assert result["tool_trace"] == []
     assert "NFL-only" in result["answer"]
     assert "run_golf_analysis" not in tools.REGISTRY
+
+
+def test_rendered_tools_receive_the_application_rendering_in_valid_json(monkeypatch):
+    """The model must see the app's own numbers, and the payload must stay JSON."""
+    board = {"state": "NO QUALIFYING PROP", "event": {"name": "A @ B"},
+             "market": {"books": 6, "coverage": "full", "priced": 32, "no_vig_players": 0},
+             "recommendations": [], "prices": [], "official": []}
+    fake = FakeProvider([
+        {"content": "", "tool_calls": [{"id": "1", "name": "analyze_td_scorers",
+                                        "arguments": "{}"}]},
+        {"content": "Grounded", "tool_calls": []},
+    ])
+    monkeypatch.setattr(llm, "provider", lambda: fake)
+    monkeypatch.setattr(tools, "call", lambda name, args: board)
+    llm.run_chat("best td scorer")
+    payload = json.loads(fake.messages[-1][-1]["content"])
+    assert "_authoritative_rendering" in payload
+    assert "32 player(s) priced across 6 book(s)" in payload["_authoritative_rendering"]
+    assert "overround" not in payload["_authoritative_rendering"].lower()

@@ -60,8 +60,26 @@ Player props (higher variance, stricter rules):
   workload changes. It never supplies a probability, a price, an edge or a unit size.
   Cite every source you rely on with its reliability class and timestamp.
 - If sources disagree, say that they disagree and treat the play as uncertain.
-- TD questions have two different answers: "most likely" (highest modelled chance)
-  and "best value" (best price versus fair odds). Do not conflate them.
+- "Best TD scorer" has FOUR distinct answers. Keep them apart and label which you
+  are giving: (1) most likely by the model, (2) the market favourite (shortest
+  price -- the market's opinion, not ours), (3) best estimated value (price versus
+  fair odds), (4) whether any Official Pick exists (often none).
+- Anytime-TD outcomes are NOT mutually exclusive: several players score in one game.
+  Their probabilities do not and must not sum to 1. Never rescale them against each
+  other and never present them as shares of a single event.
+- A fair (no-vig) market probability exists only where one book quoted the SAME
+  player's Yes and No. Where `market_prob` is null there is no fair probability:
+  report the raw implied price as vig-inclusive, state that no-vig is unavailable,
+  and claim NO edge, EV or fair price for that row.
+- The `prices` list is verified sportsbook prices ONLY. It is never a recommendation.
+  "Show me the prices even if nothing qualifies" is a normal request: answer it from
+  `prices` and say plainly that no pick is attached.
+- Confidence is a data-quality score from 0-100. It is NOT the probability the bet
+  wins. Never write "80 confidence" as "80% chance to score".
+- The model is experimental and not calibrated. Do not claim it is proven,
+  profitable, or backtested.
+- First-TD and last-TD are DISABLED this release. Do not price them, and never reuse
+  an anytime-TD probability as a first-TD probability.
 - Props use the prop confidence ceiling and prop thresholds. Never present a prop as
   an Official Pick unless the tool returned that state, and never lower a prop
   threshold because the user wants a play.
@@ -274,7 +292,25 @@ def run_chat(user_message: str, history: Optional[List[Dict]] = None,
             trace.append(dict(tool=c["name"], arguments=args,
                               ok="error" not in result,
                               result_preview=json.dumps(result, default=str)[:400]))
-            payload = json.dumps(T._trim(result), default=str)
+            trimmed = T._trim(result)
+            # Hand the model the application's own rendering alongside the JSON, as a
+            # field *inside* it so the payload stays valid JSON. Every number the model
+            # should quote then appears verbatim in its context, which is what stops it
+            # inventing plausible-looking market statistics (an observed failure: a
+            # fabricated "overround 5.18% across 9 books").
+            if (isinstance(trimmed, dict) and "error" not in result
+                    and c["name"] in RENDERED_TOOLS):
+                try:
+                    rendered = format_result(c["name"], result)
+                except Exception:  # noqa: BLE001 - never fail a chat turn on formatting
+                    rendered = None
+                if rendered:
+                    trimmed = dict(trimmed, _authoritative_rendering=rendered[:4000],
+                                   _rendering_note="Application-computed. Quote these numbers "
+                                                   "exactly. Do not introduce any statistic that "
+                                                   "is absent from it, such as overround or a "
+                                                   "book count.")
+            payload = json.dumps(trimmed, default=str)
             messages.append({"role": "tool", "tool_call_id": c["id"], "content": payload})
     return dict(answer="Stopped after the tool-call limit. Narrow the question and try again.",
                 tool_trace=trace, provider=p.name, elapsed_s=round(time.time() - started, 2))
@@ -342,16 +378,30 @@ def _route(msg: str) -> Tuple[str, Dict]:
     return ("find_best_bets", {"sport": sport} if sport else {})
 
 
+# Tools whose deterministic rendering is worth showing the model. Others fall back
+# to a plain JSON dump in format_result, which would only duplicate the payload.
+RENDERED_TOOLS = frozenset({
+    "analyze_td_scorers", "find_best_player_props", "analyze_player_prop",
+    "get_player_props", "find_best_bets", "build_best_parlay",
+    "get_player_usage", "search_player_context",
+})
+
+
 def fallback_answer(user_message: str, trace: List[Dict],
                     context_note: Optional[str] = None) -> Dict:
     """Deterministic answer path used when no LLM key is configured."""
     tool, args = _route(user_message)
     # The UI supplies an explicit event context. Keep ambiguous "this game"
     # questions scoped to that event instead of silently answering slate-wide.
+    match = re.search(r"event id ([^\s.]+)", context_note or "")
     if context_note and tool == "find_best_bets" and re.search(r"\b(this|the) game\b", user_message.lower()):
-        match = re.search(r"event id ([^\s.]+)", context_note)
         if match:
             tool, args = "run_game_analysis", {"query": match.group(1)}
+    # Prop tools take an event_id of their own. Without this the selected game was
+    # dropped and the answer silently described whichever game _resolve_event picked.
+    elif match and tool in ("analyze_td_scorers", "find_best_player_props",
+                            "analyze_player_prop", "get_player_props"):
+        args = dict(args, event_id=match.group(1))
     result = T.call(tool, args)
     trace.append(dict(tool=tool, arguments=args, ok="error" not in result,
                       result_preview=json.dumps(result, default=str)[:400]))
@@ -377,30 +427,63 @@ def _fmt_td_board(res: Dict) -> str:
     if res.get("error"):
         return f"**Unavailable.** {res['error']}"
     rows = res.get("recommendations") or []
+    prices = res.get("prices") or []
     market = res.get("market") or {}
+    priced = market.get("priced") or 0
+    no_vig = market.get("no_vig_players") or 0
     head = (f"**{res.get('state')}** — anytime-TD board for "
             f"{(res.get('event') or {}).get('name') or 'the next game'}.\n"
-            f"- no-vig market: {market.get('usable')} · {market.get('books')} book(s) · "
-            f"coverage {market.get('coverage')} · overround {market.get('overround')}\n")
-    if not rows:
-        return head + "\n" + (res.get("note") or "No TD market was priced, so nothing is ranked.")
+            f"- {priced} player(s) priced across {market.get('books')} book(s) "
+            f"(coverage {market.get('coverage')})\n"
+            f"- fair market probability available for {no_vig} of them "
+            f"(needs the same player's Yes *and* No from one book)\n")
+    if market.get("reason"):
+        head += f"- {market['reason']}\n"
     parts = [head]
     most = res.get("most_likely")
+    fav = res.get("market_favourite")
     best = res.get("best_value")
+
     if most:
-        parts.append(f"\n**Most likely scorer:** {most['player']} — "
-                     f"{most.get('final_prob', 0) * 100:.1f}% "
-                     f"(fair {most.get('fair_price')}, best {most.get('price')} at {most.get('book')})")
+        parts.append(f"\n**Most likely (model):** {most['player']} — "
+                     f"{(most.get('final_prob') or 0) * 100:.1f}% "
+                     f"(experimental model, not calibrated; fair {most.get('fair_price')}, "
+                     f"best {most.get('price')} at {most.get('book')})")
+    else:
+        parts.append("\n**Most likely (model):** unavailable — no player had both usable "
+                     "usage and a fair market probability.")
+    if fav:
+        parts.append(f"**Market favourite:** {fav['player']} at {fav.get('price')} "
+                     f"({(fav.get('implied_prob') or 0) * 100:.1f}% implied, vig included) "
+                     f"— this is the market's opinion, not a pick.")
     if best:
         parts.append(f"**Best value:** {best['player']} — {best.get('edge_pct')} pts of edge, "
                      f"{best.get('price')} at {best.get('book')} (fair {best.get('fair_price')})")
-    elif rows:
-        parts.append("**Best value:** none — no priced scorer carries positive expected value.")
-    for row in rows[:8]:
-        parts.append(f"- {row.get('state')} · {row['player']} {row.get('price')} at {row.get('book')} "
-                     f"| model {row.get('model_prob')} vs market {row.get('market_prob')} "
-                     f"→ final {row.get('final_prob')} | fair {row.get('fair_price')} | "
-                     f"edge {row.get('edge_pct')} pts | conf {row.get('confidence')}")
+    else:
+        parts.append("**Best value:** none — no priced scorer carries a defensible positive edge.")
+    if not res.get("official"):
+        parts.append("**Official Pick:** none for this market.")
+
+    if rows:
+        parts.append("\nAnalysed (model + fair market probability):")
+        for row in rows[:8]:
+            parts.append(f"- {row.get('state')} · {row['player']} {row.get('price')} at "
+                         f"{row.get('book')} | model {row.get('model_prob')} vs market "
+                         f"{row.get('market_prob')} → final {row.get('final_prob')} | fair "
+                         f"{row.get('fair_price')} | edge {row.get('edge_pct')} pts | "
+                         f"confidence {row.get('confidence')} (data quality, not win chance)")
+    if prices:
+        parts.append("\nVerified prices only — not recommendations, no edge claimed:")
+        for row in prices[:8]:
+            bits = [f"- {row['player']} {row.get('price')} at {row.get('book')} "
+                    f"({(row.get('implied_prob') or 0) * 100:.1f}% implied, vig included)"]
+            if row.get("model_prob") is not None:
+                bits.append(f" | experimental model {row['model_prob']}")
+            parts.append("".join(bits))
+        parts.append("_No fair market probability exists for these, so no edge or EV is quoted._")
+    if not rows and not prices:
+        parts.append("\n" + (res.get("note") or
+                              "No anytime-TD market was priced, so nothing is ranked."))
     citations = _citations(((res.get("research") or {}).get("citations")) or [])
     if citations:
         parts.append("\nSources:\n" + citations)

@@ -90,6 +90,20 @@ function propsTable(d) {
   const html=d.map(r=>`<tr class="row"><td colspan="8" style="padding:0"><table style="margin:0"><tbody>${propRow(r)}</tbody></table><details class="detail-inline" style="padding:0 12px 8px"><summary>Usage · current role · research · risks · citations</summary>${propRec(r)}</details></td></tr>`).join("");
   return `<table><thead><tr><th>Player</th><th class="num">Best</th><th class="num">Model</th><th class="num">Fair</th><th class="num">Edge</th><th class="num">Conf</th><th class="num">Units</th><th>Status</th></tr></thead><tbody>${html}</tbody></table>`;
 }
+function summaryBox(d) {
+  const bits=[];
+  if(d.most_likely) bits.push(`<b>Most likely (model)</b> — ${esc(d.most_likely.player)} ${pct(d.most_likely.final_prob)} at ${odds(d.most_likely.price)} ${esc(d.most_likely.book||"")} <span class="meta">experimental model</span>`);
+  else bits.push(`<b>Most likely (model)</b> — unavailable <span class="meta">no player had both usable usage and a fair market probability</span>`);
+  if(d.market_favourite) bits.push(`<b>Market favourite</b> — ${esc(d.market_favourite.player)} at ${odds(d.market_favourite.price)} (${pct(d.market_favourite.implied_prob)} implied, vig included)`);
+  bits.push(d.best_value?`<b>Best value</b> — ${esc(d.best_value.player)} (${fmtPct(d.best_value.edge_pct)} edge, ${odds(d.best_value.price)} at ${esc(d.best_value.book||"")})`:`<b>Best value</b> — none with a defensible edge`);
+  bits.push((d.official||[]).length?`<b>Official Pick</b> — ${(d.official||[]).length}`:`<b>Official Pick</b> — none`);
+  return `<div class="notebox">${bits.join("<br>")}</div>`;
+}
+function pricesTable(rows) {
+  if(!rows||!rows.length) return "";
+  const body=rows.map(r=>`<tr><td><b>${esc(r.player)}</b>${r.side?` ${esc(r.side)}`:""}${r.line==null?"":` ${num(r.line)}`}<div class="evname">${esc(r.market_label||r.market)} · ${esc(r.book||"—")}</div></td><td class="num">${odds(r.price)}</td><td class="num">${pct(r.implied_prob)}</td><td class="num">${r.model_prob==null?"—":pct(r.model_prob)}</td><td>${(r.reasons||[]).map(x=>`<div class="meta">• ${esc(x)}</div>`).join("")}</td></tr>`).join("");
+  return `<div class="notebox"><b>Verified prices — not recommendations.</b> No fair market probability is available for these, so no edge, EV or fair price is shown.</div><table><thead><tr><th>Player</th><th class="num">Best</th><th class="num">Implied (vig in)</th><th class="num">Model</th><th>Why not recommendable</th></tr></thead><tbody>${body}</tbody></table>`;
+}
 async function loadProps(category) {
   state.propsCategory=category; const host=$("propsHost"); if(!host) return;
   document.querySelectorAll("[data-propcat]").forEach(b=>b.classList.toggle("on",b.dataset.propcat===category));
@@ -97,11 +111,12 @@ async function loadProps(category) {
   try {
     const d=await api(`/api/event/${encodeURIComponent(state.eventId)}/props?category=${encodeURIComponent(category)}`);
     const q=d.quota||{};
-    const head=`<div class="meta">source ${esc(d.price_source)} · ${(d.market||{}).books||0} book(s) · coverage ${esc((d.market||{}).coverage||"—")} · overround ${esc((d.market||{}).overround??"—")}${q.remaining?` · odds-api remaining ${esc(q.remaining)}`:""} · ${d.recommendations.length} priced prop(s)</div>`;
-    if(!d.recommendations.length){ host.innerHTML=head+`<div class="empty-state"><b>NO PRICED PROPS</b><div>${esc((d.warnings||[])[0]||d.state||"No prop market returned for this game.")}</div></div>`; return; }
-    const ml=d.most_likely?`<div class="notebox"><b>Most likely TD scorer</b> — ${esc(d.most_likely.player)} (${pct(d.most_likely.final_prob)}, ${odds(d.most_likely.price)} at ${esc(d.most_likely.book||"")})${d.best_value?` · <b>Best value</b> — ${esc(d.best_value.player)} (${fmtPct(d.best_value.edge_pct)} edge, ${odds(d.best_value.price)} at ${esc(d.best_value.book||"")})`:" · no positive-value TD price"}</div>`:"";
+    const m=d.market||{}, prices=d.prices||[];
+    const head=`<div class="meta">source ${esc(d.price_source)} · ${m.books||0} book(s) · coverage ${esc(m.coverage||"—")} · fair market probability for ${esc(m.no_vig_players??0)}/${esc(m.priced??0)} player(s)${q.remaining?` · odds-api remaining ${esc(q.remaining)}`:""} · ${d.recommendations.length} analysed · ${prices.length} price-only</div>`;
+    if(!d.recommendations.length && !prices.length){ host.innerHTML=head+`<div class="empty-state"><b>NO PRICED PROPS</b><div>${esc((d.warnings||[])[0]||d.state||"No prop market returned for this game.")}</div></div>`; return; }
+    const ml=summaryBox(d);
     const gaps=(d.gaps||[]).length?`<div class="meta">research gaps closed: ${(d.gaps||[]).map(g=>esc(g.gap)).join(", ")} · queries used ${(d.research||{}).queries_used||0}</div>`:"";
-    host.innerHTML=head+ml+propsTable(d.recommendations)+gaps;
+    host.innerHTML=head+ml+(d.recommendations.length?propsTable(d.recommendations):"")+pricesTable(prices)+gaps;
   } catch(e) { host.innerHTML=`<div class="warnbox">${esc(e.message)}</div>`; }
 }
 

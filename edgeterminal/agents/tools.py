@@ -266,14 +266,32 @@ def _props(event_id: str, **kw) -> Dict:
 
 
 def _resolve_event(event_id: Optional[str]) -> Optional[str]:
-    """Explicit event first, otherwise the next priced NFL game."""
+    """Explicit event first, otherwise the next NFL game that has not kicked off.
+
+    Ordering every stored event by kickoff and taking the first one returned the
+    oldest *finished* game in the database, so an unscoped question was answered
+    about a game that had already been played. Completed games are skipped.
+    """
     if event_id:
         return event_id
-    rows = db.q("SELECT id FROM events WHERE sport='NFL' ORDER BY start_time ASC")
+    from .. import integrity as I
+    now = time.time()
+    rows = db.q("SELECT id, start_time FROM events WHERE sport='NFL' ORDER BY start_time ASC")
+    if not settings.demo_mode:
+        # Live/demo isolation: a seeded demo fixture must never be chosen as the
+        # real next game when the terminal is running against live providers.
+        rows = [r for r in rows if not str(r["id"]).startswith("demo-")]
+    upcoming = []
     for row in rows:
+        kickoff = I.parse_time(row["start_time"])
+        if kickoff is None or kickoff >= now:
+            upcoming.append(row)
+    for row in upcoming:
         if db.latest_odds(event_id=row["id"]):
             return row["id"]
-    return rows[0]["id"] if rows else None
+    if upcoming:
+        return upcoming[0]["id"]
+    return rows[-1]["id"] if rows else None
 
 
 def _prop_digest(out: Dict, limit: int = 8) -> Dict:
@@ -286,6 +304,10 @@ def _prop_digest(out: Dict, limit: int = 8) -> Dict:
             "source_agreement", "books", "usage_available")
     rows = [{k: r[k] for k in keys if k in r}
             for r in (out.get("recommendations") or [])[:limit]]
+    # Verified prices that are deliberately NOT recommendations. Without these the
+    # assistant cannot answer "show me the prices even if nothing qualifies".
+    price_rows = [{k: r[k] for k in keys + ("probability_basis", "reasons") if k in r}
+                  for r in (out.get("prices") or [])[:limit]]
     citations = []
     for item in (out.get("research") or {}).get("citations", [])[:8]:
         citations.append(dict(title=item.get("title"), url=item.get("url"),
@@ -296,23 +318,33 @@ def _prop_digest(out: Dict, limit: int = 8) -> Dict:
                 sources=citations,
                 most_likely=_slim_prop(out.get("most_likely")),
                 best_value=_slim_prop(out.get("best_value")),
+                market_favourite=_slim_prop(out.get("market_favourite")),
+                prices=price_rows,
                 market=dict(books=(out.get("market") or {}).get("books"),
                             coverage=(out.get("market") or {}).get("coverage"),
-                            overround=(out.get("market") or {}).get("overround"),
-                            usable=(out.get("market") or {}).get("usable")),
+                            usable=(out.get("market") or {}).get("usable"),
+                            priced=(out.get("market") or {}).get("priced"),
+                            no_vig_players=(out.get("market") or {}).get("no_vig_players"),
+                            method=(out.get("market") or {}).get("method"),
+                            reason=(out.get("market") or {}).get("reason")),
                 research=dict(queries_used=(out.get("research") or {}).get("queries_used"),
                               conflicts=(out.get("research") or {}).get("conflicts"),
                               citations=citations),
                 gaps=out.get("gaps"), warnings=out.get("warnings"),
                 price_source=out.get("price_source"), is_demo=out.get("is_demo"),
                 note="Probabilities, fair prices, edges, confidence and units are computed by "
-                     "the application. Research only supplies bounded, sourced context factors.")
+                     "the application. Research only supplies bounded, sourced context factors. "
+                     "`prices` are verified sportsbook prices only and are NOT recommendations; "
+                     "rows with market_prob = null have no same-player Yes/No quote, so no fair "
+                     "market probability exists and no edge may be claimed for them. "
+                     "Confidence is a data-quality score, never a probability that the bet wins.")
 
 
 def _slim_prop(row: Optional[Dict]) -> Optional[Dict]:
     if not row:
         return None
-    keys = ("player", "team", "market", "line", "book", "price", "final_prob", "fair_price",
+    keys = ("player", "team", "market", "line", "book", "price", "implied_prob",
+            "model_prob", "market_prob", "final_prob", "fair_price",
             "edge_pct", "ev_per_unit", "confidence", "state", "sources")
     return {k: row[k] for k in keys if k in row}
 
