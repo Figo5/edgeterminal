@@ -258,6 +258,205 @@ def get_provider_status() -> Dict:
                 last_refresh=engine.last_refresh())
 
 
+# ----------------------------------------------------------------- player props
+def _props(event_id: str, **kw) -> Dict:
+    """Indirection so tests (and the debug view) can inject the prop workflow."""
+    from .. import props as propsmod
+    return propsmod.analyze_props(event_id, **kw)
+
+
+def _resolve_event(event_id: Optional[str]) -> Optional[str]:
+    """Explicit event first, otherwise the next priced NFL game."""
+    if event_id:
+        return event_id
+    rows = db.q("SELECT id FROM events WHERE sport='NFL' ORDER BY start_time ASC")
+    for row in rows:
+        if db.latest_odds(event_id=row["id"]):
+            return row["id"]
+    return rows[0]["id"] if rows else None
+
+
+def _prop_digest(out: Dict, limit: int = 8) -> Dict:
+    """Trim a prop board to what the model should talk about."""
+    if out.get("error"):
+        return dict(error=out["error"])
+    keys = ("player", "team", "market", "market_label", "selection", "side", "line",
+            "book", "price", "implied_prob", "model_prob", "market_prob", "final_prob",
+            "fair_price", "edge_pct", "ev_per_unit", "confidence", "units", "state",
+            "source_agreement", "books", "usage_available")
+    rows = [{k: r[k] for k in keys if k in r}
+            for r in (out.get("recommendations") or [])[:limit]]
+    citations = []
+    for item in (out.get("research") or {}).get("citations", [])[:8]:
+        citations.append(dict(title=item.get("title"), url=item.get("url"),
+                              publisher=item.get("publisher"), reliability=item.get("reliability"),
+                              relevance=item.get("relevance")))
+    return dict(event=out.get("event"), state=out.get("state"), category=out.get("category"),
+                recommendations=rows,
+                sources=citations,
+                most_likely=_slim_prop(out.get("most_likely")),
+                best_value=_slim_prop(out.get("best_value")),
+                market=dict(books=(out.get("market") or {}).get("books"),
+                            coverage=(out.get("market") or {}).get("coverage"),
+                            overround=(out.get("market") or {}).get("overround"),
+                            usable=(out.get("market") or {}).get("usable")),
+                research=dict(queries_used=(out.get("research") or {}).get("queries_used"),
+                              conflicts=(out.get("research") or {}).get("conflicts"),
+                              citations=citations),
+                gaps=out.get("gaps"), warnings=out.get("warnings"),
+                price_source=out.get("price_source"), is_demo=out.get("is_demo"),
+                note="Probabilities, fair prices, edges, confidence and units are computed by "
+                     "the application. Research only supplies bounded, sourced context factors.")
+
+
+def _slim_prop(row: Optional[Dict]) -> Optional[Dict]:
+    if not row:
+        return None
+    keys = ("player", "team", "market", "line", "book", "price", "final_prob", "fair_price",
+            "edge_pct", "ev_per_unit", "confidence", "state", "sources")
+    return {k: row[k] for k in keys if k in row}
+
+
+def analyze_td_scorers(event_id: Optional[str] = None, research: bool = True) -> Dict:
+    eid = _resolve_event(event_id)
+    if not eid:
+        return dict(error="No NFL event available. Refresh odds first.")
+    return _prop_digest(_props(eid, category="td", research=research))
+
+
+def analyze_player_prop(event_id: Optional[str] = None, player: str = "",
+                        market: Optional[str] = None, category: Optional[str] = None) -> Dict:
+    eid = _resolve_event(event_id)
+    if not eid:
+        return dict(error="No NFL event available. Refresh odds first.")
+    out = _props(eid, category=category)
+    digest = _prop_digest(out, limit=40)
+    needle = (player or "").strip().lower()
+    wanted = (market or "").strip().lower()
+    rows = [r for r in digest["recommendations"]
+            if (not needle or needle in (r.get("player") or "").lower())
+            and (not wanted or wanted == (r.get("market") or "").lower())]
+    digest["recommendations"] = rows[:12]
+    if not rows:
+        digest["note"] = (f"No priced {market or 'prop'} market for {player or 'that player'} in "
+                          "this game. The market may not be offered yet, or the player may be "
+                          "unavailable.")
+    return digest
+
+
+def find_best_player_props(event_id: Optional[str] = None, market: Optional[str] = None,
+                           min_confidence: Optional[float] = None, limit: int = 10) -> Dict:
+    eid = _resolve_event(event_id)
+    if not eid:
+        return dict(error="No NFL event available. Refresh odds first.")
+    out = _props(eid, category=None)
+    threshold = float(min_confidence if min_confidence is not None
+                      else settings.prop_lean_confidence)
+    rows = [r for r in (out.get("recommendations") or [])
+            if r["confidence"] >= threshold and r["edge_pct"] > 0
+            and (not market or r["market"] == market)]
+    official = [r for r in rows if r["state"] == "OFFICIAL PICK"]
+    keys = ("player", "market", "market_label", "selection", "line", "book", "price",
+            "final_prob", "fair_price", "edge_pct", "confidence", "units", "state", "sources")
+    return dict(event=out.get("event"), threshold=threshold,
+                official_pick_count=len(official),
+                recommendations=[{k: r[k] for k in keys if k in r} for r in rows[:limit]],
+                note=("No player prop currently clears the prop threshold and the deterministic "
+                      "gates. Saying so is the correct answer." if not official else
+                      "Official props clear prop-specific confidence, coverage, freshness and "
+                      "source-agreement gates."))
+
+
+def get_player_props(event_id: Optional[str] = None, category: Optional[str] = None,
+                     player: Optional[str] = None) -> Dict:
+    eid = _resolve_event(event_id)
+    if not eid:
+        return dict(error="No NFL event available. Refresh odds first.")
+    out = _props(eid, category=category)
+    rows = out.get("recommendations") or []
+    if player:
+        needle = player.lower()
+        rows = [r for r in rows if needle in (r.get("player") or "").lower()]
+    seen, unique = set(), []
+    for row in rows:
+        key = (row.get("player"), row.get("market"), row.get("line"), row.get("side"))
+        if key in seen:
+            continue
+        seen.add(key)
+        unique.append(dict(player=row.get("player"), market=row.get("market"),
+                           market_label=row.get("market_label"), side=row.get("side"),
+                           line=row.get("line"), book=row.get("book"), price=row.get("price"),
+                           books=row.get("books"), state=row.get("state")))
+    return dict(event=out.get("event"), category=category or "all",
+                price_source=out.get("price_source"), markets_requested=out.get("markets_requested"),
+                count=len(unique), props=unique[:40],
+                market=dict(coverage=(out.get("market") or {}).get("coverage"),
+                            books=(out.get("market") or {}).get("books")),
+                cache_note="Prop prices are fetched on demand and cached briefly to protect "
+                           "Odds API quota.")
+
+
+def get_player_usage(player: str = "", team: Optional[str] = None,
+                     season: Optional[int] = None) -> Dict:
+    from ..analytics import usage as usagemod
+    plays = R.nflverse_plays(season)
+    if not plays:
+        return dict(error="No locally cached nflverse play-by-play for that season. Player usage "
+                          "is unavailable rather than estimated.")
+    rows = usagemod.aggregate_player_usage(plays, season=season or _current_season(), team=team)
+    if not player:
+        ranked = sorted(rows.values(), key=lambda r: -r["touches"])[:12]
+        return dict(season=season or _current_season(), players=[_slim_usage(r) for r in ranked],
+                    source="nflverse-pbp",
+                    missing=list(usagemod.MISSING_METRICS))
+    report = usagemod.usage_report(plays, season=season or _current_season(), player=player,
+                                   team=team)
+    if not report.get("available"):
+        return dict(error=report.get("reason"), player=player, source="nflverse-pbp")
+    return dict(player=report["player"], season=season or _current_season(),
+                usage=_slim_usage(report["usage"]),
+                role_stability=report["role_stability"], stability_reason=report["stability_reason"],
+                red_zone_share=report["red_zone_share"], missing=report["missing"],
+                source="nflverse-pbp",
+                note="Snap share and route participation are not derivable from play-by-play and "
+                     "are reported as missing rather than guessed.")
+
+
+def _slim_usage(row: Dict) -> Dict:
+    keys = ("name", "team", "games", "carries", "targets", "receptions", "rush_yards",
+            "rec_yards", "pass_attempts", "pass_yards", "total_tds", "red_zone_touches",
+            "goal_line_touches", "touches_per_game", "carries_per_game", "targets_per_game",
+            "td_per_game", "snap_share", "missing", "source", "season")
+    return {k: row[k] for k in keys if k in row}
+
+
+def _current_season() -> int:
+    import datetime as _dt
+    return _dt.datetime.utcnow().year
+
+
+def search_player_context(player: str, team: Optional[str] = None,
+                          question: Optional[str] = None, topic: str = "role") -> Dict:
+    """Targeted research for one named uncertainty. Never a broad web crawl."""
+    from ..research import provider as rprovider
+    from ..research import sources as rssources
+    query = question or f"{player} {team or ''} expected role workload injury status".strip()
+    found = rprovider.shared().search(query, topic=topic, limit=settings.research_results_per_query,
+                                      player=player, team=team)
+    if not found["items"]:
+        return dict(player=player, query=query, results=[],
+                    note="No current sources found. Do not substitute recalled information.",
+                    errors=found["errors"])
+    return dict(player=player, query=query, cache=found["cache"],
+                backends_used=found["backends_used"],
+                results=[dict(title=i["title"], url=i["url"], publisher=i["publisher"],
+                              reliability=i["reliability"], relevance=i["relevance"],
+                              published_at=i["published_at"], retrieved_at=i["retrieved_at"],
+                              snippet=i["snippet"][:240]) for i in found["items"]],
+                reliability_scale=list(rssources.ORDER),
+                note="Confirmation requires PRIMARY/HIGH sources; community posts are context only.")
+
+
 def _slim(r: Dict) -> Dict:
     keys = ("id", "event_id", "event_name", "sport", "start_time", "market", "market_label",
             "selection", "side", "line", "book", "price", "model_prob", "implied_prob",
@@ -288,6 +487,10 @@ REGISTRY: Dict[str, Callable[..., Dict]] = {
     "get_watchlist": get_watchlist, "get_line_moves": get_line_moves,
     "build_best_parlay": build_best_parlay, "get_model_performance": get_model_performance,
     "search_web": search_web, "get_provider_status": get_provider_status,
+    "get_player_props": get_player_props, "get_player_usage": get_player_usage,
+    "search_player_context": search_player_context,
+    "analyze_td_scorers": analyze_td_scorers, "analyze_player_prop": analyze_player_prop,
+    "find_best_player_props": find_best_player_props,
 }
 
 
@@ -347,6 +550,43 @@ SCHEMAS: List[Dict] = [
          parameters=_p(required=("query",), query={"type": "string"}, limit={"type": "integer"})),
     dict(name="get_provider_status", description="Which data providers are live, failed, or serving demo fixtures.",
          parameters=_p()),
+
+    dict(name="get_player_props", description=(
+             "Player prop markets for one NFL game, fetched on demand from the Odds API and "
+             "cached briefly. Use before answering any prop price question."),
+         parameters=_p(event_id={"type": "string"},
+                       category={"type": "string",
+                                 "enum": ["all", "best", "td", "passing", "rushing", "receiving"]},
+                       player={"type": "string"})),
+    dict(name="get_player_usage", description=(
+             "Reproducible player usage from nflverse play-by-play: carries, targets, catches, "
+             "yards, TDs, red-zone and goal-line touches. Snap share is reported as missing "
+             "rather than estimated."),
+         parameters=_p(player={"type": "string"}, team={"type": "string"},
+                       season={"type": "integer"})),
+    dict(name="search_player_context", description=(
+             "Targeted web research for one named uncertainty (role, workload, injury status). "
+             "Returns sources with a reliability class. Never a broad crawl; use only for a "
+             "specific gap."),
+         parameters=_p(required=("player",), player={"type": "string"}, team={"type": "string"},
+                       question={"type": "string"},
+                       topic={"type": "string",
+                              "enum": ["role", "injury", "depth_chart", "weather", "news",
+                                       "general"]})),
+    dict(name="analyze_td_scorers", description=(
+             "Deterministic anytime-TD board: models each player's scoring probability, "
+             "normalises the juiced multi-outcome market, and separates the MOST LIKELY scorer "
+             "from the BEST VALUE bet. Returns PASS or INSUFFICIENT DATA when coverage is thin."),
+         parameters=_p(event_id={"type": "string"}, research={"type": "boolean"})),
+    dict(name="analyze_player_prop", description=(
+             "Opportunity-first projection and market comparison for one player's prop markets."),
+         parameters=_p(event_id={"type": "string"}, player={"type": "string"},
+                       market={"type": "string"}, category={"type": "string"})),
+    dict(name="find_best_player_props", description=(
+             "Ranked player-prop recommendations that clear the prop-specific deterministic "
+             "gates. Never lower the prop threshold to manufacture a play."),
+         parameters=_p(event_id={"type": "string"}, market={"type": "string"},
+                       min_confidence={"type": "number"}, limit={"type": "integer"})),
 ]
 
 

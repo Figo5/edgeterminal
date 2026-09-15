@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import logging
 import time
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
@@ -65,6 +65,22 @@ def get_text(url: str, params: Optional[Dict] = None, provider: str = "http",
         r = client().get(url, params=params, timeout=timeout)
         r.raise_for_status()
         return r.text
+    except Exception as e:  # noqa: BLE001
+        raise ProviderError(provider, f"{type(e).__name__}: {e}")
+
+
+def get_json_meta(url: str, params: Optional[Dict] = None, provider: str = "http",
+                  timeout: float = DEFAULT_TIMEOUT,
+                  headers: Optional[Dict] = None) -> Tuple[Any, Dict[str, str]]:
+    """Same hardening as `get_json`, but also returns response headers.
+
+    Quota-bearing APIs report remaining requests in headers; the caller needs
+    them without a second request.
+    """
+    try:
+        r = client().get(url, params=params, timeout=timeout, headers=headers)
+        r.raise_for_status()
+        return r.json(), {k.lower(): v for k, v in r.headers.items()}
     except Exception as e:  # noqa: BLE001
         raise ProviderError(provider, f"{type(e).__name__}: {e}")
 

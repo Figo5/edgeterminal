@@ -49,6 +49,23 @@ Hard rules:
 - Preferred books are FanDuel and bet365, but always name whichever book has the
   best price.
 
+Player props (higher variance, stricter rules):
+- Prop prices come from the Odds API through get_player_props / analyze_td_scorers /
+  analyze_player_prop / find_best_player_props. Never quote a prop price from memory,
+  from a search snippet, or from your training data.
+- Player usage comes from get_player_usage (nflverse play-by-play). Snap share and
+  route participation are NOT available: say so instead of estimating them. Never
+  invent a workload, a depth-chart position or a target share.
+- Web research (search_player_context) supplies context only: roles, injuries,
+  workload changes. It never supplies a probability, a price, an edge or a unit size.
+  Cite every source you rely on with its reliability class and timestamp.
+- If sources disagree, say that they disagree and treat the play as uncertain.
+- TD questions have two different answers: "most likely" (highest modelled chance)
+  and "best value" (best price versus fair odds). Do not conflate them.
+- Props use the prop confidence ceiling and prop thresholds. Never present a prop as
+  an Official Pick unless the tool returned that state, and never lower a prop
+  threshold because the user wants a play.
+
 Style: dense, numeric, professional. Lead with the decision state (OFFICIAL PICK /
 LEAN / WATCHLIST / PASS / NO EDGE), then the numbers, then the reasoning, then the
 risks. Short lines. No filler. Markdown tables are welcome for multi-row answers."""
@@ -61,6 +78,10 @@ class LLMProvider:
     def chat(self, messages: List[Dict], tool_schemas: List[Dict]) -> Dict:
         raise NotImplementedError
 
+    def web_search(self, query: str, limit: int = 5) -> List[Dict]:
+        """Current web research. Providers that cannot do this return nothing."""
+        return []
+
 
 class OpenAIProvider(LLMProvider):
     name = "openai"
@@ -72,6 +93,7 @@ class OpenAIProvider(LLMProvider):
             kw["base_url"] = settings.openai_base_url
         self.client = OpenAI(**kw)
         self.model = settings.openai_model
+        self.search_model = settings.openai_search_model or settings.openai_model
         self.available = True
 
     def chat(self, messages: List[Dict], tool_schemas: List[Dict]) -> Dict:
@@ -85,6 +107,49 @@ class OpenAIProvider(LLMProvider):
                                      arguments=tc.function.arguments)
                                 for tc in (msg.tool_calls or [])],
                     usage=dict(getattr(resp, "usage", None).__dict__) if getattr(resp, "usage", None) else {})
+
+    def web_search(self, query: str, limit: int = 5) -> List[Dict]:
+        """OpenAI's own web-search tool via the Responses API.
+
+        Only real, cited results are returned: a response without URL
+        annotations is reported as "no research" rather than as prose the model
+        might have recalled from training.
+        """
+        resp = self.client.responses.create(
+            model=self.search_model,
+            tools=[{"type": "web_search"}],
+            input=query, timeout=90)
+        text = (getattr(resp, "output_text", "") or "").strip()
+        out: List[Dict] = []
+        for item in (getattr(resp, "output", None) or []):
+            for chunk in (getattr(item, "content", None) or []):
+                for mark in (getattr(chunk, "annotations", None) or []):
+                    url = getattr(mark, "url", None)
+                    if not url:
+                        continue
+                    out.append(dict(title=getattr(mark, "title", None) or url, url=url,
+                                    snippet=text[:400], publisher=None,
+                                    backend="openai-web-search"))
+        seen, unique = set(), []
+        for row in out:
+            if row["url"] in seen:
+                continue
+            seen.add(row["url"])
+            unique.append(row)
+        return unique[:limit]
+
+
+def web_search(query: str, limit: int = 5,
+               provider_instance: Optional[LLMProvider] = None) -> List[Dict]:
+    """Module-level web research. Never raises: no LLM means no LLM research."""
+    inst = provider_instance or provider()
+    if inst is None:
+        return []
+    try:
+        return inst.web_search(query, limit=limit) or []
+    except Exception as e:  # noqa: BLE001 - research is best-effort
+        log.warning("LLM web search unavailable: %s", type(e).__name__)
+        return []
 
 
 def provider() -> Optional[LLMProvider]:
@@ -221,8 +286,13 @@ ROUTES: List[Tuple[str, str]] = [
     (r"\bwatchlist\b|close to becoming|almost a play", "get_watchlist"),
     (r"\bmoved\b|line move|movement|steam", "get_line_moves"),
     (r"\bcalibrat|performance|hit rate|clv|track record", "get_model_performance"),
-
-    (r"\bprop\b|receiving|rushing|passing yards|rebounds|assists", "run_prop_analysis"),
+    # Prop research: the specific ask decides the tool, never the other way round.
+    (r"td scorer|touchdown scorer|most likely to score|first td|anytime td|"
+     r"who scores|goal line back", "analyze_td_scorers"),
+    (r"best .*(prop|receiving|rushing|passing)|prop value|best value prop|"
+     r"player prop", "find_best_player_props"),
+    (r"usage|snap|carries|targets|carr(?:y|ies) share", "get_player_usage"),
+    (r"\bprop\b|receiving|rushing|passing yards", "analyze_player_prop"),
     (r"\banaly[sz]e\b|\bvs\b|\bversus\b|\bat\b.*\b(game|matchup)\b", "run_game_analysis"),
     (r"best bet|strongest|top play|what should i|any value|plus money|\+money",
      "find_best_bets"),
@@ -291,6 +361,115 @@ def fallback_answer(user_message: str, trace: List[Dict],
                      "engine without natural-language synthesis.")
 
 
+def _citations(rows) -> str:
+    lines = []
+    for item in (rows or [])[:6]:
+        title = item.get("title") or item.get("url") or "source"
+        reliability = item.get("reliability") or item.get("trust") or "unverified"
+        url = item.get("url")
+        stamp = item.get("retrieved_at")
+        when = time.strftime("%H:%M UTC", time.gmtime(stamp)) if stamp else "time unknown"
+        lines.append(f"- [{reliability.upper()}] {title}{f' — {url}' if url else ''} ({when})")
+    return "\n".join(lines)
+
+
+def _fmt_td_board(res: Dict) -> str:
+    if res.get("error"):
+        return f"**Unavailable.** {res['error']}"
+    rows = res.get("recommendations") or []
+    market = res.get("market") or {}
+    head = (f"**{res.get('state')}** — anytime-TD board for "
+            f"{(res.get('event') or {}).get('name') or 'the next game'}.\n"
+            f"- no-vig market: {market.get('usable')} · {market.get('books')} book(s) · "
+            f"coverage {market.get('coverage')} · overround {market.get('overround')}\n")
+    if not rows:
+        return head + "\n" + (res.get("note") or "No TD market was priced, so nothing is ranked.")
+    parts = [head]
+    most = res.get("most_likely")
+    best = res.get("best_value")
+    if most:
+        parts.append(f"\n**Most likely scorer:** {most['player']} — "
+                     f"{most.get('final_prob', 0) * 100:.1f}% "
+                     f"(fair {most.get('fair_price')}, best {most.get('price')} at {most.get('book')})")
+    if best:
+        parts.append(f"**Best value:** {best['player']} — {best.get('edge_pct')} pts of edge, "
+                     f"{best.get('price')} at {best.get('book')} (fair {best.get('fair_price')})")
+    elif rows:
+        parts.append("**Best value:** none — no priced scorer carries positive expected value.")
+    for row in rows[:8]:
+        parts.append(f"- {row.get('state')} · {row['player']} {row.get('price')} at {row.get('book')} "
+                     f"| model {row.get('model_prob')} vs market {row.get('market_prob')} "
+                     f"→ final {row.get('final_prob')} | fair {row.get('fair_price')} | "
+                     f"edge {row.get('edge_pct')} pts | conf {row.get('confidence')}")
+    citations = _citations(((res.get("research") or {}).get("citations")) or [])
+    if citations:
+        parts.append("\nSources:\n" + citations)
+    return "\n".join(parts)
+
+
+def _fmt_props(tool: str, res: Dict) -> str:
+    if res.get("error"):
+        return f"**Unavailable.** {res['error']}"
+    rows = res.get("recommendations") or res.get("props") or []
+    head = f"**{res.get('state') or res.get('category') or 'Player props'}** — "
+    head += f"{(res.get('event') or {}).get('name') or 'next game'}\n"
+    if res.get("price_source"):
+        head += f"- prices: {res['price_source']} · coverage "
+        head += f"{(res.get('market') or {}).get('coverage')} · "
+        head += f"{(res.get('market') or {}).get('books')} book(s)\n"
+    if not rows:
+        return head + "\n" + (res.get("note") or "No priced prop markets are available.")
+    parts = [head]
+    for row in rows[:8]:
+        line = f" {row['line']:g}" if row.get("line") is not None else ""
+        side = f" {row['side'].title()}" if row.get("side") else ""
+        parts.append(f"- {row.get('state')} · {row['player']}{side}{line} ({row.get('market_label')}) "
+                     f"{row.get('price')} at {row.get('book')} | final {row.get('final_prob')} | "
+                     f"fair {row.get('fair_price')} | edge {row.get('edge_pct')} pts | "
+                     f"conf {row.get('confidence')}/{row.get('units')}u"
+                     + (f" | books {row['books']}" if row.get("books") else ""))
+    citations = _citations(((res.get("research") or {}).get("citations")) or [])
+    if citations:
+        parts.append("\nSources:\n" + citations)
+    if res.get("note") and res.get("note") not in parts:
+        parts.append(f"\n_{res['note']}_")
+    return "\n".join(parts)
+
+
+def _fmt_usage(res: Dict) -> str:
+    if res.get("error"):
+        return f"**Unavailable.** {res['error']}"
+    usage = res.get("usage")
+    if not usage:
+        rows = res.get("players") or []
+        head = f"**Usage leaders** ({res.get('season')}, {res.get('source')})\n"
+        return head + "\n".join(
+            f"- {r.get('name')} ({r.get('team')}): {r.get('carries')} car, {r.get('targets')} tgt, "
+            f"{r.get('total_tds')} TD in {r.get('games')} games" for r in rows[:10])
+    return (f"**{usage.get('name')}** ({usage.get('team')}) — {usage.get('games')} games, "
+            f"{res.get('source')}\n"
+            f"- {usage.get('carries')} carries / {usage.get('rush_yards')} yds · "
+            f"{usage.get('targets')} targets / {usage.get('receptions')} rec / "
+            f"{usage.get('rec_yards')} yds · {usage.get('total_tds')} TD\n"
+            f"- red zone: {usage.get('red_zone_touches')} touches · goal line: "
+            f"{usage.get('goal_line_touches')} · red-zone share {res.get('red_zone_share')}\n"
+            f"- role stability: {res.get('role_stability')} ({res.get('stability_reason')})\n"
+            f"- **not available:** {', '.join(res.get('missing') or [])} — not estimated")
+
+
+def _fmt_research(res: Dict) -> str:
+    rows = res.get("results") or []
+    if not rows:
+        return ("**No current sources found.** " + (res.get("note") or "")
+                + ("\nErrors: " + "; ".join(res["errors"]) if res.get("errors") else ""))
+    head = (f"**Research: {res.get('player')}** — query “{res.get('query')}” "
+            f"({res.get('cache')} cache, backends: {', '.join(res.get('backends_used') or [])})\n")
+    return head + "\n".join(
+        f"- [{r.get('reliability')}] {r.get('title')} — {r.get('publisher')} "
+        f"({r.get('relevance')})" + (f" {r.get('url')}" if r.get("url") else "")
+        + (f"\n  {r.get('snippet')}" if r.get("snippet") else "") for r in rows[:6])
+
+
 def _fmt_rec(r: Dict) -> str:
     line = f" {r['line']:g}" if r.get("line") is not None else ""
     return (f"**{r['state']}** — {r['selection']}{line} ({r.get('market_label') or r['market']}, "
@@ -311,6 +490,14 @@ def _recs(rows) -> List[Dict]:
 def format_result(tool: str, res: Dict) -> str:
     if "error" in res:
         return f"**Unavailable.** {res['error']}"
+    if tool == "analyze_td_scorers":
+        return _fmt_td_board(res)
+    if tool in ("find_best_player_props", "analyze_player_prop", "get_player_props"):
+        return _fmt_props(tool, res)
+    if tool == "get_player_usage":
+        return _fmt_usage(res)
+    if tool == "search_player_context":
+        return _fmt_research(res)
     if tool == "find_best_bets":
         bets = _recs(res.get("bets"))
         if not bets:

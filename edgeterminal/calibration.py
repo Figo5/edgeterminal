@@ -62,9 +62,13 @@ def grade_prediction(prediction_id: str, won: Optional[bool], push: bool = False
 
 # --------------------------------------------------------------- performance
 def _joined(where: str = "", params: Optional[List] = None) -> List[Dict]:
-    return db.q(f"""SELECT p.*, r.outcome, r.won, r.push, r.clv_pct, r.closing_price
+    rows = db.q(f"""SELECT p.*, r.outcome, r.won, r.push, r.clv_pct, r.closing_price
                     FROM predictions p JOIN results r ON r.prediction_id = p.id
                     {where}""", params or [])
+    # Quarantined predictions (wrong event / wrong matchup) must not be scored,
+    # but they are kept in place rather than deleted or rewritten.
+    blocked = db.quarantined_ids("prediction")
+    return [row for row in rows if str(row["id"]) not in blocked] if blocked else rows
 
 
 def performance(scope: Optional[str] = None) -> Dict:

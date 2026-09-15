@@ -38,3 +38,14 @@ def test_frontend_has_no_dead_market_filters():
     html = (ROOT / "edgeterminal/web/index.html").read_text()
     assert 'value="player_prop"' not in html
     assert 'value="outright"' not in html
+
+
+def test_props_live_only_in_game_detail_with_category_filters():
+    js = (ROOT / "edgeterminal/web/app.js").read_text()
+    assert "propsPanel" in js and "loadProps" in js
+    assert 'data-propcat="${k}"' in js
+    for category in ("td", "passing", "rushing", "receiving"):
+        assert f'["{category}",' in js
+    # fetched on demand from the event endpoint, never bundled into the dashboard
+    assert "/props?category=" in js
+    assert "dashboard?.props" not in js

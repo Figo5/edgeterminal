@@ -62,3 +62,25 @@ def test_event_detail_rejects_dormant_event_ids(client):
          ("legacy-nba-1", "NBA", "NBA", "Boston Celtics @ New York Knicks", "New York Knicks",
           "Boston Celtics", "2026-01-01T00:00Z", None, "scheduled", "{}", now))
     assert client.get("/api/event/legacy-nba-1").status_code == 410
+
+
+def test_prop_endpoints_are_nfl_scoped_and_gated(client, monkeypatch):
+    now = 1.0
+    db.ex("INSERT OR REPLACE INTO events(id,sport,league,name,home_team,away_team,start_time,"
+          "venue,status,meta,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+         ("legacy-pga-1", "PGA", "PGA", "Some Open", None, None, "2026-01-01T00:00Z",
+          None, "scheduled", "{}", now))
+    assert client.get("/api/event/legacy-pga-1/props").status_code == 410
+    monkeypatch.setattr(settings, "props_enabled", False)
+    assert client.get("/api/event/evt-x/props").status_code in (404, 410)
+
+
+def test_debug_research_endpoint_can_be_disabled(client, monkeypatch):
+    assert client.get("/api/debug/research").status_code == 200
+    monkeypatch.setattr(settings, "debug_endpoints", False)
+    assert client.get("/api/debug/research").status_code == 404
+
+
+def test_prop_quota_is_exposed_in_provider_diagnostics(client):
+    payload = client.get("/api/providers").json()
+    assert "props" in payload

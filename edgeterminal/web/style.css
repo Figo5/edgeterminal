@@ -223,6 +223,14 @@ svg.spark{display:block}
 .cmpbar{height:4px;background:#1a2130;border-radius:2px;position:relative}
 .cmpbar i{position:absolute;height:100%;top:0;background:var(--accent2)}
 
+/* player props */
+.filters{display:flex;gap:4px;margin-left:auto}
+.chip{background:none;border:1px solid var(--line);border-radius:3px;padding:3px 8px;
+  color:var(--dim);font:10px var(--mono);letter-spacing:.08em;cursor:pointer}
+.chip:hover{color:var(--text);background:#151b28}
+.chip.on{background:var(--accent);border-color:var(--accent);color:#231a03;font-weight:600}
+td.num.pos{color:#5ad899}td.num.neg{color:#ef8f9c}
+.tag.warn{background:#33161a;border-color:#63262e;color:#ef8f9c}
 @media(max-width:900px){
   #topbar{flex-wrap:wrap}.topright{width:100%;margin-left:0;overflow-x:auto}
   #shell{height:calc(100vh - 92px)}#rail{display:none}#chat{position:fixed;inset:92px 0 0 auto;width:min(100%,392px);z-index:30}

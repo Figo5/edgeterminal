@@ -224,6 +224,96 @@ def golf_field() -> Tuple[Dict[str, Dict], str, bool]:
         return {}, "unavailable", False
 
 
+# ---------------------------------------------------------------------- props
+_prop_fetches: List[Dict] = []
+_nflverse_usage: Dict[int, List[Dict]] = {}
+
+
+def event_props(event_id: str, markets: Optional[List[str]] = None,
+                category: Optional[str] = None, force: bool = False,
+                event: Optional[Dict] = None) -> Dict:
+    """On-demand player props: structured Odds API first, demo fixtures offline.
+
+    Never called from a dashboard refresh — props cost quota per event.
+    The stored id is never sent to the provider unvalidated: it is resolved to a
+    live Odds API event first, and any refusal is reported as such.
+    """
+    from .. import integrity as I
+    if not _use_demo() and settings.odds_api_key:
+        from .theoddsapi import TheOddsApi
+        try:
+            provider = TheOddsApi()
+        except ProviderError as e:
+            return dict(event_id=event_id, rows=[], source="unavailable", is_demo=False,
+                        error=e.detail, cache="none", quota={},
+                        identity=dict(state=I.IDENTITY_UNAVAILABLE, provider_id=None,
+                                      reasons=[e.detail]))
+        if event is None:
+            row = db.q1("SELECT * FROM events WHERE id=?", (event_id,))
+            event = dict(row) if row else None
+        if event is None:
+            return dict(event_id=event_id, rows=[], source="theoddsapi", is_demo=False,
+                        error=f"unknown event {event_id}", cache="none", quota={},
+                        identity=dict(state=I.IDENTITY_UNAVAILABLE, provider_id=None,
+                                      reasons=["event is not in the local database"]))
+        verdict = provider.resolve_event_id(event, force=force)
+        if verdict["state"] != I.IDENTITY_OK:
+            _prop_fetches.append(dict(event_id=event_id, at=time.time(), rows=0,
+                                      markets=markets, cache="n/a",
+                                      identity=verdict["state"]))
+            del _prop_fetches[:-50]
+            return dict(event_id=event_id, rows=[], source="theoddsapi", is_demo=False,
+                        error=None, cache="n/a", quota=dict(provider.quota),
+                        identity=verdict, markets=markets or [])
+        target = verdict["provider_id"]
+        out = provider.fetch_event_props(target, markets=markets, category=category,
+                                        force=force, event=event)
+        _prop_fetches.append(dict(event_id=event_id, at=time.time(),
+                                  rows=len(out.get("rows") or []),
+                                  markets=out.get("markets"), cache=out.get("cache"),
+                                  quota=out.get("quota"),
+                                  identity=(out.get("identity") or {}).get("state")))
+        del _prop_fetches[:-50]
+        return dict(out, is_demo=False, resolved_event_id=target,
+                    identity=out.get("identity") or verdict)
+    rows = [dict(r) for r in db.latest_odds(event_id=event_id)
+            if str(r.get("market") or "").startswith("player_")]
+    return dict(event_id=event_id, rows=rows, source="demo-props" if rows else "none",
+                is_demo=True, cache="none", error=None, quota={}, markets=markets or [],
+                identity=dict(state=I.IDENTITY_OK, provider_id=event_id, reasons=["demo"]))
+
+
+def prop_quota() -> Dict:
+    if not settings.odds_api_key:
+        return dict(configured=False)
+    try:
+        from .theoddsapi import TheOddsApi
+        return dict(configured=True, **TheOddsApi().quota)
+    except ProviderError as e:
+        return dict(configured=False, error=e.detail)
+
+
+def recent_prop_fetches() -> List[Dict]:
+    return list(_prop_fetches)
+
+
+def nflverse_plays(season: Optional[int] = None, refresh: bool = False) -> List[Dict]:
+    """Local play-by-play rows for player usage. Never downloads per request."""
+    from ..analytics.usage import USAGE_COLUMNS
+    from .nflverse import pbp_rows
+    year = int(season or datetime.now(timezone.utc).year)
+    if year in _nflverse_usage and not refresh:
+        return _nflverse_usage[year]
+    try:
+        rows = pbp_rows(year, settings.nflverse_cache_dir, columns=USAGE_COLUMNS)
+    except Exception as e:  # noqa: BLE001 - usage is optional, never fatal
+        record("stats", "nflverse-pbp-players", False,
+               detail=f"player usage unavailable: {type(e).__name__}")
+        rows = []
+    _nflverse_usage[year] = rows
+    return rows
+
+
 # --------------------------------------------------------------------- search
 def web_search(query: str, limit: int = 5) -> Tuple[List[Dict], str, bool]:
     if _use_demo():

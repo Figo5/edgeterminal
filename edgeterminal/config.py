@@ -72,6 +72,24 @@ class Settings:
     # analysed, and served.
     active_sports = ["NFL"]
 
+    # ---------------------------------------------------------------- research
+    # Web research is a first-class provider, but it is budgeted: a request may
+    # spend a small, fixed number of queries and nothing more.
+    research_enabled = _b("RESEARCH_ENABLED", True)
+    research_query_budget = int(_f("RESEARCH_QUERY_BUDGET", 4))
+    research_results_per_query = int(_f("RESEARCH_RESULTS_PER_QUERY", 5))
+    openai_search_model = os.getenv("OPENAI_SEARCH_MODEL", "").strip()
+
+    # Player props are higher variance than game markets: the confidence ceiling
+    # is deliberately lower and the Official Pick bar is separate.
+    props_enabled = _b("PROPS_ENABLED", True)
+    prop_official_confidence = _f("PROP_OFFICIAL_CONFIDENCE", 72)
+    prop_lean_confidence = _f("PROP_LEAN_CONFIDENCE", 60)
+    prop_confidence_cap = _f("PROP_CONFIDENCE_CAP", 74)
+    prop_max_units = {"player_anytime_td": 1.0, "player_1st_td": 0.5}
+    prop_default_max_units = _f("PROP_DEFAULT_MAX_UNITS", 1.5)
+    debug_endpoints = _b("DEBUG_ENDPOINTS", True)
+
     # freshness rules (seconds) -- see docs/Stale data protection
     stale_odds_s = _f("ODDS_STALE_SECONDS", 15 * 60)
     stale_news_s = _f("NEWS_STALE_SECONDS", 6 * 3600)

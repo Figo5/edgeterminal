@@ -27,6 +27,7 @@ data/*.db-*
 data/*.sqlite
 data/*.sqlite-*
 data/nflverse/
+data/backups/
 
 # Logs and temporary files
 *.log

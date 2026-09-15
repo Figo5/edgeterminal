@@ -11,7 +11,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import calibration, db, engine, logs, parlay
+from . import calibration, db, engine, logs, parlay, props
 from .agents import llm
 from .config import ROOT, settings
 from .providers import registry as R
@@ -100,6 +100,7 @@ def config() -> Dict:
 @app.get("/api/providers")
 def providers() -> Dict:
     return dict(providers=R.statuses(), demo_mode=settings.demo_mode,
+                props=R.prop_quota(),
                 search_provider=settings.search_provider,
                 odds_provider=settings.odds_provider,
                 odds_key_configured=bool(settings.odds_api_key))
@@ -250,6 +251,69 @@ def golf() -> Dict:
 @app.get("/api/performance")
 def performance() -> Dict:
     return calibration.performance()
+
+
+# ------------------------------------------------------------------- props
+@app.get("/api/event/{event_id}/props")
+def event_props(event_id: str, category: Optional[str] = None,
+                player: Optional[str] = None, research: bool = True) -> Dict:
+    """Player props are fetched on demand here and nowhere else."""
+    row = db.q1("SELECT sport FROM events WHERE id=?", (event_id,))
+    if not row:
+        raise HTTPException(404, f"unknown event {event_id}")
+    _active(row["sport"])
+    if not settings.props_enabled:
+        raise HTTPException(410, "player props are disabled in this deployment")
+    out = props.analyze_props(event_id, category=category, research=research)
+    if out.get("error"):
+        raise HTTPException(409, out["error"])
+    if player:
+        needle = player.lower()
+        out["recommendations"] = [r for r in out["recommendations"]
+                                  if needle in (r.get("player") or "").lower()]
+    out["quota"] = R.prop_quota()
+    return out
+
+
+@app.get("/api/props/td")
+def td_scorers(event_id: Optional[str] = None, research: bool = True) -> Dict:
+    from .agents import tools as T
+    board = T.analyze_td_scorers(event_id=event_id, research=research)
+    if board.get("error"):
+        raise HTTPException(409, board["error"])
+    board["quota"] = R.prop_quota()
+    return board
+
+
+@app.get("/api/props/best")
+def best_props(event_id: Optional[str] = None, market: Optional[str] = None,
+               min_confidence: Optional[float] = None) -> Dict:
+    from .agents import tools as T
+    out = T.find_best_player_props(event_id=event_id, market=market,
+                                   min_confidence=min_confidence)
+    out["quota"] = R.prop_quota()
+    return out
+
+
+@app.get("/api/debug/research")
+def debug_research(event_id: Optional[str] = None, queries: int = 25) -> Dict:
+    """Development trace: is research actually being used, and how much did it cost?"""
+    if not settings.debug_endpoints:
+        raise HTTPException(404, "debug endpoints are disabled")
+    from .research import cache as rcache
+    from .research import provider as rprovider
+    cache = rprovider.shared().cache
+    payload = dict(cache=cache.stats(), cache_entries=cache.describe(limit=queries),
+                   queries=rprovider.shared().trace(limit=queries),
+                   prop_fetches=R.recent_prop_fetches(),
+                   quota=R.prop_quota(),
+                   ttl_by_topic=rcache.TTL_BY_TOPIC,
+                   research_enabled=settings.research_enabled,
+                   query_budget=settings.research_query_budget,
+                   openai_search_model=settings.openai_search_model or "(chat model)")
+    if event_id:
+        payload["board"] = props.analyze_props(event_id, research=True)
+    return payload
 
 
 @app.post("/api/performance/recompute")

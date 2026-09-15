@@ -81,6 +81,15 @@ CREATE TABLE IF NOT EXISTS calibration (
   delta REAL, model_version TEXT, computed_at REAL);
 
 CREATE TABLE IF NOT EXISTS kv (k TEXT PRIMARY KEY, v TEXT, updated_at REAL);
+
+-- Records proven or suspected to be wrong (wrong event, wrong matchup, wrong
+-- player). They are kept, never rewritten, and excluded from analysis reads and
+-- from evaluation.
+CREATE TABLE IF NOT EXISTS quarantine (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL, ref_id TEXT NOT NULL, event_id TEXT,
+  reason TEXT, detail TEXT, source TEXT, created_at REAL,
+  UNIQUE(kind, ref_id));
 """
 
 
@@ -188,8 +197,13 @@ def store_odds(rows: List[Dict], source: str, is_demo: bool = False) -> int:
 
 
 def latest_odds(event_id: Optional[str] = None, sport: Optional[str] = None,
-                max_age_s: Optional[float] = None) -> List[Dict]:
-    """Most recent snapshot row per (event, book, market, selection)."""
+                max_age_s: Optional[float] = None,
+                exclude_quarantined: bool = True) -> List[Dict]:
+    """Most recent snapshot row per (event, book, market, selection).
+
+    Quarantined rows (wrong event, wrong matchup, wrong player) are dropped by
+    default so no analysis can price them.
+    """
     where, params = [], []
     if event_id:
         where.append("o.event_id = ?")
@@ -200,6 +214,9 @@ def latest_odds(event_id: Optional[str] = None, sport: Optional[str] = None,
     if max_age_s:
         where.append("o.captured_at >= ?")
         params.append(now() - max_age_s)
+    if exclude_quarantined:
+        where.append("o.id NOT IN (SELECT CAST(ref_id AS INTEGER) FROM quarantine "
+                     "WHERE kind = 'odds')")
     clause = ("WHERE " + " AND ".join(where)) if where else ""
     return q(f"""
         SELECT o.* FROM odds_snapshots o
@@ -208,6 +225,32 @@ def latest_odds(event_id: Optional[str] = None, sport: Optional[str] = None,
           ON o.event_id=m.event_id AND o.book=m.book AND o.market=m.market
          AND o.selection=m.selection AND o.captured_at=m.mx
         {clause} ORDER BY o.event_id, o.market, o.selection""", params)
+
+
+# ------------------------------------------------------------------ quarantine
+def quarantine(kind: str, ref_id: str, event_id: Optional[str] = None,
+               reason: str = "", detail: Optional[Any] = None,
+               source: str = "integrity") -> None:
+    """Record a suspect or wrong record. Idempotent; never rewrites the original."""
+    ex("INSERT OR IGNORE INTO quarantine(kind,ref_id,event_id,reason,detail,source,created_at)"
+       " VALUES(?,?,?,?,?,?,?)",
+       (kind, str(ref_id), event_id, reason,
+        json.dumps(detail or {}, default=str), source, now()))
+
+
+def quarantined(kind: Optional[str] = None) -> List[Dict[str, Any]]:
+    if kind:
+        return q("SELECT * FROM quarantine WHERE kind=? ORDER BY created_at DESC", (kind,))
+    return q("SELECT * FROM quarantine ORDER BY created_at DESC")
+
+
+def quarantined_ids(kind: str) -> set:
+    return {str(row["ref_id"]) for row in q("SELECT ref_id FROM quarantine WHERE kind=?", (kind,))}
+
+
+def is_quarantined(kind: str, ref_id: str) -> bool:
+    return bool(q1("SELECT 1 AS x FROM quarantine WHERE kind=? AND ref_id=?",
+                   (kind, str(ref_id))))
 
 
 def odds_history(event_id: str, market: str, selection: str,
