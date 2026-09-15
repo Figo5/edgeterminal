@@ -212,7 +212,7 @@ reproduced exactly. A visual UI regression would not be caught by this.
 
 ## Verification
 ```
-.venv/bin/python -m pytest -q                 # 212 passed
+.venv/bin/python -m pytest -q                 # 232 passed
 .venv/bin/python -m compileall -q edgeterminal tools
 node --check edgeterminal/web/app.js
 bash -n tools/edgeterminal.sh
@@ -264,3 +264,93 @@ and persistence across a real terminal close is therefore unverified.
 8. Event resolution reads whatever schedule is already stored. If the events table is
    stale, "Thursday night" resolves correctly against stale data and will be wrong about
    a rescheduled game; `get_schedule`/`resolve_event` do not force a refresh.
+
+## Schedule and quote freshness pass
+
+### Schedule freshness (extends the resolver, does not replace it)
+Relative dates were resolved against whatever schedule happened to be stored,
+with no notion of how old it was. `SCHEDULE_STALE_SECONDS` (default 6h) now
+bounds that, and `engine.refresh_schedule()` refreshes **only** the schedule
+through the existing provider chain's events endpoint, which costs no Odds API
+quota. It never touches odds and never deletes: a fixture missing from a
+response is an omission, not a cancellation, so events are upserted only and
+historical rows are preserved.
+
+`context._ensure_fresh_schedule` refreshes **at most once per turn**, before a
+relative date is resolved, on three triggers: the schedule is past the limit,
+the requested day/team is not in it, or a stored row contradicts its own
+metadata (a kickoff that has passed while the status still reads `scheduled` —
+a staleness signal the retrieval timestamp alone cannot give). After a refresh
+the request is re-resolved and `_validate_mapping` re-reads the chosen row, so a
+kickoff or team that moved is caught rather than carried forward. Changed events
+are evicted from `engine._ctx_cache`, so no analysis built on an old kickoff
+keeps serving.
+
+Freshness is evaluated on the turn's clock, not wall time, so a frozen-clock
+caller gets an answer consistent with the timestamps it is reasoning about.
+
+On refresh failure the last-known retrieval time is kept and surfaced, the
+schedule is never relabelled as newly verified, no other game is substituted,
+and staked recommendations are withheld: the deterministic router refuses
+recommendation tools outright (`recommendation_withheld: true`) and the OpenAI
+path fails validation if an answer issues an Official Pick or omits the
+uncertainty, which routes into the existing one-shot correction. Nothing polls;
+this only runs inside a user-initiated turn.
+
+### Quote freshness (a real defect, not a tightening)
+`_flatten_props` never set `captured_at`, so `_todays_age` found no timestamps
+and returned **0.0** — every prop board read as zero seconds old. The
+stale-quote gate could therefore never fire and confidence always took full
+freshness credit. This is what made a 21-minute-old snapshot look current in the
+previous live test.
+
+Rows now carry `captured_at` (one retrieval stamp shared with the payload) and
+`provider_updated_at` (the market's own `last_update`, falling back to the
+bookmaker's). `props.quote_stamp` prefers the provider's timestamp, and both
+`quote_age_s` and `_todays_age` use it. An unknown age is now `None` instead of
+0.0, and `prop_state` treats `None` as `INSUFFICIENT DATA` — unverified
+freshness is not freshness. The board exposes `price_age_s`,
+`price_retrieved_at`, `price_cache` and `price_stale`, and warns when prices are
+past the limit. Because the stamps are written at fetch time and travel with the
+rows into the cache, a cache hit reports the original age rather than resetting
+it. No existing threshold was changed.
+
+### Usage accounting
+`llm.searches_used(trace)` counts recorded `search_web` / `search_player_context`
+tool calls only. A citation URL is not evidence of a billable search — a
+`utm_source=openai` parameter says how a link was formatted, and a cached result
+returns citations with no new request. With no trace, usage is `None` (UNKNOWN)
+rather than a guess, and is never reconstructed by re-running a paid call.
+
+**Correction to the previous handoff:** the "<=1 paid web search" figure for the
+earlier live run was inferred from a `utm_source=openai` citation. That
+inference is invalid. Paid-search usage for that run is **UNKNOWN**; it was not
+re-run to recreate the number. The 2 OpenAI requests and 0 Odds credits from
+that run stand — both came from real telemetry (request counting and the odds
+snapshot timestamp).
+
+### Tests
+232 passing. New: schedule refreshed before day resolution; a fresh schedule
+spends no provider call; a rescheduled kickoff stops matching the old day;
+refresh failure yields an explicit stale/uncertain answer with the last-known
+timestamp; recommendations withheld on both paths; self-contradicting metadata
+triggers a refresh; at most one refresh per turn; a mapping change after refresh
+is caught; prop rows carry both timestamps; age comes from the provider stamp;
+untimestamped rows report unknown rather than 0.0; unknown age is not
+recommendable; a cache hit does not reset age; a citation URL is not counted as
+a search. The quote-timestamp and env-ignore tests were each confirmed to fail
+with their fix reverted.
+
+**Hermeticity fix:** the conversation fixture now stamps a fresh schedule and
+stubs `refresh_schedule`. Without it, every chat test hit the live events
+endpoint — tests must not reach a provider. No paid call was made during this
+work.
+
+### Limitations
+- Refresh reconciles against one provider response. A game the provider omits
+  keeps its stored row; it is not treated as cancelled, and nothing infers a
+  cancellation.
+- `provider_updated_at` is only as good as the book's own `last_update`. Where
+  the feed omits it, age falls back to our retrieval time, which understates how
+  long a price has actually been sitting.
+- No rendered-browser verification was performed in this pass.

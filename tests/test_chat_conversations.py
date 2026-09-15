@@ -45,7 +45,28 @@ def slate(tmp_path, monkeypatch):
         db.ex("INSERT OR REPLACE INTO events(id,sport,league,name,home_team,away_team,"
               "start_time,venue,status,meta,updated_at) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
               (eid, "NFL", "NFL", name, home, away, start, "", status, "{}", NOW))
-    yield
+    # Stamp the schedule as freshly retrieved. Without this every turn would see
+    # a never-retrieved schedule, trigger the on-demand refresh, and reach a real
+    # provider -- tests must not touch the network. Tests that want a stale
+    # schedule set this back themselves via `stale_schedule`.
+    from edgeterminal import engine
+    db.kv_set(engine._schedule_key("NFL"),
+              dict(at=NOW, source="test-fixture", events=len(rows), ok=True))
+    # No test may reach a provider. The default stub records the call and
+    # reports a successful refresh that changed nothing, which is what a
+    # correct-but-incomplete schedule actually looks like. Tests that care about
+    # refresh behaviour replace this.
+    refreshes = []
+
+    def _stub(sport="NFL"):
+        refreshes.append(sport)
+        db.kv_set(engine._schedule_key(sport),
+                  dict(at=NOW, source="test-fixture", events=len(rows), ok=True))
+        return dict(ok=True, sport=sport, source="test-fixture", events=len(rows),
+                    changed=[], is_demo=False, error=None)
+
+    monkeypatch.setattr(engine, "refresh_schedule", _stub)
+    yield dict(refreshes=refreshes, rows=rows)
     if db._conn is not None:
         db._conn.close()
         db._conn = None
@@ -316,3 +337,167 @@ def test_note_pins_the_event_when_context_building_fails(slate, monkeypatch):
     llm.fallback_answer("Who scores a touchdown?", [],
                         "The user is currently viewing X (NFL), event id sun1.", None)
     assert seen[0][1].get("event_id") == "sun1", seen
+
+
+# ------------------------------------------------- schedule freshness (task 2)
+def _set_schedule_age(seconds_old):
+    """Stamp the stored schedule's retrieval time relative to the frozen clock."""
+    from edgeterminal import engine
+    db.kv_set(engine._schedule_key("NFL"),
+              dict(at=NOW - seconds_old, source="test-fixture", events=5, ok=True))
+
+
+def test_stale_schedule_is_refreshed_before_a_day_is_resolved(slate, monkeypatch):
+    """A weekday must not be resolved against a schedule past its freshness limit."""
+    from edgeterminal import engine
+    _set_schedule_age(settings.stale_schedule_s + 60)
+    calls = []
+
+    def _refresh(sport="NFL"):
+        calls.append(sport)
+        db.kv_set(engine._schedule_key(sport),
+                  dict(at=NOW, source="refreshed", events=5, ok=True))
+        return dict(ok=True, sport=sport, source="refreshed", events=5,
+                    changed=[], is_demo=False, error=None)
+
+    monkeypatch.setattr(engine, "refresh_schedule", _refresh)
+    ctx = ctx_for("Who scores on the Thursday night game?")
+    assert calls == ["NFL"], "exactly one refresh, before resolving"
+    assert ctx["schedule"]["refresh_ok"] is True
+    assert ctx["schedule"]["uncertain"] is False
+    assert ctx["resolution"]["event_id"] == "thu1"
+
+
+def test_fresh_schedule_is_not_refreshed(slate, monkeypatch):
+    from edgeterminal import engine
+    _set_schedule_age(10)
+    calls = []
+    monkeypatch.setattr(engine, "refresh_schedule",
+                        lambda sport="NFL": calls.append(sport))
+    ctx = ctx_for("Who scores on the Thursday night game?", selected="thu1")
+    assert calls == [], "a fresh schedule must not spend a provider call"
+    assert ctx["resolution"]["event_id"] == "thu1"
+
+
+def test_rescheduled_kickoff_changes_which_day_matches(slate, monkeypatch):
+    """A game flexed off Thursday must stop answering a Thursday question."""
+    from edgeterminal import engine
+    _set_schedule_age(settings.stale_schedule_s + 60)
+
+    def _refresh(sport="NFL"):
+        # The Thursday game is moved to Sunday by the refresh.
+        db.ex("UPDATE events SET start_time=? WHERE id=?", (SUNDAY, "thu1"))
+        db.kv_set(engine._schedule_key(sport),
+                  dict(at=NOW, source="refreshed", events=5, ok=True))
+        return dict(ok=True, sport=sport, source="refreshed", events=5,
+                    changed=["thu1"], is_demo=False, error=None)
+
+    monkeypatch.setattr(engine, "refresh_schedule", _refresh)
+    ctx = ctx_for("Who scores on the Thursday night game?")
+    # No game is on Thursday any more: say so rather than answering about the
+    # game that used to be there.
+    assert ctx["resolution"]["state"] == "UNAVAILABLE"
+    assert "thursday" in ctx["resolution"]["reason"].lower()
+
+
+def test_refresh_failure_reports_staleness_and_does_not_verify(slate, monkeypatch):
+    from edgeterminal import engine
+    _set_schedule_age(settings.stale_schedule_s + 500)
+    monkeypatch.setattr(engine, "refresh_schedule",
+                        lambda sport="NFL": dict(ok=False, sport=sport,
+                                                 error="provider unavailable", changed=[],
+                                                 events=0))
+    ctx = ctx_for("Who scores on the Thursday night game?")
+    sched = ctx["schedule"]
+    assert sched["refresh_attempted"] is True and sched["refresh_ok"] is False
+    assert sched["uncertain"] is True
+    assert sched["retrieved_at"] is not None, "the last-known timestamp stays visible"
+    assert "provider unavailable" in sched["note"]
+    # Stale is never relabelled as newly verified.
+    note = C.schedule_note(ctx)
+    assert "UNVERIFIED" in note and "refreshed for this question" not in note
+
+
+def test_refresh_failure_withholds_a_recommendation_on_the_deterministic_path(slate, monkeypatch):
+    from edgeterminal import engine
+    _set_schedule_age(settings.stale_schedule_s + 500)
+    monkeypatch.setattr(engine, "refresh_schedule",
+                        lambda sport="NFL": dict(ok=False, sport=sport,
+                                                 error="provider unavailable", changed=[],
+                                                 events=0))
+    called = []
+    monkeypatch.setattr(tools, "call", lambda n, a: (called.append(n), {"state": "OK"})[1])
+    ctx = ctx_for("What's the best bet on the Thursday night game?")
+    out = llm.fallback_answer("What's the best bet on the Thursday night game?", [], None, ctx)
+    assert out["recommendation_withheld"] is True
+    assert called == [], "no recommendation tool runs against an unverified event"
+    assert "could not be verified" in out["answer"]
+
+
+def test_unverified_schedule_blocks_an_official_pick_on_the_openai_path(slate, monkeypatch):
+    from edgeterminal import engine
+    _set_schedule_age(settings.stale_schedule_s + 500)
+    monkeypatch.setattr(engine, "refresh_schedule",
+                        lambda sport="NFL": dict(ok=False, sport=sport,
+                                                 error="provider unavailable", changed=[],
+                                                 events=0))
+    fake = FakeOpenAI([
+        {"content": "", "tool_calls": [{"id": "1", "name": "analyze_td_scorers",
+                                        "arguments": json.dumps({"event_id": "thu1"})}]},
+        {"content": "OFFICIAL PICK: take the Bills backs.", "tool_calls": []},
+        {"content": "Detroit Lions @ Buffalo Bills: prices only; the schedule is "
+                    "unverified so no staked pick is offered.", "tool_calls": []},
+    ])
+    out, _ = _run(monkeypatch, fake, "Best bet on the Thursday night game?", selected="thu1")
+    assert "OFFICIAL PICK" not in out["answer"]
+    assert out["validation"]["ok"] is True
+    assert "unverified" in out["answer"].lower()
+
+
+def test_a_refresh_that_moves_a_kickoff_marks_the_mapping_uncertain(slate, monkeypatch):
+    """Re-resolving is not enough: the row must still say what it said."""
+    from edgeterminal import engine
+    _set_schedule_age(10)
+    ctx = ctx_for("Who scores on the Thursday night game?")
+    # Simulate the row moving after resolution, then re-validate the mapping.
+    db.ex("UPDATE events SET home_team=? WHERE id=?", ("Miami Dolphins", "thu1"))
+    problems = C._validate_mapping(ctx["resolution"], ctx["now_local"])
+    assert any("home_team changed after refresh" in p for p in problems)
+
+
+def test_a_kicked_off_game_still_marked_scheduled_triggers_a_refresh(slate, monkeypatch):
+    """Stored metadata that contradicts itself is a staleness signal by itself."""
+    from edgeterminal import engine
+    _set_schedule_age(10)          # timestamp says fresh...
+    db.ex("UPDATE events SET start_time=?, status=? WHERE id=?",
+          ("2026-09-14T00:15:00Z", "scheduled", "sun2"))   # ...but this row disagrees
+    calls = []
+
+    def _refresh(sport="NFL"):
+        calls.append(sport)
+        db.kv_set(engine._schedule_key(sport),
+                  dict(at=NOW, source="refreshed", events=5, ok=True))
+        return dict(ok=True, sport=sport, source="refreshed", events=5,
+                    changed=[], is_demo=False, error=None)
+
+    monkeypatch.setattr(engine, "refresh_schedule", _refresh)
+    ctx = ctx_for("Who scores on the Thursday night game?")
+    assert calls == ["NFL"]
+    assert "contradicts itself" in (ctx["schedule"]["refresh_reason"] or "")
+
+
+def test_refresh_is_attempted_at_most_once_per_turn(slate, monkeypatch):
+    from edgeterminal import engine
+    _set_schedule_age(settings.stale_schedule_s + 60)
+    calls = []
+
+    def _refresh(sport="NFL"):
+        calls.append(sport)
+        # Deliberately does NOT update the timestamp: a second pass would
+        # otherwise see it as still stale and loop.
+        return dict(ok=True, sport=sport, source="refreshed", events=5,
+                    changed=[], is_demo=False, error=None)
+
+    monkeypatch.setattr(engine, "refresh_schedule", _refresh)
+    ctx_for("Who scores on the Thursday night game?")
+    assert len(calls) == 1, "one attempt per turn, never a retry loop"

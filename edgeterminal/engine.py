@@ -78,6 +78,12 @@ def refresh(sports: Optional[List[str]] = None) -> Dict:
             entry["odds_dropped_unmatched"] = dropped
         out["sports"][sport] = entry
     db.kv_set("last_refresh", out)
+    # A full refresh also refreshes events, so it is a schedule retrieval too.
+    for sport, entry in out["sports"].items():
+        if entry.get("events_source"):
+            db.kv_set(_schedule_key(sport),
+                      dict(at=out["at"], source=entry["events_source"],
+                           events=entry.get("events", 0), ok=True))
     _ctx_cache.clear()
     global _families_loaded
     _families_loaded = True
@@ -86,6 +92,98 @@ def refresh(sports: Optional[List[str]] = None) -> Dict:
 
 def last_refresh() -> Optional[Dict]:
     return db.kv_get("last_refresh")
+
+
+# ------------------------------------------------------------------- schedule
+SCHEDULE_FIELDS = ("start_time", "status", "home_team", "away_team", "name")
+
+
+def _schedule_key(sport: str) -> str:
+    return f"schedule_refreshed_at:{sport.upper()}"
+
+
+def schedule_meta(sport: str = "NFL", now: Optional[float] = None) -> Dict:
+    """When the stored schedule was last retrieved, and whether that is recent
+    enough to resolve a relative date against.
+
+    Falls back to the last full refresh for installs that predate schedule-only
+    refreshes; `retrieved_at` is None when the schedule has never been fetched,
+    which is uncertainty, not freshness.
+    """
+    meta = db.kv_get(_schedule_key(sport)) or {}
+    at = meta.get("at")
+    if at is None:
+        at = (db.kv_get("last_refresh") or {}).get("at")
+        meta = dict(meta, source=meta.get("source") or "last_refresh")
+    at = float(at) if at is not None else None
+    # The turn's clock, not wall time: a frozen-clock caller must get a freshness
+    # answer consistent with the timestamps it is reasoning about.
+    stamp = float(now if now is not None else time.time())
+    age = (stamp - at) if at is not None else None
+    return dict(retrieved_at=at, age_s=(round(age, 1) if age is not None else None),
+                stale=(age is None or age > settings.stale_schedule_s),
+                limit_s=settings.stale_schedule_s,
+                source=meta.get("source"), ok=meta.get("ok", True),
+                error=meta.get("error"))
+
+
+def refresh_schedule(sport: str = "NFL") -> Dict:
+    """Refresh only the schedule, on demand.
+
+    Deliberately narrower than `refresh()`: it calls the events endpoint, which
+    costs no Odds API quota, and never touches odds. Events are upserted only --
+    a fixture missing from one provider response is an omission, not a
+    cancellation, so nothing is ever deleted and historical rows are preserved.
+
+    Returns what changed, so callers can invalidate exactly the cached context
+    that depended on a kickoff, status or identity that just moved.
+    """
+    sport = sport.upper()
+    before = {r["id"]: dict(r) for r in db.q(
+        "SELECT id, start_time, status, home_team, away_team, name FROM events WHERE sport=?",
+        (sport,))}
+    prefer = ((db.kv_get("last_refresh") or {}).get("sports", {})
+              .get(sport, {}) or {}).get("odds_source")
+    try:
+        events, source, is_demo = R.list_events(sport, prefer=prefer)
+    except Exception as e:  # noqa: BLE001 - a failed refresh must not break a turn
+        log.warning("schedule refresh failed for %s: %s", sport, e)
+        db.kv_set(_schedule_key(sport), dict(
+            at=(db.kv_get(_schedule_key(sport)) or {}).get("at"),
+            source=None, ok=False, error=f"{type(e).__name__}: {e}"))
+        return dict(ok=False, sport=sport, error=f"{type(e).__name__}: {e}",
+                    changed=[], events=0)
+    if not events:
+        # An empty response is not "every game was cancelled". Say so and keep
+        # the stored schedule exactly as it was.
+        db.kv_set(_schedule_key(sport), dict(
+            at=(db.kv_get(_schedule_key(sport)) or {}).get("at"),
+            source=source, ok=False, error="provider returned no events"))
+        return dict(ok=False, sport=sport, error="provider returned no events",
+                    changed=[], events=0)
+
+    changed: List[str] = []
+    for e in events:
+        e.setdefault("sport", sport)
+        e["meta"] = dict(e.get("meta") or {}, is_demo=bool(is_demo), source=source)
+        old = before.get(e["id"])
+        if old is not None:
+            for field in SCHEDULE_FIELDS:
+                if field in e and str(e.get(field) or "") != str(old.get(field) or ""):
+                    changed.append(e["id"])
+                    break
+        db.upsert_event(e)
+
+    # Anything whose kickoff, status or identity moved must not keep serving the
+    # analysis built from the old value.
+    for eid in changed:
+        _ctx_cache.pop(eid, None)
+    db.kv_set(_schedule_key(sport), dict(at=time.time(), source=source,
+                                         events=len(events), ok=True, error=None))
+    log.info("schedule refresh sport=%s source=%s events=%d changed=%d",
+             sport, source, len(events), len(changed))
+    return dict(ok=True, sport=sport, source=source, events=len(events),
+                changed=changed, is_demo=bool(is_demo), error=None)
 
 
 _families_loaded = False

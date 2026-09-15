@@ -106,9 +106,27 @@ def group_quotes(rows: Iterable[Dict]) -> Dict[str, List[Dict]]:
     return grouped
 
 
+def quote_stamp(row: Dict) -> Optional[float]:
+    """When this quote was last known to be current.
+
+    The book's own `last_update` is the truer statement of a price's age than
+    the moment we fetched it, so it wins where the provider supplies one. Both
+    travel with the row into the cache, which is what makes a cache hit report
+    the original age instead of resetting it to zero.
+    """
+    for field in ("provider_updated_at", "captured_at"):
+        value = row.get(field)
+        if value:
+            try:
+                return float(value)
+            except (TypeError, ValueError):
+                continue
+    return None
+
+
 def quote_age_s(rows: Iterable[Dict], now: Optional[float] = None) -> Optional[float]:
     stamp = float(now if now is not None else time.time())
-    stamps = [float(r["captured_at"]) for r in rows if r.get("captured_at")]
+    stamps = [t for t in (quote_stamp(r) for r in rows) if t is not None]
     return round(stamp - max(stamps), 1) if stamps else None
 
 
@@ -181,7 +199,11 @@ def prop_state(*, confidence: float, edge_pct: float, books: int, age_s: Optiona
         return "INSUFFICIENT DATA"
     if books < 2:
         return "INSUFFICIENT DATA"
-    if age_s is not None and age_s > settings.stale_odds_s:
+    if age_s is None:
+        # Freshness could not be established. Unverified is not the same as
+        # fresh, so the price is browsable but carries no recommendation.
+        return "INSUFFICIENT DATA"
+    if age_s > settings.stale_odds_s:
         return "STALE"
     if agreement < 1.0:
         return "WATCHLIST"
@@ -351,11 +373,26 @@ def analyze_props(event_id: str, category: Optional[str] = None, research: bool 
                          per_player_features=per_player_features, environment=environment,
                          injuries=injuries, market=markets, research_steps=research_result,
                          now=stamp, is_demo=is_demo, citations=citations)
+    # Price provenance, shown rather than implied. `price_age_s` is measured from
+    # the quotes themselves, so a cache hit reports the original age; `cached`
+    # says whether this board came from the prop cache, which is a separate fact
+    # from how old the prices are.
+    price_age = _todays_age(rows, stamp)
+    if price_age is None and rows:
+        warnings.append("price age could not be established; these quotes are not "
+                        "verified fresh and carry no recommendation")
+    elif price_age is not None and price_age > settings.stale_odds_s:
+        warnings.append(f"prices are {int(price_age)}s old, past the "
+                        f"{int(settings.stale_odds_s)}s staleness limit")
     board.update(event=dict(id=event["id"], name=event.get("name"),
                             home_team=event.get("home_team"), away_team=event.get("away_team"),
                             start_time=event.get("start_time"), venue=event.get("venue")),
                  generated_at=stamp, category=category or "all", markets_requested=markets,
                  price_source=source, is_demo=is_demo, warnings=warnings, identity=identity,
+                 price_age_s=price_age,
+                 price_retrieved_at=fetched.get("retrieved_at"),
+                 price_cache=fetched.get("cache"),
+                 price_stale=(price_age is None or price_age > settings.stale_odds_s),
                  research=dict(steps=research_result.get("steps", []), citations=citations,
                                queries_used=research_result.get("queries_used", 0),
                                budget=budget, conflicts=conflicts),
@@ -652,10 +689,16 @@ def _build_board(*, event: Dict, players: List[Dict], rows: List[Dict], usage_ro
 
 
 def _todays_age(rows: Iterable[Dict], now: float) -> Optional[float]:
-    stamps = [float(r["captured_at"]) for r in rows if r.get("captured_at")]
-    if not stamps:
-        return 0.0 if rows else None
-    return round(now - max(stamps), 1)
+    """Age of the newest quote on the board, or None when it cannot be known.
+
+    This used to return 0.0 whenever the rows carried no timestamp -- which was
+    always, because prop rows were never stamped. Every price therefore read as
+    zero seconds old: the stale-quote gate could not trip and confidence took
+    full freshness credit. An unknown age is now None, and None is treated as
+    unverified rather than fresh.
+    """
+    stamps = [t for t in (quote_stamp(r) for r in rows) if t is not None]
+    return round(now - max(stamps), 1) if stamps else None
 
 
 def _best_reliability(feature: Dict) -> Optional[str]:

@@ -200,7 +200,10 @@ class TheOddsApi(OddsProvider):
             return dict(event_id=event_id, markets=wanted, rows=[], source=self.name,
                         error=e.detail, cache="miss", quota=dict(self.quota))
         self._record_quota(headers)
-        rows = self._flatten_props(data or {}, event_id)
+        # One timestamp for the rows and the payload: a row must never claim to
+        # be newer than the response it arrived in.
+        retrieved = time.time()
+        rows = self._flatten_props(data or {}, event_id, retrieved_at=retrieved)
         # The payload must prove it is the game we asked for; otherwise nothing is
         # cached and the caller receives an explicit refusal.
         verdict = I.validate_provider_event(data or {}, event, tolerance_s=6 * 3600.0) \
@@ -208,21 +211,38 @@ class TheOddsApi(OddsProvider):
         if verdict["state"] != I.IDENTITY_OK:
             log.warning("prop payload rejected for %s: %s", event_id, verdict["reasons"])
             return dict(event_id=event_id, markets=wanted, rows=[], source=self.name,
-                        retrieved_at=time.time(), quota=dict(self.quota), error=None,
+                        retrieved_at=retrieved, quota=dict(self.quota), error=None,
                         cache="miss", identity=verdict)
         payload = dict(event_id=event_id, markets=wanted, rows=rows, source=self.name,
-                       retrieved_at=time.time(), quota=dict(self.quota), error=None,
+                       retrieved_at=retrieved, quota=dict(self.quota), error=None,
                        identity=verdict, cache_version=I.CACHE_VERSION)
         store.set(key, payload, ttl=PROP_TTL_S, topic="odds")
         self.last_fetch = dict(payload, cache="miss")
         return dict(payload, cache="miss")
 
-    def _flatten_props(self, event: Dict, event_id: str) -> List[Dict]:
+    def _flatten_props(self, event: Dict, event_id: str,
+                       retrieved_at: Optional[float] = None) -> List[Dict]:
+        """Prop quotes, each stamped with when it was captured and when the book
+        last moved it.
+
+        Without these stamps every prop row reached `_todays_age` with no
+        timestamp at all, which returned 0.0 -- so a price of any age read as
+        zero seconds old, the stale-quote gate could never trip, and confidence
+        always received full freshness credit. The stamps are written once, at
+        fetch time, and travel with the rows into the cache, so a cache hit
+        reports the original age rather than resetting it.
+        """
+        from ..integrity import parse_time
+        captured = float(retrieved_at if retrieved_at is not None else time.time())
         rows: List[Dict] = []
         for bm in event.get("bookmakers", []) or []:
             book = (bm.get("key") or "").lower()
+            book_updated = parse_time(bm.get("last_update"))
             for mk in bm.get("markets", []) or []:
                 raw = mk.get("key", "")
+                # The market's own last_update is the truest statement of when
+                # this price was current; the bookmaker's is the fallback.
+                provider_updated = parse_time(mk.get("last_update")) or book_updated
                 market = PROP_MARKET_NAMES.get(raw) or PROP_MAP.get(raw)
                 if not market:
                     continue
@@ -244,7 +264,9 @@ class TheOddsApi(OddsProvider):
                     rows.append(dict(event_id=event_id, sport="NFL", book=book,
                                      market=market, api_market=raw, selection=player,
                                      player=player, side=side, line=oc.get("point"),
-                                     price=oc.get("price"), is_demo=0))
+                                     price=oc.get("price"), is_demo=0,
+                                     captured_at=captured,
+                                     provider_updated_at=provider_updated))
         return rows
 
     def _flatten(self, ev: Dict, sport: str) -> List[Dict]:

@@ -96,6 +96,11 @@ class Settings:
     # Thursday-night game lands on the *next* UTC date, so "Thursday" must be evaluated
     # in this zone rather than on the stored date.
     timezone = os.getenv("TIMEZONE", "America/New_York")
+    # How old a stored NFL schedule may be before a relative-date question
+    # ("Thursday night") refreshes it once before resolving. Kickoffs move and
+    # games get flexed; resolving a weekday against a week-old schedule is how
+    # you confidently answer about a game that is no longer on that day.
+    stale_schedule_s = _f("SCHEDULE_STALE_SECONDS", 6 * 3600)
     stale_news_s = _f("NEWS_STALE_SECONDS", 6 * 3600)
     stale_injury_s = _f("INJURY_STALE_SECONDS", 12 * 3600)
     stale_weather_s = _f("WEATHER_STALE_SECONDS", 3 * 3600)

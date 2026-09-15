@@ -97,6 +97,10 @@ Event resolution (the application decides this, not you):
   event-scoped tool. If UNAVAILABLE, say so and show the next games; never substitute
   a different game.
 - Begin an event-specific answer with the matchup, date, time and timezone.
+- The schedule's retrieval time is supplied each turn. If it is marked UNVERIFIED,
+  say so in the answer, never describe the schedule as confirmed current, never
+  substitute a different game, and issue no Official Pick or staked recommendation
+  until the event can be verified. Prices may still be shown and labelled.
 
 Answering vs recommending:
 - A schedule or price question is answered on its own terms. Never require a betting
@@ -370,7 +374,9 @@ def run_chat(user_message: str, history: Optional[List[Dict]] = None,
             res_name = ((ctx or {}).get("resolution") or {}).get("event", {}).get("name", "")
             if event_specific and res_name and res_name.lower() not in answer.lower():
                 answer = _event_header(ctx) + answer
+            answer = _schedule_banner(ctx) + answer
             return dict(answer=answer, tool_trace=trace, validation=check,
+                        schedule=(ctx or {}).get("schedule"),
                         provider=p.name, model=getattr(p, "model", None),
                         elapsed_s=round(time.time() - started, 2))
         messages.append({"role": "assistant", "content": out.get("content") or None,
@@ -505,6 +511,19 @@ def validate_answer(answer: str, ctx: Optional[Dict], trace: List[Dict]) -> Dict
     elif res.get("state") in ("AMBIGUOUS", "UNAVAILABLE"):
         if any(t.get("tool") in EVENT_SCOPED for t in trace):
             problems.append("an event-scoped tool ran while the event was not resolved")
+    # A staked recommendation requires a verified event. When the schedule could
+    # not be confirmed, an answer that still issues one is sent back once rather
+    # than displayed -- the same bounded-correction path used for a wrong game.
+    sched = (ctx or {}).get("schedule") or {}
+    if sched.get("uncertain"):
+        if re.search(r"\bOFFICIAL PICK\b", answer, re.I):
+            problems.append("an Official Pick was issued while the schedule could not be "
+                            "verified; withhold staked recommendations and say the event "
+                            "is unconfirmed")
+        elif not re.search(r"unverified|not confirmed|unconfirmed|could not be verified",
+                           answer, re.I):
+            problems.append("the schedule could not be verified but the answer does not "
+                            "say so")
     return dict(ok=not problems, problems=problems)
 
 
@@ -564,11 +583,70 @@ def _answer_without_event(ctx: Dict) -> Optional[str]:
     return None
 
 
+# Tools whose invocation is an actual search request. Counting usage means
+# counting these records -- not scanning output for hints that a search happened.
+SEARCH_TOOLS = frozenset({"search_web", "search_player_context"})
+
+
+def searches_used(trace: Optional[List[Dict]]) -> Optional[int]:
+    """How many search invocations this turn actually made.
+
+    Counted from recorded tool calls only. A citation URL is not evidence of a
+    billable search: a `utm_source=openai` parameter says how a link was
+    formatted, not that a search ran, and a cached result returns citations
+    without any new request. With no trace to read, usage is UNKNOWN (None)
+    rather than a guess -- and never reconstructed by re-running a paid call.
+    """
+    if trace is None:
+        return None
+    return sum(1 for t in trace if t.get("tool") in SEARCH_TOOLS)
+
+
+RECOMMENDATION_TOOLS = frozenset({"find_best_bets", "find_best_player_props",
+                                  "analyze_td_scorers", "analyze_player_prop",
+                                  "run_prop_analysis", "build_parlay"})
+
+
+def _schedule_banner(ctx: Optional[Dict]) -> str:
+    """Visible uncertainty when the schedule behind an answer is unverified."""
+    sched = (ctx or {}).get("schedule") or {}
+    if not sched.get("uncertain"):
+        return ""
+    age = sched.get("age_s")
+    when = "never retrieved" if age is None else f"last retrieved {int(age)}s ago"
+    return (f"_Schedule unverified ({when}): {sched.get('note') or 'freshness unconfirmed'} "
+            f"Kickoffs and statuses below are not confirmed current._\n\n")
+
+
 def fallback_answer(user_message: str, trace: List[Dict],
                     context_note: Optional[str] = None,
                     ctx: Optional[Dict] = None) -> Dict:
     """Deterministic answer path used when no LLM key is configured."""
     tool, args = _route(user_message)
+    # A recommendation rests on the event being the one the user asked about. If
+    # the schedule could not be verified, the price is still browsable but the
+    # staked recommendation is withheld rather than issued against an unconfirmed
+    # kickoff. No other game is substituted.
+    sched = (ctx or {}).get("schedule") or {}
+    if sched.get("uncertain") and tool in RECOMMENDATION_TOOLS:
+        age = sched.get("age_s")
+        when = "never retrieved" if age is None else f"last retrieved {int(age)}s ago"
+        trace.append(dict(tool="schedule_freshness", ok=False,
+                          arguments=dict(limit_s=sched.get("limit_s")),
+                          result_preview=json.dumps(
+                              dict(retrieved_at=sched.get("retrieved_at"), age_s=age,
+                                   refresh_attempted=sched.get("refresh_attempted"),
+                                   refresh_ok=sched.get("refresh_ok"),
+                                   error=sched.get("error"),
+                                   mapping_problems=sched.get("mapping_problems")),
+                              default=str)[:400]))
+        return dict(
+            answer=(f"No recommendation was produced: the schedule could not be verified "
+                    f"({when}). {sched.get('note') or ''}\n\n"
+                    "Prices can still be browsed, but a staked recommendation needs a "
+                    "confirmed kickoff and event identity. Refresh and ask again."),
+            tool_trace=trace, provider="deterministic-router", model=None,
+            schedule=sched, recommendation_withheld=True)
     # Only a request that genuinely needs one specific game is blocked on event
     # resolution. Slate-wide tools (best bets, parlays, watchlist) scan every game and
     # must still run when one particular day happens to be empty.
@@ -587,8 +665,9 @@ def fallback_answer(user_message: str, trace: List[Dict],
                                   dict(state=res.get("state"), event_id=res.get("event_id"),
                                        reason=res.get("reason"),
                                        reasons=res.get("reasons")), default=str)[:400]))
-            return dict(answer=answered, tool_trace=trace, provider="deterministic-router",
-                        model=None, event_state=res.get("state"))
+            return dict(answer=_schedule_banner(ctx) + answered, tool_trace=trace,
+                        provider="deterministic-router", model=None,
+                        event_state=res.get("state"), schedule=ctx.get("schedule"))
     # The UI supplies an explicit event context. Keep ambiguous "this game"
     # questions scoped to that event instead of silently answering slate-wide.
     resolved = ((ctx or {}).get("resolution") or {}).get("event_id")
@@ -606,8 +685,8 @@ def fallback_answer(user_message: str, trace: List[Dict],
     result = T.call(tool, args)
     trace.append(dict(tool=tool, arguments=args, ok="error" not in result,
                       result_preview=json.dumps(result, default=str)[:400]))
-    return dict(answer=format_result(tool, result), tool_trace=trace,
-                provider="deterministic-router", model=None,
+    return dict(answer=_schedule_banner(ctx) + format_result(tool, result), tool_trace=trace,
+                provider="deterministic-router", model=None, schedule=sched or None,
                 note="No OPENAI_API_KEY configured — answering directly from the analytics "
                      "engine without natural-language synthesis.")
 

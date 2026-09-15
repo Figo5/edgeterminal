@@ -192,6 +192,89 @@ def _matches_day(event: Dict, constraint: Dict, now_local: dt.datetime) -> bool:
     return True
 
 
+def _stale_metadata(events: List[Dict], now_local: dt.datetime) -> Optional[str]:
+    """Stored metadata that contradicts itself, regardless of the clock.
+
+    A row whose kickoff has passed while its status still reads "scheduled" says
+    the schedule has not been updated through that game, so the retrieval
+    timestamp alone is not enough to call it current.
+    """
+    for ev in events:
+        kickoff = ev.get("kickoff_local")
+        status = str(ev.get("status") or "").upper()
+        if kickoff is not None and kickoff < now_local and "FINAL" not in status:
+            return (f"{ev['name']} kicked off at "
+                    f"{kickoff.strftime('%a %d %b %H:%M %Z')} but is still stored as "
+                    f"'{ev.get('status')}'")
+    return None
+
+
+def _all_stored(now_local: dt.datetime) -> List[Dict]:
+    """Every stored NFL row with a parsed local kickoff, played or not."""
+    out = []
+    for row in db.q("SELECT id, name, home_team, away_team, start_time, status "
+                    "FROM events WHERE sport='NFL' ORDER BY start_time ASC"):
+        row = dict(row)
+        if not settings.demo_mode and str(row["id"]).startswith("demo-"):
+            continue
+        kickoff = local_kickoff(row["start_time"])
+        if kickoff is None:
+            continue
+        row["kickoff_local"] = kickoff
+        out.append(row)
+    return out
+
+
+def _needs_refresh(ctx: Dict, res: Dict, meta: Dict, now_local: dt.datetime) -> Optional[str]:
+    """Why the schedule should be re-fetched once before answering, or None.
+
+    Three triggers, all cheap to evaluate and all about the schedule being
+    untrustworthy rather than about wanting more data: it is older than the
+    configured limit; the requested day or team is not in it; or a stored row
+    contradicts its own metadata.
+    """
+    if meta["stale"]:
+        age = meta["age_s"]
+        return ("schedule has never been retrieved" if age is None
+                else f"schedule is {int(age)}s old (limit {int(meta['limit_s'])}s)")
+    if res["state"] == "UNAVAILABLE" and (ctx.get("day_constraint") or ctx.get("teams")):
+        return "the requested game is not in the stored schedule"
+    conflict = _stale_metadata(_all_stored(now_local), now_local)
+    if conflict:
+        return f"stored schedule contradicts itself: {conflict}"
+    return None
+
+
+def _validate_mapping(res: Dict, now_local: dt.datetime) -> List[str]:
+    """After a refresh, confirm the resolved event still says what it said.
+
+    A refresh can move a kickoff or rename a side. Re-reading the row is how a
+    resolution that is now wrong gets caught instead of being carried forward.
+    """
+    problems: List[str] = []
+    if res.get("state") != "OK" or not res.get("event_id"):
+        return problems
+    row = db.q1("SELECT id, name, home_team, away_team, start_time, status "
+                "FROM events WHERE id=?", (res["event_id"],))
+    if row is None:
+        problems.append("the resolved event is no longer in the schedule")
+        return problems
+    row = dict(row)
+    ev = res.get("event") or {}
+    for field in ("home_team", "away_team"):
+        if str(row.get(field) or "") != str(ev.get(field) or ""):
+            problems.append(f"{field} changed after refresh: "
+                            f"{ev.get(field)!r} -> {row.get(field)!r}")
+    kickoff = local_kickoff(row["start_time"])
+    if kickoff is None:
+        problems.append("the refreshed event has no parsable kickoff")
+    elif ev.get("kickoff_local") is not None and kickoff != ev["kickoff_local"]:
+        problems.append(f"kickoff moved after refresh: "
+                        f"{ev['kickoff_local'].strftime('%a %d %b %H:%M')} -> "
+                        f"{kickoff.strftime('%a %d %b %H:%M')}")
+    return problems
+
+
 def resolve_event(ctx: Dict) -> Dict:
     """Pick the event the user means, or say why it cannot be picked.
 
@@ -262,7 +345,7 @@ def resolve_event(ctx: Dict) -> Dict:
 
 def build(user_message: str, history: Optional[List[Dict]] = None,
           selected_event_id: Optional[str] = None,
-          now: Optional[float] = None) -> Dict:
+          now: Optional[float] = None, allow_refresh: bool = True) -> Dict:
     """The compact structured context for one turn."""
     now_local = local_now(now)
     teams_known = [r["home_team"] for r in db.q(
@@ -291,11 +374,73 @@ def build(user_message: str, history: Optional[List[Dict]] = None,
     if this_game and not explicit and selected_event_id:
         ctx["day_constraint"], ctx["teams"] = None, []
     ctx["resolution"] = resolve_event(ctx)
-    log.info("chat context task=%s market=%s day=%s teams=%s -> event=%s (%s)",
+    ctx["schedule"] = _ensure_fresh_schedule(ctx, allow_refresh=allow_refresh)
+    log.info("chat context task=%s market=%s day=%s teams=%s -> event=%s (%s) schedule=%s",
              ctx["task"], ctx["market"],
              (ctx["day_constraint"] or {}).get("label"), teams or "-",
-             (ctx["resolution"].get("event_id") or "-")[:8], ctx["resolution"]["state"])
+             (ctx["resolution"].get("event_id") or "-")[:8], ctx["resolution"]["state"],
+             "uncertain" if ctx["schedule"].get("uncertain") else "ok")
     return ctx
+
+
+def _ensure_fresh_schedule(ctx: Dict, allow_refresh: bool = True) -> Dict:
+    """Refresh the schedule at most once, then re-resolve against it.
+
+    Relative dates are only as good as the schedule they are resolved against,
+    so a stale, incomplete or self-contradictory schedule is refreshed before
+    the answer is built rather than after. Exactly one attempt: a provider that
+    is down must not turn one question into a retry loop, and nothing here polls
+    in the background.
+
+    On failure the last-known retrieval time and the uncertainty are carried
+    forward. A stale schedule is never relabelled as newly verified, and no
+    other game is substituted for the one that could not be confirmed.
+    """
+    from .. import engine
+
+    now_local = ctx["now_local"]
+    meta = engine.schedule_meta("NFL", now=ctx.get("now_utc"))
+    reason = _needs_refresh(ctx, ctx["resolution"], meta, now_local)
+    out = dict(meta, refresh_attempted=False, refresh_ok=None, refresh_reason=reason,
+               changed=[], mapping_problems=[], uncertain=False)
+    if not reason:
+        return out
+    if not allow_refresh:
+        out["uncertain"] = bool(meta["stale"])
+        out["note"] = f"schedule not refreshed ({reason}); refresh disabled for this call"
+        return out
+
+    out["refresh_attempted"] = True
+    try:
+        result = engine.refresh_schedule("NFL")
+    except Exception as e:  # noqa: BLE001 - a refresh failure must not break a turn
+        log.error("schedule refresh raised: %s", type(e).__name__)
+        result = dict(ok=False, error=f"{type(e).__name__}", changed=[])
+
+    out["refresh_ok"] = bool(result.get("ok"))
+    out["changed"] = result.get("changed") or []
+    if not result.get("ok"):
+        # Keep the last-known timestamp and say plainly that it is unverified.
+        out["error"] = result.get("error")
+        out["uncertain"] = True
+        out["note"] = (f"schedule refresh failed ({result.get('error')}); answering from the "
+                       f"schedule last retrieved "
+                       + (f"{int(meta['age_s'])}s ago" if meta["age_s"] is not None
+                          else "at an unknown time")
+                       + ". Kickoffs and statuses are not verified current.")
+        return out
+
+    # Re-resolve against the refreshed schedule, then confirm the resolved row
+    # still maps to what it did before the refresh.
+    ctx["resolution"] = resolve_event(ctx)
+    out.update({k: v for k, v in
+                engine.schedule_meta("NFL", now=ctx.get("now_utc")).items()})
+    problems = _validate_mapping(ctx["resolution"], now_local)
+    out["mapping_problems"] = problems
+    out["uncertain"] = bool(problems)
+    if problems:
+        out["note"] = ("the resolved game changed during refresh: " + "; ".join(problems))
+    return out
 
 
 def _history_event(history: Optional[List[Dict]]) -> Optional[str]:
@@ -305,6 +450,27 @@ def _history_event(history: Optional[List[Dict]]) -> Optional[str]:
         if found:
             return found[-1]
     return None
+
+
+def schedule_note(ctx: Dict) -> str:
+    """One line about how current the schedule behind this answer is.
+
+    Rendered from the stored retrieval time, never from the fact that a refresh
+    was attempted: an attempt that failed leaves the schedule exactly as stale
+    as it was.
+    """
+    sched = ctx.get("schedule") or {}
+    age = sched.get("age_s")
+    when = ("never retrieved" if age is None
+            else f"retrieved {int(age)}s ago")
+    if sched.get("uncertain"):
+        return (f"SCHEDULE UNVERIFIED ({when}): {sched.get('note') or 'freshness unconfirmed'}. "
+                "State this uncertainty in the answer, do not present the schedule as "
+                "confirmed current, do not substitute another game, and issue NO Official "
+                "Pick or staked recommendation while the event cannot be verified.")
+    if sched.get("refresh_attempted") and sched.get("refresh_ok"):
+        return f"Schedule refreshed for this question ({when})."
+    return f"Schedule {when}; within the {int(sched.get('limit_s') or 0)}s freshness limit."
 
 
 def summary_note(ctx: Dict) -> str:
@@ -329,4 +495,5 @@ def summary_note(ctx: Dict) -> str:
     else:
         lines.append(f"EVENT UNAVAILABLE: {res['reason']}. Say so plainly and offer the next "
                      f"scheduled games. Do not analyse a different game as if it were the one asked about.")
+    lines.append(schedule_note(ctx))
     return "\n".join(lines)

@@ -286,10 +286,16 @@ def get_schedule(day: Optional[str] = None, team: Optional[str] = None,
                          home_team=ev["home_team"], away_team=ev["away_team"],
                          kickoff_local=ev["kickoff_local"].strftime("%a %d %b %Y %H:%M %Z"),
                          kickoff_utc=ev["start_time"]))
+    from .. import engine
+    meta = engine.schedule_meta("NFL")
     return dict(timezone=settings.timezone,
                 now_local=now_local.strftime("%a %d %b %Y %H:%M %Z"),
                 requested_day=(constraint or {}).get("label") if constraint else None,
                 count=len(rows), games=rows[:limit],
+                # How current this schedule is, stated rather than assumed.
+                schedule_retrieved_at=meta["retrieved_at"],
+                schedule_age_s=meta["age_s"], schedule_stale=meta["stale"],
+                schedule_source=meta["source"],
                 note=("Kickoffs are shown in the configured timezone. A Thursday-night "
                       "game is stored with the next day's UTC date."))
 
