@@ -40,15 +40,25 @@ def _dedupe_key(query: str) -> str:
 def plan_prop_research(request: Dict, known: Dict,
                        players: Optional[Iterable[str]] = None,
                        team: Optional[str] = None,
-                       position: Optional[str] = None) -> List[Dict]:
-    """Return the ordered, de-duplicated research steps for a prop analysis."""
+                       position: Optional[str] = None,
+                       player_teams: Optional[Dict[str, str]] = None) -> List[Dict]:
+    """Return the ordered, de-duplicated research steps for a prop analysis.
+
+    `player_teams` maps a player to the team structured usage actually resolved for
+    them. A player-specific query uses that team and nothing else: attaching one
+    side of the fixture to every player produced queries like "Jahmyr Gibbs expected
+    role workload Buffalo Bills" for a Detroit player, which researches the wrong
+    roster. Where the team is unknown the query falls back to the full event name
+    rather than guessing a side.
+    """
     known = dict(known or {})
     steps: List[Dict] = []
 
     def add(gap: str, why: str, player: Optional[str] = None) -> None:
         priority, topic, template = GAP_TEMPLATES[gap]
+        team_for = (player_teams or {}).get(player) if player else team
         steps.append(dict(gap=gap, priority=priority, topic=topic,
-                          query=_fill(template, team=team, player=player,
+                          query=_fill(template, team=team_for, player=player,
                                       request=request, position=position),
                           why=why, researched_for=player))
 

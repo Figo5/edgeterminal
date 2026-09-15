@@ -238,7 +238,7 @@ def event_props(event_id: str, markets: Optional[List[str]] = None,
     The stored id is never sent to the provider unvalidated: it is resolved to a
     live Odds API event first, and any refusal is reported as such.
     """
-    from .. import integrity as I
+    from .. import db, integrity as I
     if not _use_demo() and settings.odds_api_key:
         from .theoddsapi import TheOddsApi
         try:

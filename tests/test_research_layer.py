@@ -241,3 +241,20 @@ def test_planner_flags_weather_as_low_priority():
         players=[], team="Kansas City Chiefs")
     weather = [s for s in plan if s["gap"] == "weather"]
     assert weather and weather[0]["priority"] == "low"
+
+def test_player_research_queries_never_attach_the_wrong_team():
+    """A player-specific gap must not be tagged with the other side of the fixture."""
+    from edgeterminal.research import planner as rplanner
+    steps = rplanner.plan_prop_research(
+        request=dict(kind="td_scorers", event_name="Detroit Lions @ Buffalo Bills"),
+        known=dict(has_odds=True, has_injuries=True, has_usage=True, usage_games=1,
+                   has_role=False, role_stable=False, has_implied_total=True,
+                   has_matchup=True, has_weather=True),
+        players=["Jahmyr Gibbs", "James Cook"],
+        team=None,
+        player_teams={"Jahmyr Gibbs": "Detroit Lions"})
+    by_player = {s["researched_for"]: s["query"] for s in steps if s["gap"] == "role"}
+    assert "Detroit Lions" in by_player["Jahmyr Gibbs"]
+    assert "Buffalo Bills" not in by_player["Jahmyr Gibbs"]
+    # Unknown team falls back to the whole fixture rather than guessing a side.
+    assert by_player["James Cook"].endswith("Detroit Lions @ Buffalo Bills")
