@@ -34,9 +34,29 @@ running_pid() {
   echo "$pid"
 }
 
+# Any EdgeTerminal already holding the port, even one this script did not start
+# (a stray foreground run, or a process left behind by a tool session).
+port_holder() {
+  lsof -nP -iTCP:"$PORT" -sTCP:LISTEN -t 2>/dev/null | while read -r p; do
+    is_ours "$p" && { echo "$p"; return 0; }
+  done
+}
+
 cmd_start() {
   [ -x "$PYTHON" ] || die "virtualenv missing: $PYTHON (python3 -m venv .venv && .venv/bin/pip install -r requirements.txt)"
   if pid="$(running_pid)"; then echo "already running (pid $pid) on port $PORT"; return 0; fi
+  # Without this the new process loses the bind, exits, and the health check below
+  # silently passes against the *old* one -- which is how a process left over from
+  # an earlier session kept serving stale code.
+  if foreign="$(port_holder)" && [ -n "$foreign" ]; then
+    echo "$PORT is already served by EdgeTerminal pid $foreign, which this script did not start."
+    echo "adopting it; run '$0 restart' to replace it with the current code."
+    echo "$foreign" > "$PIDFILE"
+    return 0
+  fi
+  if lsof -nP -iTCP:"$PORT" -sTCP:LISTEN >/dev/null 2>&1; then
+    die "port $PORT is in use by another program (not EdgeTerminal); refusing to start"
+  fi
   mkdir -p "$ROOT/data"
   cd "$ROOT"
   PORT="$PORT" nohup "$PYTHON" -m uvicorn edgeterminal.api:app \
@@ -112,7 +132,14 @@ cmd_uninstall_service() {
 case "${1:-}" in
   start)             cmd_start ;;
   stop)              cmd_stop ;;
-  restart)           cmd_stop; cmd_start ;;
+  restart)           cmd_stop
+                     if foreign="$(port_holder)" && [ -n "$foreign" ]; then
+                       echo "replacing EdgeTerminal pid $foreign on port $PORT"
+                       kill "$foreign" 2>/dev/null || true
+                       for _ in $(seq 1 40); do is_ours "$foreign" || break; sleep 0.25; done
+                       is_ours "$foreign" && kill -9 "$foreign" 2>/dev/null || true
+                     fi
+                     cmd_start ;;
   status)            cmd_status ;;
   install-service)   cmd_install_service ;;
   uninstall-service) cmd_uninstall_service ;;

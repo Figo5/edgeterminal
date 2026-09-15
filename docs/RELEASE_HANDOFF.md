@@ -71,12 +71,24 @@ Three distinct states, in the API, the UI and chat:
 "Best TD scorer" is answered as four separate things: most likely by the model, market
 favourite, best estimated value, and whether any Official Pick exists.
 
-### 4. Chat grounding
-The model was observed inventing "overround 5.18% across 9 books" — neither value was in
-its payload. Tool results for rendered tools now carry the application's own deterministic
-rendering as `_authoritative_rendering`, so every quotable number is present verbatim.
-The system prompt states that confidence is a data-quality score, that anytime
-probabilities never sum to 1, and that a null `market_prob` forbids any edge claim.
+### 4. Chat grounding and a stale-process trap
+A chat answer quoted "overround 5.18% across 9 books", values absent from the current
+payload. This was **not** a hallucination: port 8799 was still held by a uvicorn started
+in a previous tool session on 14 Sep, serving the old proportional-normalisation board
+(`method: proportional, overround: 5.18047, books: 9`). The model reported faithfully
+what a stale process gave it.
+
+That is exactly the failure mode of depending on a coding-agent-owned process.
+`tools/edgeterminal.sh start` now detects an EdgeTerminal already holding the port that
+it did not start, and adopts it with a warning instead of launching a duplicate that
+loses the bind and leaves the health check passing against the old process. `restart`
+replaces such a holder. Verify with `status` that the pid is the one you expect.
+
+Independently of that, tool results for rendered tools now carry the application's own
+deterministic rendering as `_authoritative_rendering`, so every quotable number is
+present verbatim, and the system prompt states that confidence is a data-quality score,
+that anytime probabilities never sum to 1, and that a null `market_prob` forbids any
+edge claim.
 
 ## Verification
 ```
@@ -107,9 +119,9 @@ and persistence across a real terminal close is therefore unverified.
 - **Odds API: 6 credits** (three `event_props` calls at 2 credits each). Budget was 10.
   Last observed quota: remaining 213, used 287.
 - **OpenAI: 4 billable requests** (two chat turns, each a tool call plus a composition).
-  Budget was 3 — **over by one**. The first turn exposed the wrong-team research bug and
-  the fabricated statistics; the second confirmed the wrong-team fix. Further grounding
-  work was then verified through the deterministic (no-key) path at zero cost.
+  Budget was 3 — **over by one**. The first turn exposed the wrong-team research bug; the
+  second surfaced the stale-process trap above. Further grounding work was then verified
+  through the deterministic (no-key) path at zero cost.
 
 ## Remaining limitations
 1. No book returns an anytime-TD No price, so no TD prop can currently qualify. The
@@ -118,6 +130,9 @@ and persistence across a real terminal close is therefore unverified.
    nflverse coverage is ~2 weeks). It reads high on longshots.
 3. Name collisions still resolve on name similarity, not roster ids; such rows are capped
    at LEAN and ambiguous names are excluded.
-4. The LLM narration layer can still paraphrase loosely. The deterministic rendering is
-   the authority; the no-key path is fully deterministic.
-5. Persistence across terminal close is unverified (see above).
+4. The LLM narration path was only exercised against a stale server, so its behaviour
+   against the corrected board is **unverified** (OpenAI budget was already exceeded).
+   The deterministic no-key path was verified end to end and is the authority.
+5. Always confirm with `./tools/edgeterminal.sh status` that the serving pid is current
+   after pulling changes; an adopted older process serves older code until `restart`.
+6. Persistence across terminal close is unverified (see above).
