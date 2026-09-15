@@ -92,6 +92,10 @@ class Settings:
 
     # freshness rules (seconds) -- see docs/Stale data protection
     stale_odds_s = _f("ODDS_STALE_SECONDS", 15 * 60)
+    # NFL scheduling is discussed in US Eastern time. Kickoffs are stored in UTC, and a
+    # Thursday-night game lands on the *next* UTC date, so "Thursday" must be evaluated
+    # in this zone rather than on the stored date.
+    timezone = os.getenv("TIMEZONE", "America/New_York")
     stale_news_s = _f("NEWS_STALE_SECONDS", 6 * 3600)
     stale_injury_s = _f("INJURY_STALE_SECONDS", 12 * 3600)
     stale_weather_s = _f("WEATHER_STALE_SECONDS", 3 * 3600)

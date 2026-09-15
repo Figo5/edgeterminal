@@ -84,6 +84,29 @@ Player props (higher variance, stricter rules):
   an Official Pick unless the tool returned that state, and never lower a prop
   threshold because the user wants a play.
 
+Event resolution (the application decides this, not you):
+- A validated RESOLVED EVENT is supplied with each turn. Use that event id and no
+  other. Event-scoped tools are pinned to it; a different id will be replaced.
+- An explicit day or team in the user's message outranks the game shown in the UI and
+  anything earlier in the conversation. "This game" means the selected one.
+- A follow-up that changes only the market ("what about receiving yards?") keeps the
+  event already resolved.
+- Use get_schedule for any "when/which game" question. Never infer a weekday from a
+  stored UTC timestamp: a Thursday-night kickoff carries the next day's UTC date.
+- If the event is AMBIGUOUS, ask one short question naming the options and call no
+  event-scoped tool. If UNAVAILABLE, say so and show the next games; never substitute
+  a different game.
+- Begin an event-specific answer with the matchup, date, time and timezone.
+
+Answering vs recommending:
+- A schedule or price question is answered on its own terms. Never require a betting
+  recommendation to answer one, and never let "no Official Pick" suppress verified
+  prices or research.
+- Keep these separate and label them: the market favourite (from quoted odds), what
+  current research supports qualitatively, what the experimental model estimates, and
+  whether an Official Pick exists. Qualitative research is not a proven edge.
+- For "who might score", give candidates and role evidence. Nobody is certain to score.
+
 Style: dense, numeric, professional. Lead with the decision state (OFFICIAL PICK /
 LEAN / WATCHLIST / PASS / NO EDGE), then the numbers, then the reasoning, then the
 risks. Short lines. No filler. Markdown tables are welcome for multi-row answers."""
@@ -210,9 +233,41 @@ _LOWER_INTENT = re.compile(
     r"\b\d{2,3}\s*\+?\s*(?:confidence|conf)\b", re.I)
 
 
-def normalize_tool_args(name: str, args: Dict, user_message: str) -> Dict:
+# Tools that act on one specific event. Their event id is validated, never trusted.
+EVENT_SCOPED = {"analyze_td_scorers": "event_id", "analyze_player_prop": "event_id",
+                "find_best_player_props": "event_id", "get_player_props": "event_id",
+                "run_game_analysis": "query", "run_prop_analysis": "query",
+                "get_current_odds": "query", "get_event": "query",
+                "get_weather": "query", "get_line_history": "query"}
+
+
+def enforce_event_scope(name: str, args: Dict, ctx: Optional[Dict]) -> Dict:
+    """Pin event-scoped tools to the event the request actually resolved to.
+
+    The model may propose any event id. Previously whatever it proposed was used, so
+    a stale UI selection or a guess answered a question about a different game. The
+    resolved id wins; an incompatible one is replaced and logged rather than fetched.
+    """
+    field = EVENT_SCOPED.get(name)
+    if not field or not ctx:
+        return args
+    res = (ctx.get("resolution") or {})
+    if res.get("state") != "OK" or not res.get("event_id"):
+        return args
+    resolved = res["event_id"]
+    supplied = str(args.get(field) or "").strip()
+    if supplied and supplied != resolved and supplied != (res.get("event") or {}).get("name"):
+        log.warning("blocked event id from model tool=%s supplied=%s resolved=%s",
+                    name, supplied[:12], resolved[:12])
+    args = dict(args)
+    args[field] = resolved
+    return args
+
+
+def normalize_tool_args(name: str, args: Dict, user_message: str,
+                        ctx: Optional[Dict] = None) -> Dict:
     """Enforce user intent at the trusted tool boundary, not in model prose."""
-    clean = dict(args or {})
+    clean = enforce_event_scope(name, dict(args or {}), ctx)
     if name != "find_best_bets":
         return clean
     low_requested = bool(_LOWER_INTENT.search(user_message))
@@ -240,20 +295,31 @@ def normalize_tool_args(name: str, args: Dict, user_message: str) -> Dict:
 
 
 def run_chat(user_message: str, history: Optional[List[Dict]] = None,
-             context_note: Optional[str] = None) -> Dict:
+             context_note: Optional[str] = None,
+             selected_event_id: Optional[str] = None,
+             now: Optional[float] = None) -> Dict:
     """One user turn. Returns answer text plus the full tool trace."""
     if re.search(r"\b(?:cfb|ncaaf|college football|nba|basketball|pga|golf)\b",
                  user_message, re.I):
         return dict(answer="EdgeTerminal is currently NFL-only. No analysis or recommendation "
                            "was generated for that sport.", tool_trace=[],
                     provider="scope-router", model=None)
+    from . import context as C
+    try:
+        ctx = C.build(user_message, history, selected_event_id, now)
+    except Exception as e:  # noqa: BLE001 - context must never break a turn
+        log.error("context build failed: %s", type(e).__name__)
+        ctx = None
+
     p = provider()
     trace: List[Dict] = []
     if p is None:
-        return fallback_answer(user_message, trace, context_note)
+        return fallback_answer(user_message, trace, context_note, ctx)
 
     messages: List[Dict] = [{"role": "system", "content": SYSTEM}]
-    if context_note:
+    if ctx:
+        messages.append({"role": "system", "content": C.summary_note(ctx)})
+    elif context_note:
         messages.append({"role": "system", "content": context_note})
     for h in (history or [])[-8:]:
         if h.get("role") in ("user", "assistant") and h.get("content"):
@@ -261,13 +327,14 @@ def run_chat(user_message: str, history: Optional[List[Dict]] = None,
     messages.append({"role": "user", "content": user_message})
 
     started = time.time()
+    corrected = False
     log.info("LLM path active provider=%s model=%s", p.name, getattr(p, "model", None))
     for _round in range(MAX_ROUNDS):
         try:
             out = p.chat(messages, T.SCHEMAS)
         except Exception as e:  # noqa: BLE001
             log.error("LLM call failed: %s", type(e).__name__)
-            fb = fallback_answer(user_message, trace, context_note)
+            fb = fallback_answer(user_message, trace, context_note, ctx)
             fb["answer"] = (f"_The language model call failed ({type(e).__name__}). "
                             f"Falling back to the deterministic analyser._\n\n" + fb["answer"])
             fb["llm_error"] = type(e).__name__
@@ -276,8 +343,34 @@ def run_chat(user_message: str, history: Optional[List[Dict]] = None,
         if not calls:
             if not trace:
                 log.warning("LLM returned without grounding tool; using deterministic fallback")
-                return fallback_answer(user_message, trace, context_note)
-            return dict(answer=out.get("content", "").strip(), tool_trace=trace,
+                return fallback_answer(user_message, trace, context_note, ctx)
+            answer = out.get("content", "").strip()
+            check = validate_answer(answer, ctx, trace)
+            if not check["ok"] and not corrected:
+                # One bounded corrective attempt, then an accurate partial answer.
+                corrected = True
+                log.warning("answer validation failed: %s", "; ".join(check["problems"]))
+                messages.append({"role": "system", "content":
+                                 "The drafted answer failed validation: "
+                                 + "; ".join(check["problems"])
+                                 + ". Answer only about the resolved event, using the tool "
+                                   "results already returned. Do not mention another game."})
+                continue
+            if not check["ok"]:
+                return dict(answer=_event_header(ctx) + answer
+                            + "\n\n_Partial answer: this response could not be validated "
+                              "against the resolved game (" + "; ".join(check["problems"])
+                            + "). Treat the game-specific details above with caution._",
+                            tool_trace=trace, provider=p.name,
+                            model=getattr(p, "model", None), validation=check,
+                            elapsed_s=round(time.time() - started, 2))
+            # Only an answer that is actually about one game gets the matchup header;
+            # "are the providers up?" is not an event-specific question.
+            event_specific = any(t.get("tool") in EVENT_SCOPED for t in trace)
+            res_name = ((ctx or {}).get("resolution") or {}).get("event", {}).get("name", "")
+            if event_specific and res_name and res_name.lower() not in answer.lower():
+                answer = _event_header(ctx) + answer
+            return dict(answer=answer, tool_trace=trace, validation=check,
                         provider=p.name, model=getattr(p, "model", None),
                         elapsed_s=round(time.time() - started, 2))
         messages.append({"role": "assistant", "content": out.get("content") or None,
@@ -286,7 +379,7 @@ def run_chat(user_message: str, history: Optional[List[Dict]] = None,
                                                       "arguments": c["arguments"]}}
                                         for c in calls]})
         for c in calls:
-            args = normalize_tool_args(c["name"], parse_args(c["arguments"]), user_message)
+            args = normalize_tool_args(c["name"], parse_args(c["arguments"]), user_message, ctx)
             result = T.call(c["name"], args)
             log.info("LLM tool call tool=%s ok=%s", c["name"], "error" not in result)
             trace.append(dict(tool=c["name"], arguments=args,
@@ -387,21 +480,129 @@ RENDERED_TOOLS = frozenset({
 })
 
 
+def validate_answer(answer: str, ctx: Optional[Dict], trace: List[Dict]) -> Dict:
+    """Check a drafted answer against the validated context before it is shown.
+
+    Narration is allowed to be conversational; it is not allowed to substitute its own
+    event or to present another game's analysis as the answer. Failures are reported,
+    and the caller makes at most one bounded corrective attempt.
+    """
+    problems: List[str] = []
+    res = (ctx or {}).get("resolution") or {}
+    if res.get("state") == "OK" and res.get("event"):
+        ev = res["event"]
+        used = {t.get("arguments", {}).get("event_id") for t in trace
+                if isinstance(t.get("arguments"), dict)}
+        used.discard(None)
+        wrong = {u for u in used if u != res["event_id"]}
+        if wrong:
+            problems.append("a tool ran against an event other than the resolved one")
+        # An answer naming the other team of a different fixture is the visible symptom.
+        others = [e for e in _other_matchups(ctx) if e.lower() in answer.lower()]
+        if others and ev["name"].lower() not in answer.lower():
+            problems.append(f"the answer names {others[0]} but the request resolved to "
+                            f"{ev['name']}")
+    elif res.get("state") in ("AMBIGUOUS", "UNAVAILABLE"):
+        if any(t.get("tool") in EVENT_SCOPED for t in trace):
+            problems.append("an event-scoped tool ran while the event was not resolved")
+    return dict(ok=not problems, problems=problems)
+
+
+def _other_matchups(ctx: Optional[Dict]) -> List[str]:
+    res = (ctx or {}).get("resolution") or {}
+    keep = (res.get("event") or {}).get("name")
+    try:
+        from . import context as C
+        return [e["name"] for e in C._candidates(ctx["now_local"]) if e["name"] != keep]
+    except Exception:  # noqa: BLE001
+        return []
+
+
+def _event_header(ctx: Optional[Dict]) -> str:
+    """Matchup, date, time and timezone, rendered from validated data only."""
+    res = (ctx or {}).get("resolution") or {}
+    ev = res.get("event")
+    if not ev:
+        return ""
+    return (f"**{ev['name']}** - {ev['kickoff_local'].strftime('%A %d %b, %H:%M %Z')}\n\n")
+
+
+def _answer_without_event(ctx: Dict) -> Optional[str]:
+    """Answers that must not reach an event-scoped tool.
+
+    A schedule question needs no betting analysis, an ambiguous slot needs one
+    question rather than a guess, and an unavailable slot must say so instead of
+    analysing a different game.
+    """
+    from . import context as C
+    res = ctx.get("resolution") or {}
+    when = ctx["now_local"].strftime("%A %d %b %Y %H:%M")
+    if res.get("state") == "AMBIGUOUS":
+        alts = res.get("alternatives", [])
+        opts = "\n".join(
+            f"- {a['name']} - "
+            f"{C.local_kickoff(a['kickoff_local']).strftime('%a %d %b %H:%M %Z')}"
+            for a in alts[:12])
+        if ctx.get("task") == "schedule":
+            # A slate question wants the slate, not a disambiguation prompt.
+            return f"{len(alts)} NFL games ({ctx['timezone']}):\n\n{opts}"
+        return (f"{res['reason']} ({ctx['timezone']}). Which one do you mean?\n\n{opts}")
+    if res.get("state") == "UNAVAILABLE":
+        alts = res.get("alternatives") or []
+        nxt = ""
+        if alts:
+            nxt = "\n\nNext scheduled:\n" + "\n".join(
+                f"- {a['name']} - "
+                f"{C.local_kickoff(a['kickoff_local']).strftime('%a %d %b %H:%M %Z')}"
+                for a in alts[:5])
+        return f"{res['reason'].capitalize()} (checked {when} {ctx['timezone']}).{nxt}"
+    if ctx.get("task") == "schedule" and res.get("state") == "OK":
+        ev = res["event"]
+        return (f"{_event_header(ctx)}Kickoff is "
+                f"{ev['kickoff_local'].strftime('%A %d %B at %H:%M %Z')}. "
+                f"Current time {when} {ctx['timezone']}.")
+    return None
+
+
 def fallback_answer(user_message: str, trace: List[Dict],
-                    context_note: Optional[str] = None) -> Dict:
+                    context_note: Optional[str] = None,
+                    ctx: Optional[Dict] = None) -> Dict:
     """Deterministic answer path used when no LLM key is configured."""
     tool, args = _route(user_message)
+    # Only a request that genuinely needs one specific game is blocked on event
+    # resolution. Slate-wide tools (best bets, parlays, watchlist) scan every game and
+    # must still run when one particular day happens to be empty.
+    if ctx and (tool in EVENT_SCOPED or ctx.get("task") == "schedule"):
+        answered = _answer_without_event(ctx)
+        if answered:
+            res = ctx.get("resolution") or {}
+            # The resolution itself is the grounding step here, so it is recorded:
+            # every displayed answer must be attributable to a tool result or to a
+            # deterministic application step, never to unsourced narration.
+            trace.append(dict(tool="resolve_event", ok=res.get("state") == "OK",
+                              arguments=dict(day=(ctx.get("day_constraint") or {}).get("label"),
+                                             teams=ctx.get("teams") or [],
+                                             timezone=ctx.get("timezone")),
+                              result_preview=json.dumps(
+                                  dict(state=res.get("state"), event_id=res.get("event_id"),
+                                       reason=res.get("reason"),
+                                       reasons=res.get("reasons")), default=str)[:400]))
+            return dict(answer=answered, tool_trace=trace, provider="deterministic-router",
+                        model=None, event_state=res.get("state"))
     # The UI supplies an explicit event context. Keep ambiguous "this game"
     # questions scoped to that event instead of silently answering slate-wide.
-    match = re.search(r"event id ([^\s.]+)", context_note or "")
-    if context_note and tool == "find_best_bets" and re.search(r"\b(this|the) game\b", user_message.lower()):
-        if match:
-            tool, args = "run_game_analysis", {"query": match.group(1)}
-    # Prop tools take an event_id of their own. Without this the selected game was
-    # dropped and the answer silently described whichever game _resolve_event picked.
-    elif match and tool in ("analyze_td_scorers", "find_best_player_props",
-                            "analyze_player_prop", "get_player_props"):
-        args = dict(args, event_id=match.group(1))
+    resolved = ((ctx or {}).get("resolution") or {}).get("event_id")
+    if not resolved:
+        m = re.search(r"event id ([^\s.]+)", context_note or "")
+        resolved = m.group(1) if m else None
+    if resolved and tool == "find_best_bets" and re.search(r"\b(this|the) game\b",
+                                                           user_message.lower()):
+        tool, args = "run_game_analysis", {"query": resolved}
+    args = normalize_tool_args(tool, args, user_message, ctx)
+    if resolved and EVENT_SCOPED.get(tool):
+        # Pin from the resolved id itself, not only via ctx: if context building failed
+        # the selected game must still not be dropped in favour of the next kickoff.
+        args = dict(args, **{EVENT_SCOPED[tool]: resolved})
     result = T.call(tool, args)
     trace.append(dict(tool=tool, arguments=args, ok="error" not in result,
                       result_preview=json.dumps(result, default=str)[:400]))

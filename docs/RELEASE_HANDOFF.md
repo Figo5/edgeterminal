@@ -120,9 +120,99 @@ These are distinct and are reported separately, never merged:
 Either one alone leaves the row NOT RECOMMENDABLE with its verified price still visible.
 No threshold was lowered and no new model was introduced during closeout.
 
+## Chat/research reliability pass
+
+**Root causes of the wrong-game answer** (all four had to be fixed; any one alone
+reproduced it):
+1. No date, weekday or timezone handling existed anywhere in the application, and no
+   timezone was configured. "Thursday night" had no resolution path at all.
+2. The chat note told the model to "resolve ambiguous references to this event" with no
+   precedence rule, so an explicit day lost to whatever the UI had selected.
+3. `normalize_tool_args` validated only `find_best_bets`; a model-supplied `event_id`
+   reached the provider unchecked.
+4. There was no schedule tool, so the model could not ask which game fell on a day.
+
+Kickoffs are stored in UTC and a Thursday-night game carries **Friday's** UTC date
+(`2026-09-18T00:15Z` = Thu 17 Sep 20:15 EDT), so any UTC-date comparison is wrong.
+
+**Central change.** `edgeterminal/agents/context.py` builds one validated context per
+turn (task, market, teams, day constraint, local now, selected event, conversation
+event) and resolves the event deterministically in `settings.timezone`
+(`TIMEZONE`, default America/New_York). Authority order: explicit day/team, then the
+selected UI event, then conversation context. An event is never chosen for being first
+in the database, first with props, already played, or a demo fixture; duplicate
+feed rows for one fixture are collapsed. Ambiguous slots ask one question; empty slots
+say so and list the next games. `enforce_event_scope` pins every event-scoped tool to
+the resolved id and logs any id the model proposed instead. `get_schedule` was added so
+day questions are answered from the schedule rather than inferred.
+
+`validate_answer` checks the drafted answer against the resolved event before display,
+makes at most one bounded corrective attempt, then returns a flagged partial answer
+rather than a confidently wrong one. The matchup/date/time/timezone header is rendered
+from validated data, not narration.
+
+**Research honesty.** Search backends return no publication date, so every result
+previously scored the neutral weight and was labelled "recent" -- letting a Week 1
+article read as current workload confirmation. Undated sources are now their own class
+(`undated`): usable as background, never as current-role evidence.
+
+**Two further defects found while auditing the above.** Both were in the *degraded*
+paths, which is why the mocked happy-path tests did not catch them, and both restored
+the original wrong-game behaviour:
+
+5. `run_chat` dropped the validated context on its two degraded exits — the provider
+   raising, and the model replying with no grounding tool call. Both called
+   `fallback_answer(...)` without `ctx`, so the deterministic router fell back to the
+   old "event id" note regex. An OpenAI outage on a "Thursday night" question therefore
+   reproduced the exact defect this pass exists to fix. Both now pass `ctx`.
+6. In `fallback_answer` the refactor computed the note-derived event id but then applied
+   it only through `normalize_tool_args(..., ctx)`, which is a no-op when `ctx` is
+   absent. So whenever context building failed, the selected game was silently dropped
+   and `_resolve_event(None)` picked the next kickoff instead — a wrong game, chosen for
+   being next on the schedule. The id is now pinned from the resolved value itself,
+   independently of `ctx`.
+
+Fixing (5) exposed a missing invariant: the unresolved-event early return produced a
+displayed answer with an empty `tool_trace`, i.e. an answer attributable to nothing. The
+event resolution is now recorded as a `resolve_event` trace entry, so every displayed
+answer traces to a tool result or a named deterministic step.
+
+**Verification.** `tests/test_chat_conversations.py` drives 23 whole turns covering the
+Sunday/Thursday conflict, the UTC-date trap, empty slots, ambiguity, "this game",
+market-only and game-switching follow-ups, stale history, blocked model event ids,
+research failure, prices-without-pick, undated research, the resolved event with no
+posted props, event-keyed analysis caching, and the two degraded paths above. The OpenAI
+orchestration path is covered with a mocked client, separately from the deterministic
+router. The two regression tests for (5) and (6) were each confirmed to fail with the
+fix reverted, so they discriminate rather than merely pass.
+Full suite: 212 passing.
+
+**Live verification (this pass).** The original failing turn was replayed through the
+real endpoint with the *real* frontend payload shape (`message` + last-8 `history` +
+`event_id`), with Las Vegas Raiders @ Los Angeles Chargers selected, asking
+"whos gonna score a touchdown on the thursday night game":
+
+- resolved to **Detroit Lions @ Buffalo Bills, Thu 17 Sep 20:15 EDT** (stored
+  `2026-09-18T00:15Z` — Friday's UTC date), `source=explicit-request`
+- the single tool call ran against that event id, not the selected one
+- `validation: {ok: true}`; header rendered from validated data
+- prices shown with no Official Pick (PASS), market favourite kept separate from the
+  experimental model, and each implied probability matched its own quote
+  (-275 -> 73.3%, -150 -> 60.0%, +120 -> 45.5%, +185 -> 35.1%)
+
+Cost: **2 OpenAI requests, 0 Odds credits** (the props board was served from a snapshot
+captured 21 minutes earlier), **<=1 paid web search**.
+
+**Browser check not performed.** The Claude-in-Chrome extension is not connected in this
+environment, so no rendered-DOM check was made. Verified instead at the contract level:
+`/`, `/static/app.js`, `/static/style.css`, `/api/config`, `/api/dashboard?sport=NFL`,
+`/api/slate`, `/api/providers`, `/api/event/{id}` and `/api/chat` all 200, `node --check`
+passes on `app.js`, and the chat payload the UI sends was read out of `app.js` and
+reproduced exactly. A visual UI regression would not be caught by this.
+
 ## Verification
 ```
-.venv/bin/python -m pytest -q                 # 172 passed
+.venv/bin/python -m pytest -q                 # 212 passed
 .venv/bin/python -m compileall -q edgeterminal tools
 node --check edgeterminal/web/app.js
 bash -n tools/edgeterminal.sh
@@ -160,9 +250,17 @@ and persistence across a real terminal close is therefore unverified.
    nflverse coverage is ~2 weeks). It reads high on longshots.
 3. Name collisions still resolve on name similarity, not roster ids; such rows are capped
    at LEAN and ambiguous names are excluded.
-4. The LLM narration path was only exercised against a stale server, so its behaviour
-   against the corrected board is **unverified** (OpenAI budget was already exceeded).
-   The deterministic no-key path was verified end to end and is the authority.
+4. The LLM narration path is now verified against the corrected board for **one** live
+   turn (see "Live verification" above): correct event, validated header, prices without
+   a pick, and each implied probability matching its own quote. One turn is not coverage
+   of the narration path — the deterministic no-key path remains the authority, and the
+   mocked suite is what guards the invariants.
 5. Always confirm with `./tools/edgeterminal.sh status` that the serving pid is current
    after pulling changes; an adopted older process serves older code until `restart`.
 6. Persistence across terminal close is unverified (see above).
+
+7. No rendered-DOM browser check was possible in this environment (see above), so a
+   purely visual UI regression would not have been caught.
+8. Event resolution reads whatever schedule is already stored. If the events table is
+   stale, "Thursday night" resolves correctly against stale data and will be wrong about
+   a rescheduled game; `get_schedule`/`resolve_event` do not force a refresh.

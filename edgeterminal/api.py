@@ -337,14 +337,17 @@ def close_lines(event_id: str) -> Dict:
 
 @app.post("/api/chat")
 def chat(body: ChatBody) -> Dict:
+    # The selected event is context, not an instruction: an explicit day or team in the
+    # message outranks it. Precedence is decided in agents.context, not in prose here.
     note = None
     if body.event_id:
         ev = db.q1("SELECT name, sport FROM events WHERE id=?", (body.event_id,))
         if ev:
             note = (f"The user is currently viewing {ev['name']} ({ev['sport']}), event id "
-                    f"{body.event_id}. Resolve ambiguous references to this event.")
+                    f"{body.event_id}.")
     try:
-        return llm.run_chat(body.message, body.history, note)
+        return llm.run_chat(body.message, body.history, note,
+                            selected_event_id=body.event_id)
     except Exception as e:  # noqa: BLE001
         log.error("chat failed: %s", type(e).__name__)
         return JSONResponse(status_code=500,

@@ -134,6 +134,15 @@ def freshness(published_at: Optional[float], now: float, topic: str = "general")
 
 
 def relevance_label(published_at: Optional[float], now: float, topic: str = "general") -> str:
+    """Recency class of a claim. An undated page is never called "recent".
+
+    Most search backends return no publication date, so every result previously
+    scored the neutral 0.5 weight and was labelled "recent" -- which let a Week 1
+    article read as confirmation of this week's workload. Undated is its own class:
+    usable as background, never as current-role evidence.
+    """
+    if published_at is None:
+        return "undated"
     weight = freshness(published_at, now, topic=topic)
     if weight >= 0.75:
         return "current"

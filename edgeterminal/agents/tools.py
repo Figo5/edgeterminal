@@ -265,6 +265,35 @@ def _props(event_id: str, **kw) -> Dict:
     return propsmod.analyze_props(event_id, **kw)
 
 
+def get_schedule(day: Optional[str] = None, team: Optional[str] = None,
+                 limit: int = 16) -> Dict:
+    """Upcoming NFL games in the configured timezone, optionally for one day/team.
+
+    The model previously had no way to ask which game falls on a given day, so it
+    inferred one from whatever event happened to be selected.
+    """
+    from . import context as C
+    now_local = C.local_now()
+    events = C._candidates(now_local)
+    constraint = C._day_constraint(day or "", now_local) if day else None
+    rows = []
+    for ev in events:
+        if constraint and not C._matches_day(ev, constraint, now_local):
+            continue
+        if team and team.lower() not in f"{ev['home_team']} {ev['away_team']}".lower():
+            continue
+        rows.append(dict(event_id=ev["id"], name=ev["name"],
+                         home_team=ev["home_team"], away_team=ev["away_team"],
+                         kickoff_local=ev["kickoff_local"].strftime("%a %d %b %Y %H:%M %Z"),
+                         kickoff_utc=ev["start_time"]))
+    return dict(timezone=settings.timezone,
+                now_local=now_local.strftime("%a %d %b %Y %H:%M %Z"),
+                requested_day=(constraint or {}).get("label") if constraint else None,
+                count=len(rows), games=rows[:limit],
+                note=("Kickoffs are shown in the configured timezone. A Thursday-night "
+                      "game is stored with the next day's UTC date."))
+
+
 def _resolve_event(event_id: Optional[str]) -> Optional[str]:
     """Explicit event first, otherwise the next NFL game that has not kicked off.
 
@@ -521,6 +550,7 @@ REGISTRY: Dict[str, Callable[..., Dict]] = {
     "search_web": search_web, "get_provider_status": get_provider_status,
     "get_player_props": get_player_props, "get_player_usage": get_player_usage,
     "search_player_context": search_player_context,
+    "get_schedule": get_schedule,
     "analyze_td_scorers": analyze_td_scorers, "analyze_player_prop": analyze_player_prop,
     "find_best_player_props": find_best_player_props,
 }
@@ -536,6 +566,14 @@ def _p(required=(), **props):
 SPORT_ENUM = {"type": "string", "enum": ["NFL"]}
 
 SCHEMAS: List[Dict] = [
+    dict(name="get_schedule", description=(
+        "Upcoming NFL games with kickoff in the configured timezone. Use this for any "
+        "question about when a game is, or which game falls on a day such as tonight, "
+        "tomorrow, Thursday night, this weekend or next week. Kickoffs are stored in UTC "
+        "and a Thursday-night game carries the next day's UTC date, so never infer the "
+        "day yourself."),
+         parameters=_p(day={"type": "string"}, team={"type": "string"},
+                       limit={"type": "integer"})),
     dict(name="list_events", description="List stored events/slate with their best primary market prices.",
          parameters=_p(sport=SPORT_ENUM, limit={"type": "integer"})),
     dict(name="get_event", description="Resolve a fuzzy team/game name to a stored event.",
