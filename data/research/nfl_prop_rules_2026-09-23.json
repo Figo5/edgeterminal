@@ -44,7 +44,7 @@
     },
     "bovada": {
       "jurisdiction": "Bovada ordinary Football Props; Prop Builder product has conflicting participation requirement",
-      "source_urls": ["https://www.bovada.lv/help/common-faq/football-betting-rules", "https://www.bovada.lv/help/sports-faq/prop-builder-faq"],
+      "source_urls": ["https://www.bovada.lv/help/common-faq/football-betting-rules", "https://www.bovada.lv/help/sports-faq/prop-builder-faq", "https://www.bovada.lv/help/sports-faq/general-betting-rules"],
       "inactive": "void_if_not_active_roster", "active_zero": "conditional_product_type",
       "leaves_early": "action_if_active_roster", "postponed": "pending_then_conditional_48h",
       "canceled": "void_conditional", "suspended": "pending_then_conditional_50min",

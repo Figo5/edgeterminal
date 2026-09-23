@@ -8,3 +8,4 @@
 - ESPN brand notice: https://support.espn.com/hc/en-us/articles/19990992084116-What-is-ESPN-BET — ESPN BET became theScore Bet on 2025-12-01. Current ESPN BET feed label requires identity clarification.
 - Bovada Football Betting Rules: https://www.bovada.lv/help/common-faq/football-betting-rules — game-day active roster required; active nonparticipants have action; injuries after kickoff stand; NFL postponed games played within 48 hours stand; 50 minutes for game action.
 - Bovada Prop Builder FAQ: https://www.bovada.lv/help/sports-faq/prop-builder-faq — single football props in Prop Builder void if no official NFL Game Book participation, regardless of active status. Product-specific exception.
+- Bovada General Sports Betting Rules: https://www.bovada.lv/help/sports-faq/general-betting-rules — general push and no-action treatment, subject to football-specific rules.
