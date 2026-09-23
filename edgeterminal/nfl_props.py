@@ -31,7 +31,8 @@ STAT_MARKETS = {
     "receiving_receptions": "receptions",
     "receiving_yards": "receiving_yards",
 }
-INACTIVE = {"STATUS_POSTPONED", "STATUS_CANCELED", "STATUS_CANCELLED", "STATUS_FINAL"}
+INACTIVE = {"STATUS_POSTPONED", "STATUS_CANCELED", "STATUS_CANCELLED", "STATUS_FINAL",
+            "POSTPONED", "CANCELED", "CANCELLED", "FINAL"}
 QUOTE_COLUMNS = (
     "batch_id", "canonical_game_id", "provider_event_id", "player_id",
     "provider_player_id", "player_name", "team", "opponent", "market",
@@ -83,7 +84,10 @@ def _team(event: dict, side: str) -> str | None:
 def _event_identity(event: dict) -> dict | None:
     if event.get("leagueID") != "NFL" or not event.get("eventID"):
         return None
-    stamp = event.get("startTime") or (event.get("status") or {}).get("startsAt")
+    status = event.get("status") or {}
+    if not isinstance(status, dict) or status.get("cancelled") is True or status.get("ended") is True:
+        return None
+    stamp = event.get("startTime") or status.get("startsAt")
     home, away = _team(event, "home"), _team(event, "away")
     if not home or not away or home == away or not nfl_identity.kickoff_utc(stamp):
         return None

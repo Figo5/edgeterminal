@@ -101,6 +101,19 @@ def test_unmapped_event_is_counted_but_never_attached(prop_db):
     assert db.q1("SELECT COUNT(*) n FROM nfl_prop_snapshots")["n"] == 0
 
 
+def test_provider_cancellation_and_local_postponement_cannot_store_quotes(prop_db):
+    payload = fixture()
+    payload["data"][0]["status"]["cancelled"] = True
+    report = nfl_props.capture_week(2026, 4, FixtureProvider(payload), STAMP)
+    assert report["events_seen"] == 1 and report["quotes_stored"] == 0
+    db.upsert_event(dict(id=GAME, sport="NFL", league="NFL", home_team="Houston Texans",
+                         away_team="Buffalo Bills", start_time="2026-10-01T00:15:00Z",
+                         status="POSTPONED", meta={"season": 2026, "season_type": 2, "week": 4}))
+    with pytest.raises(ValueError, match="no canonical, live NFL schedule"):
+        nfl_props.capture_week(2026, 4, FixtureProvider(), STAMP + 60)
+    assert db.q1("SELECT COUNT(*) n FROM nfl_prop_snapshots")["n"] == 0
+
+
 def test_player_name_conflict_and_bad_market_fail_without_new_rows(prop_db):
     nfl_props.capture_week(2026, 4, FixtureProvider(), STAMP)
     payload = fixture()
