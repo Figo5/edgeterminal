@@ -329,7 +329,7 @@ def test_late_source_snapshot_cannot_backfill_registered_prices(frozen):
                "current",snapshot,1))
 
 
-def test_later_research_version_coexists_with_week3_history(frozen):
+def test_future_week_registration_refuses_missing_bundle(frozen):
     week3_sha=register_freeze(frozen["path"])
     first=register_model(week3_sha,"fixture-code-commit",2026,3)
     future=json.loads(frozen["path"].read_text())
@@ -339,9 +339,8 @@ def test_later_research_version_coexists_with_week3_history(frozen):
         frozen["kickoff"]+7*86400,timezone.utc).isoformat()
     next_path=frozen["path"].with_name("forward_2026_week04.json")
     next_path.write_text(json.dumps(future))
-    week4_sha=register_freeze(next_path)
-    second=register_model(week4_sha,"fixture-code-commit",2026,4,
-                          version="linear-2026w04")
-    assert first!=second
-    assert {row["freeze_sha"] for row in model_versions()}=={week3_sha,week4_sha}
+    with pytest.raises(ValueError,match="bundle"):
+        register_freeze(next_path)
+    assert {row["freeze_sha"] for row in model_versions()}=={week3_sha}
     assert db.q1("SELECT freeze_sha FROM nfl_research_freezes WHERE week=3")["freeze_sha"]==week3_sha
+    assert db.q1("SELECT COUNT(*) n FROM nfl_research_freezes WHERE week=4")["n"]==0

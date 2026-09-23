@@ -110,6 +110,15 @@ BEGIN SELECT RAISE(ABORT, 'research freezes are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS nfl_research_freeze_no_delete BEFORE DELETE ON nfl_research_freezes
 BEGIN SELECT RAISE(ABORT, 'research freezes cannot be deleted'); END;
 
+CREATE TABLE IF NOT EXISTS nfl_research_bundle_attestations (
+  freeze_sha TEXT PRIMARY KEY, bundle_id TEXT NOT NULL,
+  manifest_sha256 TEXT NOT NULL, bundle_path TEXT NOT NULL,
+  verified_at REAL NOT NULL);
+CREATE TRIGGER IF NOT EXISTS nfl_research_bundle_no_update BEFORE UPDATE ON nfl_research_bundle_attestations
+BEGIN SELECT RAISE(ABORT, 'research bundle attestations are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_research_bundle_no_delete BEFORE DELETE ON nfl_research_bundle_attestations
+BEGIN SELECT RAISE(ABORT, 'research bundle attestations cannot be deleted'); END;
+
 CREATE TABLE IF NOT EXISTS nfl_research_market_freezes (
   freeze_sha TEXT NOT NULL, game_id TEXT NOT NULL,
   book TEXT NOT NULL, market TEXT NOT NULL, selection TEXT NOT NULL,

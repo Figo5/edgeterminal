@@ -15,6 +15,7 @@ from .integrity import parse_time
 from .market_provenance import closing_observation
 from .providers.espn import EspnEvents
 from .providers.normalize import normalize_book
+from .nfl_repro_bundle import verify_bundle
 
 RESULT_WAIT_S = 4 * 3600
 BUCKETS = ((0, 1), (1, 3), (3, 6), (6, float("inf")))
@@ -149,14 +150,24 @@ def _attest_market(c, digest, stamp):
 def register_freeze(path, now=None):
     payload, digest = _read(path)
     _valid_freeze(payload)
+    future_bundle_required=(payload["season"],payload["week"])>(2026,3)
     row = db.q1("SELECT freeze_sha FROM nfl_research_freezes WHERE season=? AND week=? AND family=?",
                 (payload["season"], payload["week"], payload["family"]))
     if row:
         if row["freeze_sha"] != digest:
             raise ValueError("freeze hash changed after registration")
+        if future_bundle_required:
+            sealed=verify_bundle(path,deep=False)
+            attestation=db.q1("SELECT * FROM nfl_research_bundle_attestations WHERE freeze_sha=?",
+                              (digest,))
+            if (attestation is None or
+                    attestation["manifest_sha256"]!=sealed["manifest_sha256"] or
+                    attestation["bundle_id"]!=sealed["bundle_id"]):
+                raise ValueError("registered research bundle attestation is missing or changed")
         # Registration is the market freeze boundary. A later source snapshot
         # cannot turn a previously missing quote into a retroactive price.
         return digest
+    sealed=verify_bundle(path,deep=True) if future_bundle_required else None
     names = sorted({name for game in payload["games"] for name in game.get("features", {})})
     feature_hash = payload.get("feature_hash") or hashlib.sha256(
         json.dumps([payload["code_sha256"], names], separators=(",", ":")).encode()).hexdigest()
@@ -175,6 +186,10 @@ def register_freeze(path, now=None):
                    payload.get("model_version") or payload["family"], model_hash,
                    payload.get("feature_version") or "feature-names-and-code", feature_hash,
                    payload["training_games"], stamp))
+        if sealed:
+            c.execute("INSERT INTO nfl_research_bundle_attestations VALUES(?,?,?,?,?)",
+                      (digest,sealed["bundle_id"],sealed["manifest_sha256"],
+                       sealed["bundle_path"],stamp))
     return digest
 
 

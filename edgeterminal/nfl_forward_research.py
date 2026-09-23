@@ -18,6 +18,7 @@ from .backtest import _num, load_schedules
 from .config import settings
 from .nfl_baselines import baselines_before
 from .providers.normalize import normalize_team
+from .nfl_repro_bundle import BundleStage, code_commit
 
 
 def _sha(path):
@@ -131,6 +132,13 @@ def freeze(cache, out, season, week, family):
     cache, out = Path(cache), Path(out)
     if out.exists():
         raise FileExistsError(f"immutable research freeze already exists: {out}")
+    commit=code_commit()
+    with BundleStage(cache,out,range(2019,season+1)) as bundle:
+        return _freeze_from_snapshot(bundle,out,season,week,family,commit)
+
+
+def _freeze_from_snapshot(bundle,out,season,week,family,commit):
+    cache=bundle.inputs
     now=time.time()
     schedules=load_schedules(cache)
     targets=[g for g in schedules if _num(g.get("season"))==season
@@ -194,18 +202,20 @@ def freeze(cache, out, season, week, family):
         predictions.append(dict(game_id=source["game_id"],home=home,away=away,
                                 kickoff_et=kickoff,model=predicted,features=features,
                                 frozen_quote=current_quote or _frozen_quote(quote,saved,home,away,now)))
-    inputs={p.name:_sha(p) for p in [cache/"games.csv.gz"]+
-            [cache/f"play_by_play_{s}.csv.gz" for s in range(2019,season+1)]}
+    inputs=bundle.input_hashes
     payload=dict(status="RESEARCH_ONLY",designation="PASS",season=season,week=week,
                  family=family,frozen_at=now,training_games=len(past),games=predictions,
                  source_sha256=inputs,code_sha256=_sha(Path(lab.__file__)),
                  model_version="linear-ridge100-logitC0.1" if family=="linear" else family,
-                 model_hash=_sha(Path(lab.__file__)),
                  feature_version="nfl-research-features-1",
                  feature_hash=hashlib.sha256(json.dumps(lab.FEATURES).encode()).hexdigest(),
                  methodology="all model inputs through prior week; no target outcomes")
-    _write_freeze(out,payload)
-    return dict(path=str(out),games=len(predictions),training_games=len(past),
+    if code_commit()!=commit:
+        raise ValueError("model code commit changed during freeze")
+    seal=bundle.seal(payload,past,fit,lab.FEATURES,lab.GROUPS,commit)
+    return dict(path=str(out),bundle_id=seal["bundle_id"],
+                bundle_manifest_sha256=seal["manifest_sha256"],
+                games=len(predictions),training_games=len(past),
                 quotes=sum(p["frozen_quote"]["home_handicap"] is not None for p in predictions))
 
 

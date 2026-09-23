@@ -72,3 +72,51 @@ No version is promoted by this registry.
 `reports/nfl_model_v2/forward_performance_2026.json` is prospective only.
 Retrospective development results remain separate. Neither report authorizes
 official picks.
+
+## Reproducibility bundles for Week 4 onward
+
+Every new weekly freeze first copies `games.csv.gz` and all 2019-through-current
+season play-by-play archives into a private staging directory. Training reads
+these copies, never the mutable cache paths. The final bundle lives at
+`data/nflverse/forward_bundles/<bundle_id>/`; this directory is excluded from
+Git because the historical archives are roughly 127 MB per weekly bundle.
+Retain and back up the entire directory together with the freeze JSON and
+SQLite attestation. A manifest alone cannot reproduce a model if the copied
+data or serialized estimator is lost.
+
+The bundle format is version 1:
+
+| Artifact | Content |
+| --- | --- |
+| `inputs/*.csv.gz` | Exact raw schedule and play-by-play bytes used for training. |
+| `training_rows.pkl` | Exact derived pre-cutoff training rows. |
+| `estimators.joblib` | Fitted margin, total, and win-probability estimators; its SHA-256 is the future freeze's `model_hash`. Load only from trusted local storage. |
+| `hyperparameters.json` | Each fitted estimator's full `get_params(deep=True)` configuration. |
+| `feature_config.json` | Ordered feature names, groups, numeric type, and feature schema version. |
+| `environment.json` | Python implementation/version, executable, platform, and installed package names/versions. |
+| `code/` | Python source and requirements files as they existed at sealing. A full Git commit SHA is also recorded; relevant uncommitted code refuses a new freeze. |
+| `market.json` | Frozen quote fields plus the exact selected odds rows or immutable source snapshot payload. Missing quotes are recorded as missing. |
+| `predictions.json` | Byte-identical prediction artifact linked to the published weekly freeze. |
+| `manifest.json`, `seal.json` | Per-artifact sizes/SHA-256, cutoff, training count, code commit, model/feature hashes, freeze SHA, and manifest SHA. |
+
+The runner writes and hashes every artifact, checks the sealing time against
+the first kickoff, moves the completed directory into place, makes it read
+only, and only then publishes a separately copied, byte-identical prediction
+file at the public freeze path without replacing any existing file.
+If copying, fitting, serialization, hashing, or pre-kickoff sealing fails, no
+freeze file is published. A sealed but unpublished orphan can remain after a
+late process failure; it is not a valid freeze. Registration of a Week 4 or
+later freeze verifies every artifact and writes an immutable bundle attestation
+in SQLite. A missing or changed bundle is a hard registration error.
+
+Months later, verify the retained bundle with:
+
+```sh
+.venv/bin/python -m edgeterminal.nfl_repro_bundle reports/nfl_model_v2/forward_2026_week04.json
+```
+
+**Week 3 is a permanent legacy limitation.** Its original `games.csv.gz`
+bytes are absent from the local cache, which now has a different SHA-256. Do
+not synthesize those bytes, add a retrospective bundle, or rewrite its freeze,
+hash, market records, or audit trail. The Week 3 predictions and source quote
+snapshots remain verifiable, but an exact input-to-fit replay is unavailable.
