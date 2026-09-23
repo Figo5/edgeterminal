@@ -145,8 +145,7 @@ def refresh(body: RefreshBody) -> Dict:
 # ------------------------------------------------------------------ dashboard
 def _headline(recs: List[Dict]) -> Dict:
     picks = [r for r in recs if r["state"] == "OFFICIAL PICK"]
-    plus = [r for r in picks if r["price"] > 0] or [r for r in recs
-                                                    if r["price"] > 0 and r["edge_pct"] > 0]
+    plus = [r for r in picks if r["price"] > 0]
     by_conf = sorted(recs, key=lambda r: -r["confidence"])
     by_edge = sorted([r for r in recs if r["state"] in ("OFFICIAL PICK", "LEAN", "WATCHLIST")],
                      key=lambda r: -r["edge_pct"])

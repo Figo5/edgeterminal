@@ -1,12 +1,15 @@
 """The research-only policy must survive chat formatting and quote display."""
 from edgeterminal.agents import llm, tools
 from edgeterminal import engine, nfl_market, shadow
-from edgeterminal.api import performance
+from edgeterminal.api import _headline, performance
 from edgeterminal.integrity import parse_time
 from edgeterminal.providers.theoddsapi import TheOddsApi
 
 
 def test_chat_pass_explains_policy_not_a_missing_edge():
+    assert "Forward tracking is underway" in llm.SYSTEM
+    assert "forward shadow grading has not started" not in llm.SYSTEM
+    assert "configured production threshold" not in llm.SYSTEM
     result = llm.format_result("run_game_analysis", {
         "event": "Atlanta Falcons at Green Bay Packers",
         "recommendations": [{"state": "PASS", "reasoning": [
@@ -33,6 +36,14 @@ def test_market_board_exposes_quote_provenance_and_actual_book_count():
     assert board[0]["books_quoted"] == 2
     assert board[0]["captured_at"] == 11.0
     assert board[0]["provider_updated_at"] == 8.0
+
+
+def test_pass_rows_are_not_headlined_as_best_bets():
+    row = dict(state="PASS", price=150, edge_pct=8.0, confidence=75)
+    headline = _headline([row])
+    assert headline["best_bet"] is None
+    assert headline["best_plus_money"] is None
+    assert headline["official_pick_count"] == 0
 
 
 def test_performance_tool_separates_forward_and_historical(monkeypatch):
