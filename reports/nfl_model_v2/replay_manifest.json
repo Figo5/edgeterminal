@@ -1,0 +1,29 @@
+{
+  "generated_at_utc": "2026-09-23T15:37:04.281511+00:00",
+  "base_commit": "cfdd050cd4b8eb434c1aa013ca7e2071e536a949",
+  "python": "3.9.6",
+  "numpy": "2.0.2",
+  "scikit_learn": "1.6.1",
+  "bootstrap_seed": 20260923,
+  "commands": [
+    ".venv/bin/python -m edgeterminal.nfl_research",
+    ".venv/bin/python -m edgeterminal.nfl_forward_research --family linear"
+  ],
+  "sha256": {
+    "data/nflverse/pbp/games.csv.gz": "d05eddee399d1ef3aea535b9502fbae63e5e5ce2b315cd7d9ecb8ccff25942c0",
+    "data/nflverse/pbp/play_by_play_2019.csv.gz": "b764668137052be23745953cbc33fa17e537a70c81e9b73785a19a15e7288216",
+    "data/nflverse/pbp/play_by_play_2020.csv.gz": "bc954b5780e325df4faa255fac092585c981a4de5d2f553a8a4e0a3c8b3a3cf2",
+    "data/nflverse/pbp/play_by_play_2021.csv.gz": "e8743a568f99667a8bdcd29ba12224ee1782ad2b7916bee78ee335c099383739",
+    "data/nflverse/pbp/play_by_play_2022.csv.gz": "0c69a71eb39498956c7b1d5c1ca52ce7fe679934a95d1af249facb5ea9829ea4",
+    "data/nflverse/pbp/play_by_play_2023.csv.gz": "4649804ee0f0a40b41e51ec75a1ce921949d7fab5459213488656b92f78560e8",
+    "data/nflverse/pbp/play_by_play_2024.csv.gz": "23370d5d10f8104d80d46a1fc5e61f4f6f5a3263fe96fe2dd629913cfcb08c06",
+    "data/nflverse/pbp/play_by_play_2025.csv.gz": "2f135887790a013fd004e609e37096bb4816d5cc80b9f19122e1bad478961978",
+    "data/nflverse/forward_2026/games.csv.gz": "a06349d3c8e909847211600e31c86c090d33888fd29104733ea0b365326c64ba",
+    "data/nflverse/forward_2026/play_by_play_2026.csv.gz": "40eef5cb9c1f2c9e0cfc2efaf4050d61c937b0d6457ae6e4b07739ae883b7682",
+    "edgeterminal/nfl_research.py": "f6b70c2445af82930ebe3e7a2b4c65a31d6fe4d8f62d600833933b0c760cbb0b",
+    "edgeterminal/nfl_forward_research.py": "04ac4eb679016b5877379a120edcc890919490944c10e581692056e703a0a6f4",
+    "reports/nfl_model_v2/research_results.json": "891315858ee875c0b69bf8230a9157548bd5e226d38df3ad942b98ea945a991f",
+    "reports/nfl_model_v2/forward_2026_week03.json": "399566baa6ae059d8fac55050ab07201796837a91541000e482dcfa5b1b776d1"
+  },
+  "research_code_commit": "3cf4d8424db3d72d54a27d359f845776c25b18cd"
+}

@@ -1,0 +1,1748 @@
+{
+  "method": "expanding train, refit before every season/week; no same-week data",
+  "features": [
+    "home_field",
+    "rest_diff",
+    "rest_sum",
+    "elo_margin",
+    "rolling_margin",
+    "rolling_total",
+    "off_epa_gap",
+    "def_epa_gap",
+    "adjusted_off_epa_gap",
+    "adjusted_def_epa_gap",
+    "off_success_gap",
+    "def_success_gap",
+    "early_epa_gap",
+    "early_def_epa_gap",
+    "explosive_gap",
+    "explosive_allowed_gap",
+    "sack_allowed_gap",
+    "sack_created_gap",
+    "hit_allowed_gap",
+    "hit_created_gap",
+    "turnover_gap",
+    "qb_epa_gap",
+    "qb_change_gap",
+    "off_epa_sum",
+    "def_epa_sum",
+    "early_epa_sum",
+    "explosive_sum",
+    "games_min",
+    "games_diff",
+    "away_tz_shift",
+    "away_eastbound_tz"
+  ],
+  "groups": {
+    "scores_elo_context": [
+      "home_field",
+      "rest_diff",
+      "rest_sum",
+      "elo_margin",
+      "rolling_margin",
+      "rolling_total",
+      "games_min",
+      "games_diff",
+      "away_tz_shift",
+      "away_eastbound_tz"
+    ],
+    "epa_success_adjusted": [
+      "off_epa_gap",
+      "def_epa_gap",
+      "adjusted_off_epa_gap",
+      "adjusted_def_epa_gap",
+      "off_success_gap",
+      "def_success_gap",
+      "off_epa_sum",
+      "def_epa_sum",
+      "early_epa_sum",
+      "explosive_sum"
+    ],
+    "early_explosive": [
+      "early_epa_gap",
+      "early_def_epa_gap",
+      "explosive_gap",
+      "explosive_allowed_gap"
+    ],
+    "pressure_turnover": [
+      "sack_allowed_gap",
+      "sack_created_gap",
+      "hit_allowed_gap",
+      "hit_created_gap",
+      "turnover_gap"
+    ],
+    "qb_history": [
+      "qb_epa_gap",
+      "qb_change_gap"
+    ]
+  },
+  "by_season": {
+    "2023": {
+      "boosted": {
+        "n": 272,
+        "margin_mae": 10.3648,
+        "total_mae": 10.7149,
+        "brier": 0.230742,
+        "win_n": 272,
+        "ats": {
+          "n": 258,
+          "wins": 128,
+          "hit_rate": 0.4961,
+          "bootstrap_ci95": [
+            0.4302,
+            0.5581
+          ]
+        },
+        "totals": {
+          "n": 270,
+          "wins": 138,
+          "hit_rate": 0.5111,
+          "bootstrap_ci95": [
+            0.4556,
+            0.5704
+          ]
+        }
+      },
+      "elo": {
+        "n": 272,
+        "margin_mae": 10.6183,
+        "total_mae": 10.7206,
+        "brier": 0.235196,
+        "win_n": 272,
+        "ats": {
+          "n": 258,
+          "wins": 121,
+          "hit_rate": 0.469,
+          "bootstrap_ci95": [
+            0.4109,
+            0.531
+          ]
+        },
+        "totals": {
+          "n": 259,
+          "wins": 131,
+          "hit_rate": 0.5058,
+          "bootstrap_ci95": [
+            0.444,
+            0.5676
+          ]
+        }
+      },
+      "ensemble": {
+        "n": 272,
+        "margin_mae": 10.2698,
+        "total_mae": 10.5809,
+        "brier": 0.232078,
+        "win_n": 272,
+        "ats": {
+          "n": 258,
+          "wins": 123,
+          "hit_rate": 0.4767,
+          "bootstrap_ci95": [
+            0.4147,
+            0.5388
+          ]
+        },
+        "totals": {
+          "n": 270,
+          "wins": 145,
+          "hit_rate": 0.537,
+          "bootstrap_ci95": [
+            0.4778,
+            0.5926
+          ]
+        }
+      },
+      "home_league": {
+        "n": 272,
+        "margin_mae": 11.1018,
+        "total_mae": 10.7206,
+        "brier": 0.246737,
+        "win_n": 272,
+        "ats": {
+          "n": 258,
+          "wins": 123,
+          "hit_rate": 0.4767,
+          "bootstrap_ci95": [
+            0.4186,
+            0.5349
+          ]
+        },
+        "totals": {
+          "n": 259,
+          "wins": 131,
+          "hit_rate": 0.5058,
+          "bootstrap_ci95": [
+            0.444,
+            0.5676
+          ]
+        }
+      },
+      "linear": {
+        "n": 272,
+        "margin_mae": 10.2575,
+        "total_mae": 10.549,
+        "brier": 0.23708,
+        "win_n": 272,
+        "ats": {
+          "n": 258,
+          "wins": 126,
+          "hit_rate": 0.4884,
+          "bootstrap_ci95": [
+            0.4302,
+            0.5504
+          ]
+        },
+        "totals": {
+          "n": 270,
+          "wins": 142,
+          "hit_rate": 0.5259,
+          "bootstrap_ci95": [
+            0.4667,
+            0.5852
+          ]
+        }
+      },
+      "market_close": {
+        "n": 272,
+        "margin_mae": 9.9007,
+        "total_mae": 10.239,
+        "brier": 0.21871,
+        "win_n": 272,
+        "ats": {
+          "n": 0,
+          "wins": 0,
+          "hit_rate": null,
+          "bootstrap_ci95": null
+        },
+        "totals": {
+          "n": 0,
+          "wins": 0,
+          "hit_rate": null,
+          "bootstrap_ci95": null
+        }
+      },
+      "rich_elo": {
+        "n": 272,
+        "margin_mae": 10.5788,
+        "total_mae": 10.4917,
+        "brier": 0.232997,
+        "win_n": 272,
+        "ats": {
+          "n": 258,
+          "wins": 111,
+          "hit_rate": 0.4302,
+          "bootstrap_ci95": [
+            0.3682,
+            0.4884
+          ]
+        },
+        "totals": {
+          "n": 269,
+          "wins": 143,
+          "hit_rate": 0.5316,
+          "bootstrap_ci95": [
+            0.4721,
+            0.5911
+          ]
+        }
+      },
+      "rolling": {
+        "n": 272,
+        "margin_mae": 10.5042,
+        "total_mae": 10.4917,
+        "brier": 0.231842,
+        "win_n": 272,
+        "ats": {
+          "n": 258,
+          "wins": 121,
+          "hit_rate": 0.469,
+          "bootstrap_ci95": [
+            0.407,
+            0.5271
+          ]
+        },
+        "totals": {
+          "n": 269,
+          "wins": 143,
+          "hit_rate": 0.5316,
+          "bootstrap_ci95": [
+            0.4721,
+            0.5911
+          ]
+        }
+      }
+    },
+    "2024": {
+      "boosted": {
+        "n": 272,
+        "margin_mae": 10.2459,
+        "total_mae": 10.0923,
+        "brier": 0.217932,
+        "win_n": 272,
+        "ats": {
+          "n": 268,
+          "wins": 133,
+          "hit_rate": 0.4963,
+          "bootstrap_ci95": [
+            0.4366,
+            0.556
+          ]
+        },
+        "totals": {
+          "n": 269,
+          "wins": 142,
+          "hit_rate": 0.5279,
+          "bootstrap_ci95": [
+            0.4684,
+            0.5874
+          ]
+        }
+      },
+      "elo": {
+        "n": 272,
+        "margin_mae": 10.4321,
+        "total_mae": 10.0956,
+        "brier": 0.222955,
+        "win_n": 272,
+        "ats": {
+          "n": 268,
+          "wins": 132,
+          "hit_rate": 0.4925,
+          "bootstrap_ci95": [
+            0.4328,
+            0.5522
+          ]
+        },
+        "totals": {
+          "n": 261,
+          "wins": 129,
+          "hit_rate": 0.4943,
+          "bootstrap_ci95": [
+            0.433,
+            0.5556
+          ]
+        }
+      },
+      "ensemble": {
+        "n": 272,
+        "margin_mae": 10.1002,
+        "total_mae": 10.0086,
+        "brier": 0.215112,
+        "win_n": 272,
+        "ats": {
+          "n": 268,
+          "wins": 139,
+          "hit_rate": 0.5187,
+          "bootstrap_ci95": [
+            0.459,
+            0.5784
+          ]
+        },
+        "totals": {
+          "n": 269,
+          "wins": 136,
+          "hit_rate": 0.5056,
+          "bootstrap_ci95": [
+            0.4424,
+            0.5651
+          ]
+        }
+      },
+      "home_league": {
+        "n": 272,
+        "margin_mae": 11.1379,
+        "total_mae": 10.0956,
+        "brier": 0.250128,
+        "win_n": 272,
+        "ats": {
+          "n": 268,
+          "wins": 129,
+          "hit_rate": 0.4813,
+          "bootstrap_ci95": [
+            0.4216,
+            0.541
+          ]
+        },
+        "totals": {
+          "n": 261,
+          "wins": 129,
+          "hit_rate": 0.4943,
+          "bootstrap_ci95": [
+            0.433,
+            0.5556
+          ]
+        }
+      },
+      "linear": {
+        "n": 272,
+        "margin_mae": 10.0293,
+        "total_mae": 10.0042,
+        "brier": 0.215127,
+        "win_n": 272,
+        "ats": {
+          "n": 268,
+          "wins": 141,
+          "hit_rate": 0.5261,
+          "bootstrap_ci95": [
+            0.4701,
+            0.5858
+          ]
+        },
+        "totals": {
+          "n": 269,
+          "wins": 137,
+          "hit_rate": 0.5093,
+          "bootstrap_ci95": [
+            0.4498,
+            0.5688
+          ]
+        }
+      },
+      "market_close": {
+        "n": 272,
+        "margin_mae": 9.6103,
+        "total_mae": 9.7298,
+        "brier": 0.200162,
+        "win_n": 272,
+        "ats": {
+          "n": 0,
+          "wins": 0,
+          "hit_rate": null,
+          "bootstrap_ci95": null
+        },
+        "totals": {
+          "n": 0,
+          "wins": 0,
+          "hit_rate": null,
+          "bootstrap_ci95": null
+        }
+      },
+      "rich_elo": {
+        "n": 272,
+        "margin_mae": 10.3636,
+        "total_mae": 9.9666,
+        "brier": 0.21991,
+        "win_n": 272,
+        "ats": {
+          "n": 268,
+          "wins": 131,
+          "hit_rate": 0.4888,
+          "bootstrap_ci95": [
+            0.4254,
+            0.5485
+          ]
+        },
+        "totals": {
+          "n": 269,
+          "wins": 145,
+          "hit_rate": 0.539,
+          "bootstrap_ci95": [
+            0.4833,
+            0.5985
+          ]
+        }
+      },
+      "rolling": {
+        "n": 272,
+        "margin_mae": 10.4779,
+        "total_mae": 9.9666,
+        "brier": 0.231223,
+        "win_n": 272,
+        "ats": {
+          "n": 268,
+          "wins": 127,
+          "hit_rate": 0.4739,
+          "bootstrap_ci95": [
+            0.4104,
+            0.5336
+          ]
+        },
+        "totals": {
+          "n": 269,
+          "wins": 145,
+          "hit_rate": 0.539,
+          "bootstrap_ci95": [
+            0.4833,
+            0.5985
+          ]
+        }
+      }
+    },
+    "2025": {
+      "boosted": {
+        "n": 272,
+        "margin_mae": 10.3724,
+        "total_mae": 10.7905,
+        "brier": 0.229023,
+        "win_n": 271,
+        "ats": {
+          "n": 271,
+          "wins": 127,
+          "hit_rate": 0.4686,
+          "bootstrap_ci95": [
+            0.4096,
+            0.5277
+          ]
+        },
+        "totals": {
+          "n": 272,
+          "wins": 138,
+          "hit_rate": 0.5074,
+          "bootstrap_ci95": [
+            0.4485,
+            0.5699
+          ]
+        }
+      },
+      "elo": {
+        "n": 272,
+        "margin_mae": 10.4086,
+        "total_mae": 11.0184,
+        "brier": 0.228545,
+        "win_n": 271,
+        "ats": {
+          "n": 271,
+          "wins": 141,
+          "hit_rate": 0.5203,
+          "bootstrap_ci95": [
+            0.4613,
+            0.5793
+          ]
+        },
+        "totals": {
+          "n": 272,
+          "wins": 137,
+          "hit_rate": 0.5037,
+          "bootstrap_ci95": [
+            0.4449,
+            0.5625
+          ]
+        }
+      },
+      "ensemble": {
+        "n": 272,
+        "margin_mae": 10.3033,
+        "total_mae": 10.7177,
+        "brier": 0.227731,
+        "win_n": 271,
+        "ats": {
+          "n": 271,
+          "wins": 127,
+          "hit_rate": 0.4686,
+          "bootstrap_ci95": [
+            0.4133,
+            0.5277
+          ]
+        },
+        "totals": {
+          "n": 272,
+          "wins": 142,
+          "hit_rate": 0.5221,
+          "bootstrap_ci95": [
+            0.4632,
+            0.5846
+          ]
+        }
+      },
+      "home_league": {
+        "n": 272,
+        "margin_mae": 11.0629,
+        "total_mae": 11.0184,
+        "brier": 0.248776,
+        "win_n": 271,
+        "ats": {
+          "n": 271,
+          "wins": 136,
+          "hit_rate": 0.5018,
+          "bootstrap_ci95": [
+            0.4428,
+            0.5609
+          ]
+        },
+        "totals": {
+          "n": 272,
+          "wins": 137,
+          "hit_rate": 0.5037,
+          "bootstrap_ci95": [
+            0.4449,
+            0.5625
+          ]
+        }
+      },
+      "linear": {
+        "n": 272,
+        "margin_mae": 10.3179,
+        "total_mae": 10.6725,
+        "brier": 0.229599,
+        "win_n": 271,
+        "ats": {
+          "n": 271,
+          "wins": 130,
+          "hit_rate": 0.4797,
+          "bootstrap_ci95": [
+            0.4207,
+            0.5387
+          ]
+        },
+        "totals": {
+          "n": 272,
+          "wins": 144,
+          "hit_rate": 0.5294,
+          "bootstrap_ci95": [
+            0.4706,
+            0.5882
+          ]
+        }
+      },
+      "market_close": {
+        "n": 272,
+        "margin_mae": 9.7224,
+        "total_mae": 10.3934,
+        "brier": 0.212139,
+        "win_n": 271,
+        "ats": {
+          "n": 0,
+          "wins": 0,
+          "hit_rate": null,
+          "bootstrap_ci95": null
+        },
+        "totals": {
+          "n": 0,
+          "wins": 0,
+          "hit_rate": null,
+          "bootstrap_ci95": null
+        }
+      },
+      "rich_elo": {
+        "n": 272,
+        "margin_mae": 10.4451,
+        "total_mae": 10.6988,
+        "brier": 0.228968,
+        "win_n": 271,
+        "ats": {
+          "n": 271,
+          "wins": 134,
+          "hit_rate": 0.4945,
+          "bootstrap_ci95": [
+            0.4317,
+            0.5535
+          ]
+        },
+        "totals": {
+          "n": 269,
+          "wins": 127,
+          "hit_rate": 0.4721,
+          "bootstrap_ci95": [
+            0.4126,
+            0.5316
+          ]
+        }
+      },
+      "rolling": {
+        "n": 272,
+        "margin_mae": 10.3749,
+        "total_mae": 10.6988,
+        "brier": 0.226585,
+        "win_n": 271,
+        "ats": {
+          "n": 271,
+          "wins": 141,
+          "hit_rate": 0.5203,
+          "bootstrap_ci95": [
+            0.4613,
+            0.5793
+          ]
+        },
+        "totals": {
+          "n": 269,
+          "wins": 127,
+          "hit_rate": 0.4721,
+          "bootstrap_ci95": [
+            0.4126,
+            0.5316
+          ]
+        }
+      }
+    }
+  },
+  "pooled": {
+    "boosted": {
+      "n": 816,
+      "margin_mae": 10.3277,
+      "total_mae": 10.5326,
+      "brier": 0.225895,
+      "win_n": 815,
+      "ats": {
+        "n": 797,
+        "wins": 388,
+        "hit_rate": 0.4868,
+        "bootstrap_ci95": [
+          0.4504,
+          0.5207
+        ]
+      },
+      "totals": {
+        "n": 811,
+        "wins": 418,
+        "hit_rate": 0.5154,
+        "bootstrap_ci95": [
+          0.4809,
+          0.5512
+        ]
+      }
+    },
+    "elo": {
+      "n": 816,
+      "margin_mae": 10.4863,
+      "total_mae": 10.6115,
+      "brier": 0.228899,
+      "win_n": 815,
+      "ats": {
+        "n": 797,
+        "wins": 394,
+        "hit_rate": 0.4944,
+        "bootstrap_ci95": [
+          0.4592,
+          0.5295
+        ]
+      },
+      "totals": {
+        "n": 792,
+        "wins": 397,
+        "hit_rate": 0.5013,
+        "bootstrap_ci95": [
+          0.4672,
+          0.5354
+        ]
+      }
+    },
+    "ensemble": {
+      "n": 816,
+      "margin_mae": 10.2244,
+      "total_mae": 10.4358,
+      "brier": 0.22497,
+      "win_n": 815,
+      "ats": {
+        "n": 797,
+        "wins": 389,
+        "hit_rate": 0.4881,
+        "bootstrap_ci95": [
+          0.4517,
+          0.5207
+        ]
+      },
+      "totals": {
+        "n": 811,
+        "wins": 423,
+        "hit_rate": 0.5216,
+        "bootstrap_ci95": [
+          0.4858,
+          0.5573
+        ]
+      }
+    },
+    "home_league": {
+      "n": 816,
+      "margin_mae": 11.1009,
+      "total_mae": 10.6115,
+      "brier": 0.248547,
+      "win_n": 815,
+      "ats": {
+        "n": 797,
+        "wins": 388,
+        "hit_rate": 0.4868,
+        "bootstrap_ci95": [
+          0.4517,
+          0.5207
+        ]
+      },
+      "totals": {
+        "n": 792,
+        "wins": 397,
+        "hit_rate": 0.5013,
+        "bootstrap_ci95": [
+          0.4672,
+          0.5354
+        ]
+      }
+    },
+    "linear": {
+      "n": 816,
+      "margin_mae": 10.2016,
+      "total_mae": 10.4086,
+      "brier": 0.227266,
+      "win_n": 815,
+      "ats": {
+        "n": 797,
+        "wins": 397,
+        "hit_rate": 0.4981,
+        "bootstrap_ci95": [
+          0.4617,
+          0.5332
+        ]
+      },
+      "totals": {
+        "n": 811,
+        "wins": 423,
+        "hit_rate": 0.5216,
+        "bootstrap_ci95": [
+          0.4858,
+          0.5561
+        ]
+      }
+    },
+    "market_close": {
+      "n": 816,
+      "margin_mae": 9.7445,
+      "total_mae": 10.1207,
+      "brier": 0.210334,
+      "win_n": 815,
+      "ats": {
+        "n": 0,
+        "wins": 0,
+        "hit_rate": null,
+        "bootstrap_ci95": null
+      },
+      "totals": {
+        "n": 0,
+        "wins": 0,
+        "hit_rate": null,
+        "bootstrap_ci95": null
+      }
+    },
+    "rich_elo": {
+      "n": 816,
+      "margin_mae": 10.4625,
+      "total_mae": 10.3857,
+      "brier": 0.22729,
+      "win_n": 815,
+      "ats": {
+        "n": 797,
+        "wins": 376,
+        "hit_rate": 0.4718,
+        "bootstrap_ci95": [
+          0.4341,
+          0.5069
+        ]
+      },
+      "totals": {
+        "n": 807,
+        "wins": 415,
+        "hit_rate": 0.5143,
+        "bootstrap_ci95": [
+          0.4796,
+          0.5489
+        ]
+      }
+    },
+    "rolling": {
+      "n": 816,
+      "margin_mae": 10.4523,
+      "total_mae": 10.3857,
+      "brier": 0.229887,
+      "win_n": 815,
+      "ats": {
+        "n": 797,
+        "wins": 389,
+        "hit_rate": 0.4881,
+        "bootstrap_ci95": [
+          0.4529,
+          0.5207
+        ]
+      },
+      "totals": {
+        "n": 807,
+        "wins": 415,
+        "hit_rate": 0.5143,
+        "bootstrap_ci95": [
+          0.4796,
+          0.5489
+        ]
+      }
+    }
+  },
+  "development_2023_2024": {
+    "boosted": {
+      "n": 544,
+      "margin_mae": 10.3054,
+      "total_mae": 10.4036,
+      "brier": 0.224337,
+      "win_n": 544,
+      "ats": {
+        "n": 526,
+        "wins": 261,
+        "hit_rate": 0.4962,
+        "bootstrap_ci95": [
+          0.4525,
+          0.5361
+        ]
+      },
+      "totals": {
+        "n": 539,
+        "wins": 280,
+        "hit_rate": 0.5195,
+        "bootstrap_ci95": [
+          0.4787,
+          0.5622
+        ]
+      }
+    },
+    "elo": {
+      "n": 544,
+      "margin_mae": 10.5252,
+      "total_mae": 10.4081,
+      "brier": 0.229076,
+      "win_n": 544,
+      "ats": {
+        "n": 526,
+        "wins": 253,
+        "hit_rate": 0.481,
+        "bootstrap_ci95": [
+          0.4373,
+          0.5247
+        ]
+      },
+      "totals": {
+        "n": 520,
+        "wins": 260,
+        "hit_rate": 0.5,
+        "bootstrap_ci95": [
+          0.4558,
+          0.5423
+        ]
+      }
+    },
+    "ensemble": {
+      "n": 544,
+      "margin_mae": 10.185,
+      "total_mae": 10.2948,
+      "brier": 0.223595,
+      "win_n": 544,
+      "ats": {
+        "n": 526,
+        "wins": 262,
+        "hit_rate": 0.4981,
+        "bootstrap_ci95": [
+          0.4525,
+          0.5399
+        ]
+      },
+      "totals": {
+        "n": 539,
+        "wins": 281,
+        "hit_rate": 0.5213,
+        "bootstrap_ci95": [
+          0.4787,
+          0.564
+        ]
+      }
+    },
+    "home_league": {
+      "n": 544,
+      "margin_mae": 11.1199,
+      "total_mae": 10.4081,
+      "brier": 0.248433,
+      "win_n": 544,
+      "ats": {
+        "n": 526,
+        "wins": 252,
+        "hit_rate": 0.4791,
+        "bootstrap_ci95": [
+          0.4354,
+          0.5228
+        ]
+      },
+      "totals": {
+        "n": 520,
+        "wins": 260,
+        "hit_rate": 0.5,
+        "bootstrap_ci95": [
+          0.4558,
+          0.5423
+        ]
+      }
+    },
+    "linear": {
+      "n": 544,
+      "margin_mae": 10.1434,
+      "total_mae": 10.2766,
+      "brier": 0.226103,
+      "win_n": 544,
+      "ats": {
+        "n": 526,
+        "wins": 267,
+        "hit_rate": 0.5076,
+        "bootstrap_ci95": [
+          0.462,
+          0.5494
+        ]
+      },
+      "totals": {
+        "n": 539,
+        "wins": 279,
+        "hit_rate": 0.5176,
+        "bootstrap_ci95": [
+          0.4768,
+          0.5622
+        ]
+      }
+    },
+    "market_close": {
+      "n": 544,
+      "margin_mae": 9.7555,
+      "total_mae": 9.9844,
+      "brier": 0.209436,
+      "win_n": 544,
+      "ats": {
+        "n": 0,
+        "wins": 0,
+        "hit_rate": null,
+        "bootstrap_ci95": null
+      },
+      "totals": {
+        "n": 0,
+        "wins": 0,
+        "hit_rate": null,
+        "bootstrap_ci95": null
+      }
+    },
+    "rich_elo": {
+      "n": 544,
+      "margin_mae": 10.4712,
+      "total_mae": 10.2292,
+      "brier": 0.226454,
+      "win_n": 544,
+      "ats": {
+        "n": 526,
+        "wins": 242,
+        "hit_rate": 0.4601,
+        "bootstrap_ci95": [
+          0.4183,
+          0.5019
+        ]
+      },
+      "totals": {
+        "n": 538,
+        "wins": 288,
+        "hit_rate": 0.5353,
+        "bootstrap_ci95": [
+          0.4963,
+          0.5781
+        ]
+      }
+    },
+    "rolling": {
+      "n": 544,
+      "margin_mae": 10.4911,
+      "total_mae": 10.2292,
+      "brier": 0.231532,
+      "win_n": 544,
+      "ats": {
+        "n": 526,
+        "wins": 248,
+        "hit_rate": 0.4715,
+        "bootstrap_ci95": [
+          0.4297,
+          0.5152
+        ]
+      },
+      "totals": {
+        "n": 538,
+        "wins": 288,
+        "hit_rate": 0.5353,
+        "bootstrap_ci95": [
+          0.4963,
+          0.5781
+        ]
+      }
+    }
+  },
+  "ablation_2023_2024": {
+    "scores_elo_context": {
+      "removed": [
+        "home_field",
+        "rest_diff",
+        "rest_sum",
+        "elo_margin",
+        "rolling_margin",
+        "rolling_total",
+        "games_min",
+        "games_diff",
+        "away_tz_shift",
+        "away_eastbound_tz"
+      ],
+      "margin_mae": 10.1374,
+      "total_mae": 10.4395,
+      "brier": 0.224608,
+      "delta_margin_mae": -0.006,
+      "delta_total_mae": 0.1629,
+      "delta_brier": -0.001495
+    },
+    "epa_success_adjusted": {
+      "removed": [
+        "off_epa_gap",
+        "def_epa_gap",
+        "adjusted_off_epa_gap",
+        "adjusted_def_epa_gap",
+        "off_success_gap",
+        "def_success_gap",
+        "off_epa_sum",
+        "def_epa_sum",
+        "early_epa_sum",
+        "explosive_sum"
+      ],
+      "margin_mae": 10.1987,
+      "total_mae": 10.3069,
+      "brier": 0.228164,
+      "delta_margin_mae": 0.0553,
+      "delta_total_mae": 0.0303,
+      "delta_brier": 0.002061
+    },
+    "early_explosive": {
+      "removed": [
+        "early_epa_gap",
+        "early_def_epa_gap",
+        "explosive_gap",
+        "explosive_allowed_gap"
+      ],
+      "margin_mae": 10.1693,
+      "total_mae": 10.2533,
+      "brier": 0.226218,
+      "delta_margin_mae": 0.0259,
+      "delta_total_mae": -0.0233,
+      "delta_brier": 0.000115
+    },
+    "pressure_turnover": {
+      "removed": [
+        "sack_allowed_gap",
+        "sack_created_gap",
+        "hit_allowed_gap",
+        "hit_created_gap",
+        "turnover_gap"
+      ],
+      "margin_mae": 10.1338,
+      "total_mae": 10.272,
+      "brier": 0.225577,
+      "delta_margin_mae": -0.0096,
+      "delta_total_mae": -0.0046,
+      "delta_brier": -0.000526
+    },
+    "qb_history": {
+      "removed": [
+        "qb_epa_gap",
+        "qb_change_gap"
+      ],
+      "margin_mae": 10.1567,
+      "total_mae": 10.2516,
+      "brier": 0.223961,
+      "delta_margin_mae": 0.0133,
+      "delta_total_mae": -0.025,
+      "delta_brier": -0.002142
+    }
+  },
+  "importance_through_2024": {
+    "margin": [
+      {
+        "feature": "adjusted_off_epa_gap",
+        "standardized_coefficient": 1.78744
+      },
+      {
+        "feature": "rolling_margin",
+        "standardized_coefficient": 1.73484
+      },
+      {
+        "feature": "off_success_gap",
+        "standardized_coefficient": 1.42639
+      },
+      {
+        "feature": "elo_margin",
+        "standardized_coefficient": 1.24403
+      },
+      {
+        "feature": "def_epa_gap",
+        "standardized_coefficient": 1.01285
+      },
+      {
+        "feature": "adjusted_def_epa_gap",
+        "standardized_coefficient": -0.88861
+      },
+      {
+        "feature": "qb_change_gap",
+        "standardized_coefficient": 0.84265
+      },
+      {
+        "feature": "off_epa_gap",
+        "standardized_coefficient": -0.82874
+      },
+      {
+        "feature": "explosive_gap",
+        "standardized_coefficient": 0.75241
+      },
+      {
+        "feature": "def_success_gap",
+        "standardized_coefficient": 0.66788
+      },
+      {
+        "feature": "away_tz_shift",
+        "standardized_coefficient": -0.64128
+      },
+      {
+        "feature": "early_def_epa_gap",
+        "standardized_coefficient": 0.57944
+      }
+    ],
+    "total": [
+      {
+        "feature": "rolling_total",
+        "standardized_coefficient": 2.12825
+      },
+      {
+        "feature": "off_epa_sum",
+        "standardized_coefficient": 0.97159
+      },
+      {
+        "feature": "rolling_margin",
+        "standardized_coefficient": 0.96146
+      },
+      {
+        "feature": "hit_allowed_gap",
+        "standardized_coefficient": 0.65016
+      },
+      {
+        "feature": "rest_sum",
+        "standardized_coefficient": -0.61177
+      },
+      {
+        "feature": "def_success_gap",
+        "standardized_coefficient": -0.60842
+      },
+      {
+        "feature": "away_tz_shift",
+        "standardized_coefficient": 0.6068
+      },
+      {
+        "feature": "sack_allowed_gap",
+        "standardized_coefficient": -0.60416
+      },
+      {
+        "feature": "early_epa_gap",
+        "standardized_coefficient": -0.58751
+      },
+      {
+        "feature": "elo_margin",
+        "standardized_coefficient": -0.57579
+      },
+      {
+        "feature": "off_success_gap",
+        "standardized_coefficient": 0.50451
+      },
+      {
+        "feature": "qb_change_gap",
+        "standardized_coefficient": 0.45622
+      }
+    ],
+    "win_log_odds": [
+      {
+        "feature": "adjusted_off_epa_gap",
+        "standardized_coefficient": 0.39888
+      },
+      {
+        "feature": "off_success_gap",
+        "standardized_coefficient": 0.26194
+      },
+      {
+        "feature": "rolling_margin",
+        "standardized_coefficient": 0.19325
+      },
+      {
+        "feature": "explosive_allowed_gap",
+        "standardized_coefficient": 0.16209
+      },
+      {
+        "feature": "off_epa_gap",
+        "standardized_coefficient": -0.14646
+      },
+      {
+        "feature": "adjusted_def_epa_gap",
+        "standardized_coefficient": -0.14463
+      },
+      {
+        "feature": "def_success_gap",
+        "standardized_coefficient": 0.14169
+      },
+      {
+        "feature": "elo_margin",
+        "standardized_coefficient": 0.13954
+      },
+      {
+        "feature": "early_epa_gap",
+        "standardized_coefficient": -0.13372
+      },
+      {
+        "feature": "sack_allowed_gap",
+        "standardized_coefficient": 0.11244
+      },
+      {
+        "feature": "qb_change_gap",
+        "standardized_coefficient": 0.11231
+      },
+      {
+        "feature": "away_tz_shift",
+        "standardized_coefficient": -0.10117
+      }
+    ]
+  },
+  "paired_vs_market": {
+    "2023": {
+      "linear": {
+        "margin": {
+          "n": 272,
+          "mean_delta": 0.35676,
+          "bootstrap_ci95": [
+            -0.0282,
+            0.7127
+          ]
+        },
+        "total": {
+          "n": 272,
+          "mean_delta": 0.31004,
+          "bootstrap_ci95": [
+            -0.1078,
+            0.7356
+          ]
+        },
+        "brier": {
+          "n": 272,
+          "mean_delta": 0.01837,
+          "bootstrap_ci95": [
+            0.0063,
+            0.0303
+          ]
+        }
+      },
+      "boosted": {
+        "margin": {
+          "n": 272,
+          "mean_delta": 0.46403,
+          "bootstrap_ci95": [
+            0.0793,
+            0.8202
+          ]
+        },
+        "total": {
+          "n": 272,
+          "mean_delta": 0.47593,
+          "bootstrap_ci95": [
+            0.0602,
+            0.9037
+          ]
+        },
+        "brier": {
+          "n": 272,
+          "mean_delta": 0.01203,
+          "bootstrap_ci95": [
+            -0.001,
+            0.0239
+          ]
+        }
+      },
+      "ensemble": {
+        "margin": {
+          "n": 272,
+          "mean_delta": 0.36902,
+          "bootstrap_ci95": [
+            0.0087,
+            0.7086
+          ]
+        },
+        "total": {
+          "n": 272,
+          "mean_delta": 0.34192,
+          "bootstrap_ci95": [
+            -0.0617,
+            0.7601
+          ]
+        },
+        "brier": {
+          "n": 272,
+          "mean_delta": 0.01337,
+          "bootstrap_ci95": [
+            0.0021,
+            0.0242
+          ]
+        }
+      },
+      "rich_elo": {
+        "margin": {
+          "n": 272,
+          "mean_delta": 0.67811,
+          "bootstrap_ci95": [
+            0.2813,
+            1.1027
+          ]
+        },
+        "total": {
+          "n": 272,
+          "mean_delta": 0.25276,
+          "bootstrap_ci95": [
+            -0.1336,
+            0.6325
+          ]
+        },
+        "brier": {
+          "n": 272,
+          "mean_delta": 0.01429,
+          "bootstrap_ci95": [
+            0.0023,
+            0.0263
+          ]
+        }
+      }
+    },
+    "2024": {
+      "linear": {
+        "margin": {
+          "n": 272,
+          "mean_delta": 0.41902,
+          "bootstrap_ci95": [
+            -0.028,
+            0.844
+          ]
+        },
+        "total": {
+          "n": 272,
+          "mean_delta": 0.2744,
+          "bootstrap_ci95": [
+            -0.1037,
+            0.6616
+          ]
+        },
+        "brier": {
+          "n": 272,
+          "mean_delta": 0.01497,
+          "bootstrap_ci95": [
+            0.0032,
+            0.0264
+          ]
+        }
+      },
+      "boosted": {
+        "margin": {
+          "n": 272,
+          "mean_delta": 0.63564,
+          "bootstrap_ci95": [
+            0.2109,
+            1.062
+          ]
+        },
+        "total": {
+          "n": 272,
+          "mean_delta": 0.36252,
+          "bootstrap_ci95": [
+            -0.0417,
+            0.7636
+          ]
+        },
+        "brier": {
+          "n": 272,
+          "mean_delta": 0.01777,
+          "bootstrap_ci95": [
+            0.0044,
+            0.0319
+          ]
+        }
+      },
+      "ensemble": {
+        "margin": {
+          "n": 272,
+          "mean_delta": 0.48994,
+          "bootstrap_ci95": [
+            0.0657,
+            0.8986
+          ]
+        },
+        "total": {
+          "n": 272,
+          "mean_delta": 0.27886,
+          "bootstrap_ci95": [
+            -0.0959,
+            0.6545
+          ]
+        },
+        "brier": {
+          "n": 272,
+          "mean_delta": 0.01495,
+          "bootstrap_ci95": [
+            0.0032,
+            0.027
+          ]
+        }
+      },
+      "rich_elo": {
+        "margin": {
+          "n": 272,
+          "mean_delta": 0.75332,
+          "bootstrap_ci95": [
+            0.3448,
+            1.1795
+          ]
+        },
+        "total": {
+          "n": 272,
+          "mean_delta": 0.23683,
+          "bootstrap_ci95": [
+            -0.1123,
+            0.6023
+          ]
+        },
+        "brier": {
+          "n": 272,
+          "mean_delta": 0.01975,
+          "bootstrap_ci95": [
+            0.0064,
+            0.0322
+          ]
+        }
+      }
+    },
+    "2025": {
+      "linear": {
+        "margin": {
+          "n": 272,
+          "mean_delta": 0.59552,
+          "bootstrap_ci95": [
+            0.2056,
+            0.982
+          ]
+        },
+        "total": {
+          "n": 272,
+          "mean_delta": 0.27916,
+          "bootstrap_ci95": [
+            -0.119,
+            0.6917
+          ]
+        },
+        "brier": {
+          "n": 271,
+          "mean_delta": 0.01746,
+          "bootstrap_ci95": [
+            0.0061,
+            0.0286
+          ]
+        }
+      },
+      "boosted": {
+        "margin": {
+          "n": 272,
+          "mean_delta": 0.64994,
+          "bootstrap_ci95": [
+            0.2727,
+            1.0165
+          ]
+        },
+        "total": {
+          "n": 272,
+          "mean_delta": 0.3971,
+          "bootstrap_ci95": [
+            -0.0135,
+            0.8244
+          ]
+        },
+        "brier": {
+          "n": 271,
+          "mean_delta": 0.01688,
+          "bootstrap_ci95": [
+            0.0053,
+            0.0288
+          ]
+        }
+      },
+      "ensemble": {
+        "margin": {
+          "n": 272,
+          "mean_delta": 0.58086,
+          "bootstrap_ci95": [
+            0.2313,
+            0.9491
+          ]
+        },
+        "total": {
+          "n": 272,
+          "mean_delta": 0.32436,
+          "bootstrap_ci95": [
+            -0.087,
+            0.7199
+          ]
+        },
+        "brier": {
+          "n": 271,
+          "mean_delta": 0.01559,
+          "bootstrap_ci95": [
+            0.0048,
+            0.0264
+          ]
+        }
+      },
+      "rich_elo": {
+        "margin": {
+          "n": 272,
+          "mean_delta": 0.72267,
+          "bootstrap_ci95": [
+            0.2723,
+            1.1378
+          ]
+        },
+        "total": {
+          "n": 272,
+          "mean_delta": 0.30545,
+          "bootstrap_ci95": [
+            -0.0507,
+            0.6544
+          ]
+        },
+        "brier": {
+          "n": 271,
+          "mean_delta": 0.01683,
+          "bootstrap_ci95": [
+            0.0051,
+            0.0288
+          ]
+        }
+      }
+    }
+  },
+  "exploratory_subsets_2023_2025": {
+    "ats": {
+      "0-2": {
+        "n": 355,
+        "wins": 173,
+        "hit_rate": 0.4873,
+        "bootstrap_ci95": [
+          0.4366,
+          0.5437
+        ]
+      },
+      "2-4": {
+        "n": 258,
+        "wins": 137,
+        "hit_rate": 0.531,
+        "bootstrap_ci95": [
+          0.4729,
+          0.593
+        ]
+      },
+      "4+": {
+        "n": 184,
+        "wins": 87,
+        "hit_rate": 0.4728,
+        "bootstrap_ci95": [
+          0.3967,
+          0.5435
+        ]
+      },
+      "away_or_under": {
+        "n": 407,
+        "wins": 202,
+        "hit_rate": 0.4963,
+        "bootstrap_ci95": [
+          0.4472,
+          0.5455
+        ]
+      },
+      "home_or_over": {
+        "n": 390,
+        "wins": 195,
+        "hit_rate": 0.5,
+        "bootstrap_ci95": [
+          0.4538,
+          0.5487
+        ]
+      },
+      "weeks_1_4": {
+        "n": 186,
+        "wins": 91,
+        "hit_rate": 0.4892,
+        "bootstrap_ci95": [
+          0.4194,
+          0.5591
+        ]
+      },
+      "weeks_5_plus": {
+        "n": 611,
+        "wins": 306,
+        "hit_rate": 0.5008,
+        "bootstrap_ci95": [
+          0.4632,
+          0.5401
+        ]
+      }
+    },
+    "totals": {
+      "0-2": {
+        "n": 354,
+        "wins": 185,
+        "hit_rate": 0.5226,
+        "bootstrap_ci95": [
+          0.4718,
+          0.5734
+        ]
+      },
+      "2-4": {
+        "n": 240,
+        "wins": 133,
+        "hit_rate": 0.5542,
+        "bootstrap_ci95": [
+          0.4917,
+          0.6167
+        ]
+      },
+      "4+": {
+        "n": 217,
+        "wins": 105,
+        "hit_rate": 0.4839,
+        "bootstrap_ci95": [
+          0.4147,
+          0.553
+        ]
+      },
+      "away_or_under": {
+        "n": 294,
+        "wins": 153,
+        "hit_rate": 0.5204,
+        "bootstrap_ci95": [
+          0.466,
+          0.5782
+        ]
+      },
+      "home_or_over": {
+        "n": 517,
+        "wins": 270,
+        "hit_rate": 0.5222,
+        "bootstrap_ci95": [
+          0.4797,
+          0.5648
+        ]
+      },
+      "weeks_1_4": {
+        "n": 192,
+        "wins": 105,
+        "hit_rate": 0.5469,
+        "bootstrap_ci95": [
+          0.474,
+          0.6146
+        ]
+      },
+      "weeks_5_plus": {
+        "n": 619,
+        "wins": 318,
+        "hit_rate": 0.5137,
+        "bootstrap_ci95": [
+          0.475,
+          0.5525
+        ]
+      }
+    }
+  }
+}
