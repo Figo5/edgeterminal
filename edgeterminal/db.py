@@ -89,6 +89,18 @@ BEGIN SELECT RAISE(ABORT, 'prop snapshots are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS nfl_prop_snapshot_no_delete BEFORE DELETE ON nfl_prop_snapshots
 BEGIN SELECT RAISE(ABORT, 'prop snapshots cannot be deleted'); END;
 
+CREATE TABLE IF NOT EXISTS nfl_prop_research_freezes (
+  freeze_sha TEXT PRIMARY KEY, source_batch_id TEXT NOT NULL UNIQUE,
+  frozen_at REAL NOT NULL, payload TEXT NOT NULL,
+  FOREIGN KEY(source_batch_id) REFERENCES nfl_prop_capture_batches(batch_id));
+CREATE TRIGGER IF NOT EXISTS nfl_prop_research_freeze_no_update BEFORE UPDATE ON nfl_prop_research_freezes
+BEGIN SELECT RAISE(ABORT, 'prop research freezes are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_prop_research_freeze_no_delete BEFORE DELETE ON nfl_prop_research_freezes
+BEGIN SELECT RAISE(ABORT, 'prop research freezes cannot be deleted'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_prop_snapshot_no_insert_after_freeze BEFORE INSERT ON nfl_prop_snapshots
+WHEN EXISTS(SELECT 1 FROM nfl_prop_research_freezes WHERE source_batch_id=NEW.batch_id)
+BEGIN SELECT RAISE(ABORT, 'frozen prop snapshot batch cannot be extended'); END;
+
 CREATE TABLE IF NOT EXISTS nfl_game_snapshots (
   id TEXT PRIMARY KEY, game_id TEXT NOT NULL, payload TEXT NOT NULL,
   model_version TEXT NOT NULL, feature_version TEXT NOT NULL,

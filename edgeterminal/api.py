@@ -297,7 +297,8 @@ def model_report() -> Dict:
 def nfl_prop_board(game_id: str, market: Optional[str] = None) -> Dict:
     """Stored research observations; never triggers a provider or pick engine."""
     try:
-        return nfl_props.board(game_id, market=market)
+        from . import nfl_prop_lab
+        return nfl_prop_lab.research_board(game_id, market=market)
     except ValueError as exc:
         raise HTTPException(404 if "unknown canonical" in str(exc) else 400, str(exc)) from exc
 

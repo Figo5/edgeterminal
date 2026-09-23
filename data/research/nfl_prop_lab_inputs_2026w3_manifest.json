@@ -1,0 +1,12 @@
+{
+  "archive_sha256": "11027c1360bc696c68df6670b42d2a23060a42b60d1c21beae50ac3ea7d36692",
+  "freeze_sha": "8234353c49cef8f337dac840aff8835c350453cf31aeef7955687e8ea6609304",
+  "inputs": {
+    "player_stats/stats_player_week_2022.csv": "ad426c3fe5bf1cc30c3f137fdfe96d054e19d400879ee4413129da49fa7b54be",
+    "player_stats/stats_player_week_2023.csv": "f19cb71a5de0dce7fd09376026237c9ee9d5a93fe13815a2ea3ec2d37204cb17",
+    "player_stats/stats_player_week_2024.csv": "3ddc45a84f759aa348ce465ae001752c530575455717657cdfe1f8abfcdb4759",
+    "player_stats/stats_player_week_2025.csv": "e5e0615b3d96a3eaebfaee91e55afb4a4e7fe0caf057454177bcd7d6ad4bcfc2",
+    "player_stats/stats_player_week_2026.csv": "736bdddef4779023f7eb1831a1f2c8627181aee60cc280d5f0464cf5f41a8e67",
+    "schedule/games.csv.gz": "d05eddee399d1ef3aea535b9502fbae63e5e5ce2b315cd7d9ecb8ccff25942c0"
+  }
+}
