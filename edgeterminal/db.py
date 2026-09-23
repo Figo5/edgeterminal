@@ -50,6 +50,50 @@ CREATE TABLE IF NOT EXISTS nfl_game_predictions (
   uncertainty REAL, created_at REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS ix_nfl_game_prediction ON nfl_game_predictions(game_id, created_at);
 
+CREATE TABLE IF NOT EXISTS nfl_shadow_entries (
+  game_id TEXT PRIMARY KEY, prediction_id TEXT NOT NULL, snapshot_id TEXT NOT NULL,
+  model_version TEXT NOT NULL, feature_version TEXT NOT NULL,
+  season INTEGER NOT NULL, season_type INTEGER NOT NULL, week INTEGER NOT NULL,
+  home_team TEXT NOT NULL, away_team TEXT NOT NULL, kickoff_utc REAL NOT NULL,
+  frozen_at REAL NOT NULL, designation TEXT NOT NULL,
+  projected_home_points REAL NOT NULL, projected_away_points REAL NOT NULL,
+  projected_margin REAL NOT NULL, projected_total REAL NOT NULL,
+  home_win_probability REAL NOT NULL,
+  home_spread_line REAL, home_spread_book TEXT, home_spread_price REAL,
+  home_spread_captured_at REAL,
+  total_line REAL, total_book TEXT, over_price REAL, total_captured_at REAL);
+CREATE INDEX IF NOT EXISTS ix_nfl_shadow_week ON nfl_shadow_entries(season, season_type, week);
+CREATE TRIGGER IF NOT EXISTS nfl_shadow_entry_no_update BEFORE UPDATE ON nfl_shadow_entries
+BEGIN SELECT RAISE(ABORT, 'shadow entries are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_shadow_entry_no_delete BEFORE DELETE ON nfl_shadow_entries
+BEGIN SELECT RAISE(ABORT, 'shadow entries cannot be deleted'); END;
+
+CREATE TABLE IF NOT EXISTS nfl_shadow_grades (
+  game_id TEXT NOT NULL, revision INTEGER NOT NULL,
+  home_score REAL NOT NULL, away_score REAL NOT NULL,
+  su_result TEXT, ats_result TEXT, total_result TEXT,
+  score_mae REAL NOT NULL, score_rmse REAL NOT NULL,
+  margin_error REAL NOT NULL, total_error REAL NOT NULL,
+  brier REAL, closing_home_spread REAL, closing_total REAL,
+  spread_clv_points REAL, total_clv_points REAL,
+  result_source TEXT NOT NULL, source_retrieved_at REAL NOT NULL,
+  graded_at REAL NOT NULL, PRIMARY KEY(game_id, revision));
+CREATE TRIGGER IF NOT EXISTS nfl_shadow_grade_no_update BEFORE UPDATE ON nfl_shadow_grades
+BEGIN SELECT RAISE(ABORT, 'shadow grades are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_shadow_grade_no_delete BEFORE DELETE ON nfl_shadow_grades
+BEGIN SELECT RAISE(ABORT, 'shadow grades cannot be deleted'); END;
+
+CREATE TABLE IF NOT EXISTS nfl_shadow_audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, game_id TEXT NOT NULL,
+  prior_revision INTEGER NOT NULL, new_revision INTEGER NOT NULL,
+  old_home_score REAL NOT NULL, old_away_score REAL NOT NULL,
+  new_home_score REAL NOT NULL, new_away_score REAL NOT NULL,
+  reason TEXT NOT NULL, source TEXT NOT NULL, created_at REAL NOT NULL);
+CREATE TRIGGER IF NOT EXISTS nfl_shadow_audit_no_update BEFORE UPDATE ON nfl_shadow_audit
+BEGIN SELECT RAISE(ABORT, 'shadow audit is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_shadow_audit_no_delete BEFORE DELETE ON nfl_shadow_audit
+BEGIN SELECT RAISE(ABORT, 'shadow audit cannot be deleted'); END;
+
 CREATE TABLE IF NOT EXISTS odds_snapshots (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   event_id TEXT, sport TEXT, book TEXT, market TEXT, selection TEXT,
@@ -118,6 +162,7 @@ def _connect() -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("PRAGMA journal_mode=WAL")
     conn.execute("PRAGMA foreign_keys=ON")
+    conn.execute("PRAGMA recursive_triggers=ON")
     return conn
 
 

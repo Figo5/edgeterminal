@@ -10,7 +10,7 @@ import json
 import time
 from typing import Any, Callable, Dict, List, Optional
 
-from .. import db, engine, parlay
+from .. import db, engine, parlay, shadow
 from ..config import ROOT, SPORTS, settings
 from ..providers import registry as R
 
@@ -265,11 +265,12 @@ def build_best_parlay(max_legs: int = 3, sport: Optional[str] = None,
 def get_model_performance() -> Dict:
     path = ROOT / "reports" / "nfl_model_v1" / "backtest_results.json"
     historical = json.loads(path.read_text()) if path.exists() else {}
-    return dict(readiness="RESEARCH_ONLY", forward_shadow_status="NOT_STARTED",
-                historical_2025=historical.get("2025"),
-                note="Automatic NFL forward prediction grading has not been implemented. "
-                     "The 2023–2025 replays are seen retrospective seasons, not an "
-                     "independent validation set. All NFL markets remain PASS.")
+    forward = shadow.performance()
+    return dict(forward, historical_2025=historical.get("2025"),
+                note=f"Forward shadow record: {forward['frozen_nfl_games']} frozen NFL games, "
+                     f"{forward['graded_nfl_game_predictions']} graded. The 2023–2025 "
+                     "replays are seen retrospective seasons, not an independent "
+                     "validation set. " + forward["note"])
 
 
 def search_web(query: str, limit: int = 5) -> Dict:
@@ -630,11 +631,8 @@ SCHEMAS: List[Dict] = [
                                  "enum": ["td", "passing", "rushing", "receiving"]})),
 
     dict(name="find_best_bets", description=(
-             "Ranked slate recommendations. For best bet, best play, strongest bet/play, or "
-             "Official Pick requests, omit min_confidence: the tool defaults to the application's "
-             "configured production Official Pick threshold and returns only deterministically "
-             "qualified Official Picks. Never lower min_confidence unless the user explicitly "
-             "asks for a numeric lower threshold, leans, watchlist plays, or broader opportunities."),
+             "NFL pick thresholds are unvalidated, so current game markets remain PASS. "
+             "Report that no official best bet exists; use game analysis for priced research."),
          parameters=_p(min_confidence={"type": "number"}, sport=SPORT_ENUM,
                        market={"type": "string"}, plus_money_only={"type": "boolean"},
                        limit={"type": "integer"}, include_leans={"type": "boolean"},
@@ -643,10 +641,10 @@ SCHEMAS: List[Dict] = [
          parameters=_p(limit={"type": "integer"})),
     dict(name="get_line_moves", description="Largest observed line movement across stored snapshots.",
          parameters=_p(limit={"type": "integer"}, sport=SPORT_ENUM)),
-    dict(name="build_best_parlay", description="Build the single best correlation-adjusted parlay. Returns none if nothing qualifies.",
+    dict(name="build_best_parlay", description="Research-only parlay check; no NFL legs qualify while all NFL markets remain PASS.",
          parameters=_p(max_legs={"type": "integer"}, sport=SPORT_ENUM,
                        event={"type": "string"}, min_confidence={"type": "number"})),
-    dict(name="get_model_performance", description="Hit rate, ROI, CLV and confidence calibration from graded predictions.",
+    dict(name="get_model_performance", description="Forward NFL shadow counts and errors, kept separate from seen historical replays. All current NFL designations are PASS.",
          parameters=_p()),
     dict(name="search_web", description="Live web research for late-breaking information. Cite what you use.",
          parameters=_p(required=("query",), query={"type": "string"}, limit={"type": "integer"})),

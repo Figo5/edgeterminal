@@ -1,6 +1,6 @@
 """The research-only policy must survive chat formatting and quote display."""
 from edgeterminal.agents import llm, tools
-from edgeterminal import engine, nfl_market
+from edgeterminal import engine, nfl_market, shadow
 from edgeterminal.api import performance
 from edgeterminal.integrity import parse_time
 from edgeterminal.providers.theoddsapi import TheOddsApi
@@ -35,10 +35,16 @@ def test_market_board_exposes_quote_provenance_and_actual_book_count():
     assert board[0]["provider_updated_at"] == 8.0
 
 
-def test_performance_tool_does_not_claim_live_nfl_grading():
+def test_performance_tool_separates_forward_and_historical(monkeypatch):
+    monkeypatch.setattr(shadow, "performance", lambda: dict(
+        readiness="RESEARCH_ONLY", forward_shadow_status="NOT_STARTED",
+        frozen_nfl_games=0, graded_nfl_game_predictions=0,
+        note="PASS is the only designation; line movement is not an attainable return."))
     result = tools.get_model_performance()
     assert result["forward_shadow_status"] == "NOT_STARTED"
-    assert "not been implemented" in result["note"]
+    assert "0 frozen NFL games, 0 graded" in result["note"]
+    assert "seen retrospective seasons" in result["note"]
+    assert "not an attainable return" in result["note"]
     assert performance()["graded_nfl_game_predictions"] == 0
 
 

@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import calibration, db, engine, logs, parlay, props
+from . import calibration, db, engine, logs, parlay, props, shadow
 from .agents import llm
 from .config import ROOT, settings
 from .providers import registry as R
@@ -35,6 +35,11 @@ async def _lifespan(_app: FastAPI):
             engine.refresh()
         except Exception as e:  # noqa: BLE001
             log.warning("initial refresh failed: %s", e)
+    try:
+        shadow.freeze_pending()
+        shadow.sync_results()
+    except Exception as e:  # noqa: BLE001
+        log.warning("initial shadow sync failed: %s", type(e).__name__)
     yield
 
 
@@ -122,6 +127,13 @@ def refresh(body: RefreshBody) -> Dict:
     except Exception as e:  # noqa: BLE001
         log.warning("post-refresh analysis failed: %s", e)
         result["analysis_error"] = str(e)
+    if "NFL" in (sports or list(settings.active_sports)):
+        try:
+            shadow.freeze_pending()
+            result["shadow_sync"] = shadow.sync_results()
+        except Exception as e:  # noqa: BLE001
+            log.warning("post-refresh shadow sync failed: %s", type(e).__name__)
+            result["shadow_error"] = type(e).__name__
     out = dict(result, odds_age_s=engine.odds_age_s())
     if ignored:
         out["ignored_sports"] = ignored
@@ -158,14 +170,18 @@ def dashboard(sport: Optional[str] = None, refresh_analysis: bool = False) -> Di
     refreshed = lr.get("sports", {})
     serving_demo = settings.demo_mode or any(
         bool(refreshed.get(s, {}).get("is_demo")) for s in sports)
+    upcoming = (engine.weekly_board() if sports == ["NFL"] else engine.slate(
+        sport=sports[0], limit_events=20))
+    if sports == ["NFL"]:
+        shadow.freeze_pending()
     return dict(
         generated_at=time.time(), odds_age_s=engine.odds_age_s(),
         last_refresh=lr or None, demo_mode=serving_demo,
         headline=dict(_headline(recs), best_parlay=None),
         best_bets=picks[:25], watchlist=watch,
         line_moves=engine.line_moves(limit=10, sports=sports),
-        upcoming=engine.weekly_board() if sports == ["NFL"] else engine.slate(
-            sport=sports[0], limit_events=20),
+        upcoming=upcoming,
+        shadow=shadow.performance() if sports == ["NFL"] else None,
         counts=dict(total=len(recs),
                     official=len(picks),
                     leans=len([r for r in recs if r["state"] == "LEAN"]),
@@ -251,10 +267,7 @@ def golf() -> Dict:
 
 @app.get("/api/performance")
 def performance() -> Dict:
-    return dict(readiness="RESEARCH_ONLY", forward_shadow_status="NOT_STARTED",
-                graded_nfl_game_predictions=0,
-                note="Automatic NFL forward game grading has not been implemented. "
-                     "Use /api/model-report for seen historical replays.")
+    return shadow.performance()
 
 
 @app.get("/api/model-report")
@@ -265,7 +278,7 @@ def model_report() -> Dict:
         return dict(readiness="RESEARCH_ONLY", historical={},
                     note="Historical report has not been generated yet")
     return dict(readiness="RESEARCH_ONLY", historical=json.loads(path.read_text()),
-                note="2023–2025 retrospective development diagnostics; no forward shadow record")
+                note="2023–2025 retrospective development diagnostics; forward results are separate")
 
 
 # ------------------------------------------------------------------- props

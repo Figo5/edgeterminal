@@ -55,7 +55,17 @@ class EspnEvents:
     is_demo = False
 
     def list_events(self, sport: str) -> List[Dict]:
-        data = _scoreboard(sport)
+        return self._parse_events(_scoreboard(sport), sport)
+
+    def list_events_for_week(self, season: int, season_type: int, week: int) -> List[Dict]:
+        """Retrieve a historical NFL week so ungraded games survive week rollover."""
+        data = get_json(SCOREBOARD_URL, {
+            "dates": int(season), "seasontype": int(season_type),
+            "week": int(week), "limit": 100}, provider="espn-results")
+        return self._parse_events(data, "NFL")
+
+    @staticmethod
+    def _parse_events(data: Dict, sport: str) -> List[Dict]:
         retrieved = time.time()
         out: List[Dict] = []
         for ev in (data or {}).get("events", []):

@@ -22,7 +22,8 @@ def test_frontend_shows_research_only_board_and_compact_provider_health():
     html = (ROOT / "edgeterminal/web/index.html").read_text()
     assert "Research only" in js
     assert "Upcoming games remain PASS" in js
-    assert "Forward shadow grading has not started" in js
+    assert "Forward shadow record:" in js
+    assert "All designations are PASS" in js
     assert 'section: "games"' in js
     assert "providerHealth" in html
     assert "Data providers" not in html

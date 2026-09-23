@@ -29,7 +29,14 @@ subsequently corrected and covered by the 269-test suite and browser checks.
 
 ## Release boundary
 
-Readiness is **RESEARCH_ONLY**. Forward prediction grading is not implemented;
-the multi-book Odds API credential currently returns HTTP 401; the fallback
-market feed exposes one DraftKings book per game. No official NFL plays or
-profitability claims are supported.
+Readiness is **RESEARCH_ONLY**. After the second review, an append-only forward
+tracker was added. On 2026-09-23 it froze 16 Week 3 projections with spread
+and total reference lines; zero games had final scores to grade. A focused
+Claude review of this tracker returned **APPROVE_WITH_FIXES**, with no blocking
+findings. Its immutability, chat caveat, current-model selection, result-sync
+and late-line findings were addressed, with focused regression tests. A final
+focused follow-up returned **APPROVE** for RESEARCH_ONLY. This
+does not upgrade readiness before real final scores are graded. The multi-book
+Odds API credential currently returns HTTP 401; the fallback market feed
+exposes one DraftKings book per game. No official NFL plays or profitability
+claims are supported.
