@@ -120,6 +120,18 @@ BEGIN SELECT RAISE(ABORT, 'prop grade source artifacts are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS nfl_prop_grade_source_no_delete BEFORE DELETE ON nfl_prop_grade_source_artifacts
 BEGIN SELECT RAISE(ABORT, 'prop grade source artifacts cannot be deleted'); END;
 
+CREATE TABLE IF NOT EXISTS nfl_prop_result_ingestions (
+  freeze_sha TEXT NOT NULL, game_id TEXT NOT NULL, source_kind TEXT NOT NULL,
+  source_sha256 TEXT NOT NULL, source_url TEXT NOT NULL,
+  retrieved_at REAL NOT NULL, observed_at REAL NOT NULL, metadata_json TEXT NOT NULL,
+  PRIMARY KEY(freeze_sha, game_id, source_kind, source_sha256),
+  FOREIGN KEY(freeze_sha) REFERENCES nfl_prop_research_freezes(freeze_sha),
+  FOREIGN KEY(source_sha256) REFERENCES nfl_prop_grade_source_artifacts(sha256));
+CREATE TRIGGER IF NOT EXISTS nfl_prop_result_ingestion_no_update BEFORE UPDATE ON nfl_prop_result_ingestions
+BEGIN SELECT RAISE(ABORT, 'prop result ingestions are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_prop_result_ingestion_no_delete BEFORE DELETE ON nfl_prop_result_ingestions
+BEGIN SELECT RAISE(ABORT, 'prop result ingestions cannot be deleted'); END;
+
 CREATE TABLE IF NOT EXISTS nfl_prop_grade_revisions (
   freeze_sha TEXT NOT NULL, quote_id INTEGER NOT NULL, revision INTEGER NOT NULL,
   evidence_sha TEXT NOT NULL, graded_at REAL NOT NULL, payload TEXT NOT NULL,

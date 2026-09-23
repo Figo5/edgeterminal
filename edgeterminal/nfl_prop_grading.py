@@ -64,6 +64,10 @@ def _documented_participation(row: dict) -> bool:
 
 
 def _source_bytes(file: str) -> bytes | None:
+    if file.startswith("db:nfl_prop_grade_source_artifacts:"):
+        digest = file.rsplit(":", 1)[-1]
+        row = db.q1("SELECT payload FROM nfl_prop_grade_source_artifacts WHERE sha256=?", (digest,))
+        return bytes(row["payload"]) if row else None
     if file.startswith("db:nfl_research_grades:"):
         _, _, game_id, revision = file.split(":", 3)
         row = db.q1("SELECT payload FROM nfl_research_grades WHERE game_id=? AND revision=?",
@@ -194,6 +198,16 @@ def _grade_row(quote: dict, evidence: dict, checked: dict, now: float,
     book = quote["sportsbook"]
     interpretation, scenario = nfl_prop_rules.interpret(book, result, player_status,
                                                         participation, rules)
+    if player_status == "inactive":
+        participation_class = "confirmed_inactive"
+    elif player_status == "not_applicable":
+        participation_class = "game_canceled"
+    elif actual == 0 and participation and participation.get("snap_played") is False:
+        participation_class = "active_zero_no_snap"
+    elif actual == 0:
+        participation_class = "participated_target_stat_zero"
+    else:
+        participation_class = "participated_stat_recorded"
     signed = quote["projection"] - actual if actual is not None else None
     probability = quote["probability_over"] if quote["side"] == "over" else quote["probability_under"]
     grade = {"quote_id": quote["quote_id"], "canonical_game_id": quote["canonical_game_id"],
@@ -206,6 +220,7 @@ def _grade_row(quote: dict, evidence: dict, checked: dict, now: float,
              "implied_probability": implied_probability(quote["price"]),
              "model_probability": probability, "model_probability_over": quote["probability_over"],
              "result": result, "player_status": player_status, "game_status": status,
+             "participation_class": participation_class,
              "final_score": checked["final_score"],
              "research_statistical_result": result,
              "sportsbook_settlement_interpretation": interpretation,
@@ -271,12 +286,15 @@ def grade_freeze(freeze_sha: str, evidence: list[dict], now: float | None = None
                     counts[reason] += 1
                     continue
                 old = c.execute("SELECT revision,payload FROM nfl_prop_grade_revisions WHERE "
-                                "freeze_sha=? AND quote_id=? ORDER BY revision DESC LIMIT 1",
-                                (freeze_sha, quote["quote_id"])).fetchone()
+                    "freeze_sha=? AND quote_id=? ORDER BY revision DESC LIMIT 1",
+                    (freeze_sha, quote["quote_id"])).fetchone()
                 if old:
                     previous = json.loads(old["payload"])
-                    if (previous["actual_stat"], previous["result"], previous["player_status"]) != (
-                            grade["actual_stat"], grade["result"], grade["player_status"]):
+                    outcome_changed = (previous["actual_stat"], previous["result"],
+                                       previous["player_status"]) != (
+                                           grade["actual_stat"], grade["result"],
+                                           grade["player_status"])
+                    if outcome_changed or previous.get("settlement_scenario") == "stat_correction_resettlement_unverified":
                         # A later official-stat change updates research truth, but the
                         # actual bet's prior settlement and resettlement are unknown.
                         grade["sportsbook_settlement_interpretation"] = "undetermined"
@@ -290,6 +308,8 @@ def grade_freeze(freeze_sha: str, evidence: list[dict], now: float | None = None
                         continue
                 revision = old["revision"] + 1 if old else 1
                 grade["revision"] = revision
+                grade["previous_revision"] = old["revision"] if old else None
+                grade["previous_evidence_sha"] = previous.get("evidence_sha") if old else None
                 grade["evidence_sha"] = evidence_sha
                 c.execute("INSERT INTO nfl_prop_grade_revisions VALUES(?,?,?,?,?,?)",
                           (freeze_sha, quote["quote_id"], revision, evidence_sha, now,

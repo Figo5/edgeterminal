@@ -76,6 +76,7 @@ def test_final_push_zero_inactive_missing_and_correction(frozen):
     assert grade_freeze(frozen,[_evidence()],now=21000.0)["new_revisions"]==0
     corrected=grade_freeze(frozen,[_evidence(13.0)],now=22000.0)
     assert corrected["new_revisions"]==2
+    assert grade_freeze(frozen,[_evidence(13.0)],now=23000.0)["new_revisions"]==0
     original=json.loads(db.q1("SELECT payload FROM nfl_prop_grade_revisions WHERE quote_id=1 AND revision=1")["payload"])
     revision=json.loads(db.q1("SELECT payload FROM nfl_prop_grade_revisions WHERE quote_id=1 AND revision=2")["payload"])
     assert original["result"]=="push" and revision["result"]=="won"
