@@ -89,7 +89,8 @@ def test_old_prices_still_trip_the_existing_stale_gate():
 
 def test_fresh_prices_are_unaffected():
     state = props.prop_state(confidence=95.0, edge_pct=10.0, books=6, age_s=30.0,
-                             agreement=1.0, usage_available=True, is_demo=False)
+                             agreement=1.0, usage_available=True, is_demo=False,
+                             sport="CFB")
     assert state == "OFFICIAL PICK"
 
 

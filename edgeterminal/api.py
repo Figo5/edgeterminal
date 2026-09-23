@@ -251,7 +251,10 @@ def golf() -> Dict:
 
 @app.get("/api/performance")
 def performance() -> Dict:
-    return calibration.performance()
+    return dict(readiness="RESEARCH_ONLY", forward_shadow_status="NOT_STARTED",
+                graded_nfl_game_predictions=0,
+                note="Automatic NFL forward game grading has not been implemented. "
+                     "Use /api/model-report for seen historical replays.")
 
 
 @app.get("/api/model-report")
@@ -262,7 +265,7 @@ def model_report() -> Dict:
         return dict(readiness="RESEARCH_ONLY", historical={},
                     note="Historical report has not been generated yet")
     return dict(readiness="RESEARCH_ONLY", historical=json.loads(path.read_text()),
-                note="2025 retrospective walk-forward diagnostic; no forward shadow record")
+                note="2023–2025 retrospective development diagnostics; no forward shadow record")
 
 
 # ------------------------------------------------------------------- props

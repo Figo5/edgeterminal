@@ -1,0 +1,28 @@
+{
+  "generated_at_utc": "2026-09-23",
+  "status": "retrospective development diagnostic; no untouched test season",
+  "source_commit": "d7ebd8bf145d48548c6d44bba9894b458263e497",
+  "python_version": "3.9.6",
+  "bootstrap_seed": 20260923,
+  "replay_commands": [
+    ".venv/bin/python -m edgeterminal.backtest --seasons 2023 --prior-season 2022 --json",
+    ".venv/bin/python -m edgeterminal.backtest --seasons 2024 --prior-season 2023 --json",
+    ".venv/bin/python -m edgeterminal.backtest --seasons 2025 --prior-season 2024 --json"
+  ],
+  "source_and_data_sha256": {
+    "edgeterminal/analytics/football.py": "73cf9158b47669917ed5e6e38a2c6f05bd268098d785712c36b3254609ab10b9",
+    "edgeterminal/analytics/ratings.py": "aee7d2e6c33ef991bbb5a3d6ae276cd24a56d7af18b607265478f30aacaa712b",
+    "edgeterminal/analytics/nfl_features.py": "a7e84751eb4b2422eefc06111861fa56b0172f696c5795194a8c63c758fb7c4e",
+    "edgeterminal/backtest.py": "553725ecfc8ef8a58d0dd3f9862094068998633b7497463d32ad0daa9d683f7c",
+    "edgeterminal/nfl_baselines.py": "75011bd02601c8cba27fddeeeaab9c9d0b43385fd4d0f6209d5084f2bfabd393",
+    "edgeterminal/nfl_market.py": "a64ce55ba3254d2b8d6b0a2a49a194dc0d40fd5639b42f0b55a5e19944a547ed",
+    "edgeterminal/pricing.py": "500b6f372f85e3e39607d83c2dc6dd157af699fa5f4286df01bc6078dc15c1f2",
+    "edgeterminal/providers/normalize.py": "fc2bdb9e2f53fb28d3f72e89c2a2b49a10ef747e69305f2678830cf9b252b26d",
+    "edgeterminal/providers/nflverse.py": "54ed5efb1d440fb181c3f0fdb4c90cd919825034f8ad17cb97a0dad3de2012f4",
+    "data/nflverse/pbp/games.csv.gz": "d05eddee399d1ef3aea535b9502fbae63e5e5ce2b315cd7d9ecb8ccff25942c0",
+    "data/nflverse/pbp/play_by_play_2022.csv.gz": "0c69a71eb39498956c7b1d5c1ca52ce7fe679934a95d1af249facb5ea9829ea4",
+    "data/nflverse/pbp/play_by_play_2023.csv.gz": "4649804ee0f0a40b41e51ec75a1ce921949d7fab5459213488656b92f78560e8",
+    "data/nflverse/pbp/play_by_play_2024.csv.gz": "23370d5d10f8104d80d46a1fc5e61f4f6f5a3263fe96fe2dd629913cfcb08c06",
+    "data/nflverse/pbp/play_by_play_2025.csv.gz": "2f135887790a013fd004e609e37096bb4816d5cc80b9f19122e1bad478961978"
+  }
+}

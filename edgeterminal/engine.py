@@ -854,7 +854,8 @@ def _quotes_by_selection(rows: List[Dict]) -> Dict[Tuple[str, str], List[Dict]]:
     for r in rows:
         out.setdefault((r["market"], r["selection"]), []).append(
             dict(book=r["book"], price=r["price"], line=r.get("line"),
-                 captured_at=r.get("captured_at")))
+                 captured_at=r.get("captured_at"),
+                 provider_updated_at=r.get("provider_updated_at")))
     return out
 
 

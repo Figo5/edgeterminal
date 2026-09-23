@@ -20,10 +20,20 @@ from . import tools as T
 
 log = logging.getLogger("edgeterminal.llm")
 
+# Test seam: a frozen clock for the HTTP conversation tests. Production never
+# sets it (run_chat falls back to the wall clock); when a test sets it, the
+# whole turn -- including context.build, where "Thursday night" and "tonight"
+# are resolved -- reasons about one deterministic instant. See
+# tests/test_chat_multiturn_http.py.
+_now_override: Optional[float] = None
+
 SYSTEM = """You are the analyst inside EdgeTerminal, an NFL-only betting research terminal.
 
 Product scope: analyze NFL only. Do not analyze or recommend other sports.
 Dormant backend adapters are retained for future expansion but are not active.
+All NFL game and player-prop markets are PASS by policy: model thresholds have
+not passed independent validation and forward shadow grading has not started.
+Do not call any NFL row a pick, lean, playable bet, or stake recommendation.
 
 Hard rules:
 - You have NO knowledge of current odds, injuries, statistics, schedules, scores,
@@ -37,6 +47,7 @@ Hard rules:
 - PASS is a valid and frequent answer. If nothing clears the threshold, say that
   plainly instead of manufacturing a play. Never lower the bar because the user
   asked for a pick.
+- Lower confidence requests never change the NFL PASS policy.
 - Requests for a best bet/play, strongest bet/play, top play, or Official Pick must
   use find_best_bets at the application's configured production threshold. Omit
   min_confidence for those requests. Only request a lower threshold when the user
@@ -346,6 +357,8 @@ def run_chat(user_message: str, history: Optional[List[Dict]] = None,
                            "was generated for that sport.", tool_trace=[],
                     provider="scope-router", model=None)
     from . import context as C
+    if now is None:
+        now = _now_override  # deterministic clock under test; wall clock otherwise
     try:
         ctx = C.build(user_message, history, selected_event_id, now, prior=prior_context)
     except Exception as e:  # noqa: BLE001 - context must never break a turn
@@ -817,7 +830,7 @@ def _fmt_td_board(res: Dict) -> str:
         parts.append(f"**Best value:** {best['player']} — {best.get('edge_pct')} pts of edge, "
                      f"{best.get('price')} at {best.get('book')} (fair {best.get('fair_price')})")
     else:
-        parts.append("**Best value:** none — no priced scorer carries a defensible positive edge.")
+        parts.append("**Best value:** not designated — NFL props remain PASS pending validation.")
     if not res.get("official"):
         parts.append("**Official Pick:** none for this market.")
 
@@ -942,7 +955,7 @@ def format_result(tool: str, res: Dict) -> str:
         bets = _recs(res.get("bets"))
         if not bets:
             return ("**No bets meet the threshold right now.**\n\n" + (res.get("note") or "")
-                    + "\nPress Refresh Odds, or lower the confidence filter to inspect leans.")
+                    + "\nNFL markets remain PASS by policy; refresh data to inspect current prices.")
         head = (f"{res['official_pick_count']} official pick(s) at the "
                 f"{res['threshold']:.0f} confidence threshold.\n\n")
         return head + "\n\n".join(_fmt_rec(b) for b in bets)
@@ -976,7 +989,10 @@ def format_result(tool: str, res: Dict) -> str:
             bits.append(f"⚠ {w}")
         actionable = [r for r in recs if r["state"] in ("OFFICIAL PICK", "LEAN", "WATCHLIST")]
         if not actionable:
-            bits.append("\n**No market in this event clears the edge threshold. PASS.**")
+            reason = next((r.get("reasoning", [None])[0] for r in recs
+                           if r.get("reasoning")), None)
+            bits.append("\n**PASS.** " + (reason or
+                        "No fresh verified market quote is available for a designation."))
         else:
             bits.append("")
             bits += [_fmt_rec(r) for r in actionable[:6]]

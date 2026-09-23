@@ -274,26 +274,35 @@ class TheOddsApi(OddsProvider):
         return rows
 
     def _flatten(self, ev: Dict, sport: str) -> List[Dict]:
+        from ..integrity import parse_time
         rows: List[Dict] = []
         if not ev:
             return rows
         for bm in ev.get("bookmakers", []) or []:
             book = (bm.get("key") or "").lower()
+            book_updated = parse_time(bm.get("last_update"))
             for mk in bm.get("markets", []) or []:
                 mkey = mk.get("key", "")
+                provider_updated = parse_time(mk.get("last_update")) or book_updated
                 if mkey in MARKET_MAP:
                     market = MARKET_MAP[mkey]
                     for oc in mk.get("outcomes", []) or []:
-                        rows.append(dict(event_id=ev["id"], sport=sport, book=book,
-                                         market=market, selection=oc.get("name"),
-                                         line=oc.get("point"), price=oc.get("price")))
+                        row = dict(event_id=ev["id"], sport=sport, book=book,
+                                   market=market, selection=oc.get("name"),
+                                   line=oc.get("point"), price=oc.get("price"))
+                        if provider_updated is not None:
+                            row["provider_updated_at"] = provider_updated
+                        rows.append(row)
                 elif mkey in PROP_MAP:
                     prop = PROP_MAP[mkey]
                     for oc in mk.get("outcomes", []) or []:
                         who = oc.get("description") or oc.get("name")
                         side = (oc.get("name") or "Over").title()
-                        rows.append(dict(event_id=ev["id"], sport=sport, book=book,
-                                         market="player_prop",
-                                         selection=f"{who} {side} {prop}",
-                                         line=oc.get("point"), price=oc.get("price")))
+                        row = dict(event_id=ev["id"], sport=sport, book=book,
+                                   market="player_prop",
+                                   selection=f"{who} {side} {prop}",
+                                   line=oc.get("point"), price=oc.get("price"))
+                        if provider_updated is not None:
+                            row["provider_updated_at"] = provider_updated
+                        rows.append(row)
         return rows

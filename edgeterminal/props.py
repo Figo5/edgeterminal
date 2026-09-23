@@ -187,7 +187,8 @@ def prop_state(*, confidence: float, edge_pct: float, books: int, age_s: Optiona
                agreement: float, usage_available: bool, is_demo: bool,
                price_source_type: str = "STRUCTURED",
                eligible_web: bool = False,
-               usage_basis: Optional[str] = None) -> str:
+               usage_basis: Optional[str] = None,
+               sport: str = "NFL") -> str:
     """The prop state machine. Never forces a play; never promotes a lean.
 
     A prior-season usage baseline can inform a watchlist entry but cannot support
@@ -205,6 +206,9 @@ def prop_state(*, confidence: float, edge_pct: float, books: int, age_s: Optiona
         return "INSUFFICIENT DATA"
     if age_s > settings.stale_odds_s:
         return "STALE"
+    if sport == "NFL":
+        # The model has no validated player-prop threshold or forward record.
+        return "PASS"
     if agreement < 1.0:
         return "WATCHLIST"
     if edge_pct <= 0:
@@ -550,13 +554,14 @@ def _build_board(*, event: Dict, players: List[Dict], rows: List[Dict], usage_ro
                                books=books, age_s=_todays_age(rows, now),
                                agreement=feature.get("source_agreement", 1.0),
                                usage_available=bool(usage), is_demo=is_demo,
-                               usage_basis=basis)
+                               usage_basis=basis, sport=event["sport"])
             recommendations.append(_rec(
                 event=event, player=name, team=row.get("team"), market="player_anytime_td",
                 side=None, line=None, price=row["best_price"], book=row["book"],
                 model_prob=row["model_prob"], market_prob=row["market_prob"],
                 final_prob=row["final_prob"], edge_pct=row["edge_pct"], confidence=conf,
-                units=prop_units(conf["confidence"], row["edge_pct"], "player_anytime_td"),
+                units=0.0 if state == "PASS" else
+                      prop_units(conf["confidence"], row["edge_pct"], "player_anytime_td"),
                 state=state, usage=usage, feature=feature, environment=row.get("expected_tds"),
                 books=books, citations=citations, citations_by_url=citations_by_url,
                 now=now, usage_basis=basis))
@@ -646,14 +651,15 @@ def _build_board(*, event: Dict, players: List[Dict], rows: List[Dict], usage_ro
                                age_s=_todays_age(quotes, now),
                                agreement=feature.get("source_agreement", 1.0),
                                usage_available=bool(usage), is_demo=is_demo,
-                               usage_basis=basis)
+                               usage_basis=basis, sport=event["sport"])
             recommendations.append(_rec(
                 event=event, player=player_name, team=(usage or {}).get("team"),
                 market=market_name, side=side, line=float(line), price=price,
                 book=quote.get("book"), model_prob=round(model_p, 4),
                 market_prob=round(market_prob[side], 4), final_prob=round(final_p, 4),
                 edge_pct=round(edge, 2), confidence=conf,
-                units=prop_units(conf["confidence"], edge, market_name), state=state,
+                units=0.0 if state == "PASS" else
+                      prop_units(conf["confidence"], edge, market_name), state=state,
                 usage=usage, feature=feature, books=books, citations=citations,
                 citations_by_url=citations_by_url, now=now, projection=projection,
                 overround=overround, usage_basis=basis))
@@ -664,7 +670,8 @@ def _build_board(*, event: Dict, players: List[Dict], rows: List[Dict], usage_ro
     td_rows = [r for r in recommendations if r["market"] == "player_anytime_td"]
     most_likely = max(td_rows, key=lambda r: r["final_prob"]) if td_rows else None
     valued = [r for r in td_rows if r["edge_pct"] > 0]
-    best_value = max(valued, key=lambda r: r["ev_per_unit"]) if valued else None
+    best_value = None if event["sport"] == "NFL" else (
+        max(valued, key=lambda r: r["ev_per_unit"]) if valued else None)
     # Market-implied favourite, for when no model is supportable. This is a
     # likelihood read off the price (vig included), never a recommendation.
     td_prices_shown = [p for p in prices if p["market"] == "player_anytime_td"]
@@ -674,7 +681,8 @@ def _build_board(*, event: Dict, players: List[Dict], rows: List[Dict], usage_ro
     # A board full of INSUFFICIENT DATA rows has not "qualified" anything; it is
     # still insufficient. Verified browse-only prices do count as something to show.
     graded = [r for r in recommendations if r["state"] != "INSUFFICIENT DATA"]
-    state = ("OFFICIAL PICK" if any(r["state"] == "OFFICIAL PICK" for r in recommendations)
+    state = ("PASS" if event["sport"] == "NFL" and graded else
+             "OFFICIAL PICK" if any(r["state"] == "OFFICIAL PICK" for r in recommendations)
              else "NO QUALIFYING PROP" if graded or prices else "INSUFFICIENT DATA")
     board = dict(recommendations=recommendations, most_likely=most_likely,
                  best_value=best_value, state=state, prices=prices,

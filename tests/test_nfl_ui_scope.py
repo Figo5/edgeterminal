@@ -17,11 +17,13 @@ def test_frontend_is_nfl_only_and_has_focused_sections():
     assert 'data-section="moves"' not in js
 
 
-def test_frontend_has_clear_no_official_pick_state_and_compact_provider_health():
+def test_frontend_shows_research_only_board_and_compact_provider_health():
     js = (ROOT / "edgeterminal/web/app.js").read_text()
     html = (ROOT / "edgeterminal/web/index.html").read_text()
-    assert "NO OFFICIAL PICKS RIGHT NOW" in js
-    assert "required price, confidence, data-quality, and market-coverage thresholds" in js
+    assert "Research only" in js
+    assert "Upcoming games remain PASS" in js
+    assert "Forward shadow grading has not started" in js
+    assert 'section: "games"' in js
     assert "providerHealth" in html
     assert "Data providers" not in html
 
@@ -40,12 +42,10 @@ def test_frontend_has_no_dead_market_filters():
     assert 'value="outright"' not in html
 
 
-def test_props_live_only_in_game_detail_with_category_filters():
+def test_props_and_parlays_are_deferred_from_the_visible_game_flow():
     js = (ROOT / "edgeterminal/web/app.js").read_text()
-    assert "propsPanel" in js and "loadProps" in js
-    assert 'data-propcat="${k}"' in js
-    for category in ("td", "passing", "rushing", "receiving"):
-        assert f'["{category}",' in js
-    # fetched on demand from the event endpoint, never bundled into the dashboard
-    assert "/props?category=" in js
-    assert "dashboard?.props" not in js
+    html = (ROOT / "edgeterminal/web/index.html").read_text()
+    assert "${propsPanel()}" not in js
+    assert "${parlayCard(" not in js
+    assert "Player Props" not in html
+    assert "Best Parlay" not in html

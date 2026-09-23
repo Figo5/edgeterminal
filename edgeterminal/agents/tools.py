@@ -11,8 +11,7 @@ import time
 from typing import Any, Callable, Dict, List, Optional
 
 from .. import db, engine, parlay
-from ..calibration import performance
-from ..config import SPORTS, settings
+from ..config import ROOT, SPORTS, settings
 from ..providers import registry as R
 
 MAX_CHARS = 14000
@@ -223,9 +222,9 @@ def find_best_bets(min_confidence: Optional[float] = None, sport: Optional[str] 
         out = [r for r in out if r["price"] > 0]
     official = [r for r in out if r["state"] == "OFFICIAL PICK"]
     return dict(threshold=thr, official_pick_count=len(official), returned=len(out[:limit]),
-                note=("No market currently clears the official-pick threshold. Saying so is the "
-                      "correct answer; do not lower the bar to produce a play."
-                      if not out and not include_leans else
+                note=("NFL markets remain PASS while model thresholds and forward tracking "
+                      "are unvalidated. Current prices remain research only."
+                      if not out else
                       ("This is an explicitly requested lower-confidence search; entries retain "
                        "their LEAN/WATCHLIST labels and are not Official Picks."
                        if include_leans else "")),
@@ -264,12 +263,13 @@ def build_best_parlay(max_legs: int = 3, sport: Optional[str] = None,
 
 
 def get_model_performance() -> Dict:
-    perf = performance()
-    if not perf["graded"]:
-        return dict(perf, note="No graded predictions yet, so hit rate, CLV and calibration are "
-                               "all unavailable. Predictions are being stored and will grade as "
-                               "results are ingested.")
-    return perf
+    path = ROOT / "reports" / "nfl_model_v1" / "backtest_results.json"
+    historical = json.loads(path.read_text()) if path.exists() else {}
+    return dict(readiness="RESEARCH_ONLY", forward_shadow_status="NOT_STARTED",
+                historical_2025=historical.get("2025"),
+                note="Automatic NFL forward prediction grading has not been implemented. "
+                     "The 2023–2025 replays are seen retrospective seasons, not an "
+                     "independent validation set. All NFL markets remain PASS.")
 
 
 def search_web(query: str, limit: int = 5) -> Dict:
@@ -445,21 +445,12 @@ def find_best_player_props(event_id: Optional[str] = None, market: Optional[str]
     if not eid:
         return dict(error="No NFL event available. Refresh odds first.")
     out = _props(eid, category=None)
-    threshold = float(min_confidence if min_confidence is not None
-                      else settings.prop_lean_confidence)
-    rows = [r for r in (out.get("recommendations") or [])
-            if r["confidence"] >= threshold and r["edge_pct"] > 0
-            and (not market or r["market"] == market)]
-    official = [r for r in rows if r["state"] == "OFFICIAL PICK"]
-    keys = ("player", "market", "market_label", "selection", "line", "book", "price",
-            "final_prob", "fair_price", "edge_pct", "confidence", "units", "state", "sources")
-    return dict(event=out.get("event"), threshold=threshold,
-                official_pick_count=len(official),
-                recommendations=[{k: r[k] for k in keys if k in r} for r in rows[:limit]],
-                note=("No player prop currently clears the prop threshold and the deterministic "
-                      "gates. Saying so is the correct answer." if not official else
-                      "Official props clear prop-specific confidence, coverage, freshness and "
-                      "source-agreement gates."))
+    if out.get("error"):
+        return dict(error=out["error"])
+    return dict(event=out.get("event"), recommendations=[], official_pick_count=0,
+                researched_rows=len(out.get("recommendations") or []),
+                note="NFL player props remain PASS by policy. Inspect the game prop "
+                     "analysis for priced research rows; no best prop is designated.")
 
 
 def get_player_props(event_id: Optional[str] = None, category: Optional[str] = None,

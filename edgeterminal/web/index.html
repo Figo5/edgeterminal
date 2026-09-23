@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>EdgeTerminal</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v=nfl-board-20260923e">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>▨</text></svg>">
 </head>
 <body>
@@ -15,32 +15,14 @@
     <span id="staleBadge" class="badge stale hidden">ODDS STALE</span>
     <span class="meta" id="lastUpdated">last updated —</span>
     <button id="providerHealth" class="health" title="Provider status">DATA <span id="providerDots">—</span></button>
-    <button id="refreshBtn" class="btn primary">Refresh Odds</button>
-    <button id="chatToggle" class="btn">AI Analyst</button>
+    <button id="refreshBtn" class="btn primary" type="button">Refresh data</button>
+    <button id="chatToggle" class="btn" type="button">Research chat</button>
   </div>
 </header>
 
 <div id="shell">
   <aside id="rail">
     <nav id="sections"></nav>
-    <details class="railgroup">
-      <summary class="railtitle">Research filters</summary>
-      <label class="ctl">Min confidence <output id="confOut">80</output>
-        <input type="range" id="confFilter" min="50" max="100" value="80" step="1"></label>
-      <label class="ctl">Market
-        <select id="marketFilter">
-          <option value="">all</option><option value="moneyline">moneyline</option>
-          <option value="spread">spread</option><option value="total">total</option>
-        </select></label>
-      <label class="ctl checkbox"><input type="checkbox" id="plusOnly"> plus money only</label>
-      <label class="ctl checkbox"><input type="checkbox" id="dogsOnly"> underdogs only</label>
-      <label class="ctl">Sort
-        <select id="sortBy">
-          <option value="confidence">confidence</option><option value="edge_pct">edge</option>
-          <option value="units">units</option><option value="price">odds</option>
-          <option value="start_time">start time</option>
-        </select></label>
-    </details>
     <div id="providerPanel" class="provider-pop hidden"><div id="providerList" class="providers"></div></div>
     <div class="railfoot">
       <div id="modelVersion" class="meta"></div>
@@ -50,7 +32,7 @@
 
   <main id="main"><div class="loading">Loading slate…</div></main>
 
-  <section id="chat" class="open">
+  <section id="chat">
     <div class="chathead">
       <span>AI ANALYST</span>
       <span id="llmBadge" class="badge"></span>
@@ -59,13 +41,13 @@
     <div id="chatLog" class="chatlog"></div>
     <div class="suggest" id="suggest"></div>
     <form id="chatForm" class="chatform">
-      <textarea id="chatInput" rows="2" placeholder="Ask: best NFL bet right now · analyze this game · what price makes this playable?"></textarea>
+      <textarea id="chatInput" rows="2" aria-label="Ask about NFL research" placeholder="Ask about a matchup, market price, source, or PASS reason"></textarea>
       <button class="btn primary" type="submit">Send</button>
     </form>
   </section>
 </div>
 
 <div id="toast" class="toast hidden"></div>
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=nfl-board-20260923e"></script>
 </body>
 </html>

@@ -115,7 +115,7 @@ class EspnOdds(OddsProvider):
                 provider = offer.get("provider") or {}
                 book = normalize_book(provider.get("displayName") or provider.get("name"))
                 common = dict(event_id=f"espn-{ev.get('id')}", sport=sport, book=book,
-                              source_url=source_url, provider_updated_at=retrieved)
+                              source_url=source_url, provider_updated_at=None)
                 moneyline = offer.get("moneyline") or {}
                 for side, selection in (("home", home), ("away", away)):
                     close = (moneyline.get(side) or {}).get("close") or {}

@@ -231,24 +231,33 @@ def test_stale_prop_prices_are_flagged_not_bet(event):
 
 def test_prop_state_machine_requires_coverage_freshness_and_edge():
     assert props.prop_state(confidence=80.0, edge_pct=5.0, books=3, age_s=30.0, agreement=1.0,
-                            usage_available=True, is_demo=False) == "OFFICIAL PICK"
+                            usage_available=True, is_demo=False, sport="CFB") == "OFFICIAL PICK"
     assert props.prop_state(confidence=80.0, edge_pct=5.0, books=1, age_s=30.0, agreement=1.0,
                             usage_available=True, is_demo=False) == "INSUFFICIENT DATA"
     assert props.prop_state(confidence=80.0, edge_pct=5.0, books=3, age_s=99999.0, agreement=1.0,
                             usage_available=True, is_demo=False) == "STALE"
     assert props.prop_state(confidence=80.0, edge_pct=5.0, books=3, age_s=30.0, agreement=0.85,
-                            usage_available=True, is_demo=False) == "WATCHLIST"
+                            usage_available=True, is_demo=False, sport="CFB") == "WATCHLIST"
     assert props.prop_state(confidence=80.0, edge_pct=-1.0, books=3, age_s=30.0, agreement=1.0,
                             usage_available=True, is_demo=False) == "PASS"
     assert props.prop_state(confidence=40.0, edge_pct=5.0, books=3, age_s=30.0, agreement=1.0,
-                            usage_available=True, is_demo=False) in ("LEAN", "WATCHLIST",
+                            usage_available=True, is_demo=False, sport="CFB") in ("LEAN", "WATCHLIST",
                                                                      "WAIT FOR PRICE")
+
+
+def test_nfl_prop_policy_never_promotes_a_priced_prop():
+    common = dict(confidence=99.0, edge_pct=20.0, books=5, age_s=30.0,
+                  agreement=1.0, usage_available=True, is_demo=False, sport="NFL")
+    assert props.prop_state(**common) == "PASS"
+    assert props.prop_state(**{k: v for k, v in common.items() if k != "sport"}) == "PASS"
+    assert props.prop_state(**dict(common, age_s=99999.0)) == "STALE"
+    assert props.prop_state(**dict(common, books=1)) == "INSUFFICIENT DATA"
 
 
 def test_a_prior_season_baseline_cannot_become_an_official_pick():
     """Role evidence from last season can inform a lean, never a staked pick."""
     common = dict(confidence=90.0, edge_pct=8.0, books=3, age_s=30.0, agreement=1.0,
-                  usage_available=True, is_demo=False)
+                  usage_available=True, is_demo=False, sport="CFB")
     assert props.prop_state(**common) == "OFFICIAL PICK"
     assert props.prop_state(**common, usage_basis="prior_season") == "LEAN"
     assert props.prop_state(**dict(common, confidence=50.0),
