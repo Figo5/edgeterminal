@@ -51,6 +51,7 @@ class Settings:
     demo_mode = _b("DEMO_MODE", False)
     odds_provider = os.getenv("ODDS_PROVIDER", "auto").strip().lower()
     odds_api_key = os.getenv("ODDS_API_KEY", "").strip()
+    sportsgameodds_api_key = os.getenv("SPORTSGAMEODDS_API_KEY", "").strip()
     odds_regions = os.getenv("ODDS_REGIONS", "us,uk").strip()
     preferred_books = _csv("PREFERRED_BOOKS", "fanduel,bet365")
     stats_provider = os.getenv("STATS_PROVIDER", "auto").strip().lower()

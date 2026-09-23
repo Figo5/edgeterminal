@@ -1,0 +1,52 @@
+{
+  "success": true,
+  "nextCursor": null,
+  "data": [{
+    "eventID": "sgo-fixture-buf-hou",
+    "leagueID": "NFL",
+    "sportID": "FOOTBALL",
+    "startTime": "2026-10-01T00:15:00Z",
+    "status": {"started": false, "cancelled": false, "startsAt": "2026-10-01T00:15:00Z"},
+    "teams": {
+      "home": {"teamID": "HOUSTON_TEXANS_NFL", "names": {"long": "Houston Texans"}},
+      "away": {"teamID": "BUFFALO_BILLS_NFL", "names": {"long": "Buffalo Bills"}}
+    },
+    "players": {
+      "JOSH_ALLEN_1_NFL": {"playerID": "JOSH_ALLEN_1_NFL", "teamID": "BUFFALO_BILLS_NFL", "name": "Josh Allen"}
+    },
+    "odds": {
+      "passing_yards-JOSH_ALLEN_1_NFL-game-ou-over": {
+        "oddID": "passing_yards-JOSH_ALLEN_1_NFL-game-ou-over", "statID": "passing_yards", "statEntityID": "JOSH_ALLEN_1_NFL", "playerID": "JOSH_ALLEN_1_NFL", "periodID": "game", "betTypeID": "ou", "sideID": "over",
+        "byBookmaker": {"draftkings": {"odds": "-110", "overUnder": "224.5", "available": true}, "fanduel": {"odds": "+100", "overUnder": "225.5", "available": true}}
+      },
+      "passing_touchdowns-JOSH_ALLEN_1_NFL-game-ou-over": {
+        "oddID": "passing_touchdowns-JOSH_ALLEN_1_NFL-game-ou-over", "statID": "passing_touchdowns", "statEntityID": "JOSH_ALLEN_1_NFL", "periodID": "game", "betTypeID": "ou", "sideID": "over",
+        "byBookmaker": {"draftkings": {"odds": "+115", "overUnder": "1.5", "available": true}}
+      },
+      "passing_interceptions-JOSH_ALLEN_1_NFL-game-ou-under": {
+        "oddID": "passing_interceptions-JOSH_ALLEN_1_NFL-game-ou-under", "statID": "passing_interceptions", "statEntityID": "JOSH_ALLEN_1_NFL", "periodID": "game", "betTypeID": "ou", "sideID": "under",
+        "byBookmaker": {"fanduel": {"odds": "-145", "overUnder": "0.5", "available": true}}
+      },
+      "rushing_yards-JOSH_ALLEN_1_NFL-game-ou-over": {
+        "oddID": "rushing_yards-JOSH_ALLEN_1_NFL-game-ou-over", "statID": "rushing_yards", "statEntityID": "JOSH_ALLEN_1_NFL", "periodID": "game", "betTypeID": "ou", "sideID": "over",
+        "byBookmaker": {"draftkings": {"odds": "-115", "overUnder": "35.5", "available": true}}
+      },
+      "rushing_attempts-JOSH_ALLEN_1_NFL-game-ou-under": {
+        "oddID": "rushing_attempts-JOSH_ALLEN_1_NFL-game-ou-under", "statID": "rushing_attempts", "statEntityID": "JOSH_ALLEN_1_NFL", "periodID": "game", "betTypeID": "ou", "sideID": "under",
+        "byBookmaker": {"fanduel": {"odds": "+105", "overUnder": "7.5", "available": true}}
+      },
+      "receiving_receptions-JOSH_ALLEN_1_NFL-game-ou-over": {
+        "oddID": "receiving_receptions-JOSH_ALLEN_1_NFL-game-ou-over", "statID": "receiving_receptions", "statEntityID": "JOSH_ALLEN_1_NFL", "periodID": "game", "betTypeID": "ou", "sideID": "over",
+        "byBookmaker": {"draftkings": {"odds": "+120", "overUnder": "0.5", "available": true}}
+      },
+      "receiving_yards-JOSH_ALLEN_1_NFL-game-ou-over": {
+        "oddID": "receiving_yards-JOSH_ALLEN_1_NFL-game-ou-over", "statID": "receiving_yards", "statEntityID": "JOSH_ALLEN_1_NFL", "periodID": "game", "betTypeID": "ou", "sideID": "over",
+        "byBookmaker": {"fanduel": {"odds": "+110", "overUnder": "3.5", "available": true}}
+      },
+      "touchdowns-JOSH_ALLEN_1_NFL-game-yn-yes": {
+        "oddID": "touchdowns-JOSH_ALLEN_1_NFL-game-yn-yes", "statID": "touchdowns", "statEntityID": "JOSH_ALLEN_1_NFL", "playerID": "JOSH_ALLEN_1_NFL", "periodID": "game", "betTypeID": "yn", "sideID": "yes",
+        "byBookmaker": {"draftkings": {"odds": "+150", "available": true}, "fanduel": {"odds": "+145", "available": true}}
+      }
+    }
+  }]
+}

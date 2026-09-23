@@ -36,6 +36,47 @@ CREATE TABLE IF NOT EXISTS nfl_provider_games (
   PRIMARY KEY(provider, provider_game_id));
 CREATE INDEX IF NOT EXISTS ix_nfl_provider_game ON nfl_provider_games(game_id);
 
+CREATE TABLE IF NOT EXISTS nfl_prop_players (
+  player_id TEXT PRIMARY KEY, player_name TEXT NOT NULL, first_seen_at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS nfl_prop_player_aliases (
+  provider TEXT NOT NULL, provider_player_id TEXT NOT NULL,
+  player_id TEXT NOT NULL, player_name TEXT NOT NULL, linked_at REAL NOT NULL,
+  PRIMARY KEY(provider, provider_player_id));
+CREATE TRIGGER IF NOT EXISTS nfl_prop_players_no_update BEFORE UPDATE ON nfl_prop_players
+BEGIN SELECT RAISE(ABORT, 'prop player identity is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_prop_players_no_delete BEFORE DELETE ON nfl_prop_players
+BEGIN SELECT RAISE(ABORT, 'prop player identity cannot be deleted'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_prop_alias_no_update BEFORE UPDATE ON nfl_prop_player_aliases
+BEGIN SELECT RAISE(ABORT, 'prop player aliases are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_prop_alias_no_delete BEFORE DELETE ON nfl_prop_player_aliases
+BEGIN SELECT RAISE(ABORT, 'prop player aliases cannot be deleted'); END;
+
+CREATE TABLE IF NOT EXISTS nfl_prop_capture_batches (
+  batch_id TEXT PRIMARY KEY, provider TEXT NOT NULL, retrieved_at REAL NOT NULL,
+  raw_sha256 TEXT NOT NULL, raw_payload TEXT NOT NULL,
+  events_seen INTEGER NOT NULL, events_mapped INTEGER NOT NULL,
+  quotes_stored INTEGER NOT NULL);
+CREATE TRIGGER IF NOT EXISTS nfl_prop_batch_no_update BEFORE UPDATE ON nfl_prop_capture_batches
+BEGIN SELECT RAISE(ABORT, 'prop capture batches are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_prop_batch_no_delete BEFORE DELETE ON nfl_prop_capture_batches
+BEGIN SELECT RAISE(ABORT, 'prop capture batches cannot be deleted'); END;
+
+CREATE TABLE IF NOT EXISTS nfl_prop_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id TEXT NOT NULL,
+  canonical_game_id TEXT NOT NULL, provider_event_id TEXT NOT NULL,
+  player_id TEXT NOT NULL, provider_player_id TEXT NOT NULL,
+  player_name TEXT NOT NULL, team TEXT NOT NULL, opponent TEXT NOT NULL,
+  market TEXT NOT NULL, line REAL, side TEXT NOT NULL, price INTEGER NOT NULL,
+  sportsbook TEXT NOT NULL, retrieved_at REAL NOT NULL, kickoff_utc REAL NOT NULL,
+  provider TEXT NOT NULL, source TEXT NOT NULL, provider_updated_at REAL,
+  FOREIGN KEY(batch_id) REFERENCES nfl_prop_capture_batches(batch_id));
+CREATE INDEX IF NOT EXISTS ix_nfl_prop_board ON nfl_prop_snapshots
+  (canonical_game_id, market, player_id, sportsbook, retrieved_at);
+CREATE TRIGGER IF NOT EXISTS nfl_prop_snapshot_no_update BEFORE UPDATE ON nfl_prop_snapshots
+BEGIN SELECT RAISE(ABORT, 'prop snapshots are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_prop_snapshot_no_delete BEFORE DELETE ON nfl_prop_snapshots
+BEGIN SELECT RAISE(ABORT, 'prop snapshots cannot be deleted'); END;
+
 CREATE TABLE IF NOT EXISTS nfl_game_snapshots (
   id TEXT PRIMARY KEY, game_id TEXT NOT NULL, payload TEXT NOT NULL,
   model_version TEXT NOT NULL, feature_version TEXT NOT NULL,

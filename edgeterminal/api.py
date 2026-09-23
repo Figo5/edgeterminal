@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import calibration, db, engine, logs, nfl_forward_grading, parlay, props, shadow
+from . import calibration, db, engine, logs, nfl_forward_grading, nfl_props, parlay, props, shadow
 from .agents import llm
 from .config import ROOT, settings
 from .providers import registry as R
@@ -293,6 +293,15 @@ def model_report() -> Dict:
 
 
 # ------------------------------------------------------------------- props
+@app.get("/api/research/nfl/prop-board/{game_id}")
+def nfl_prop_board(game_id: str, market: Optional[str] = None) -> Dict:
+    """Stored research observations; never triggers a provider or pick engine."""
+    try:
+        return nfl_props.board(game_id, market=market)
+    except ValueError as exc:
+        raise HTTPException(404 if "unknown canonical" in str(exc) else 400, str(exc)) from exc
+
+
 @app.get("/api/event/{event_id}/props")
 def event_props(event_id: str, category: Optional[str] = None,
                 player: Optional[str] = None, research: bool = True) -> Dict:
