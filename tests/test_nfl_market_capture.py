@@ -69,3 +69,15 @@ def test_weekly_capture_reads_only_espn_fixture(fixture_db):
     now,_,_=fixture_db
     result=capture_week(2026,3,provider=Provider(),now=now)
     assert result["rows_stored"]==2
+
+
+def test_demo_event_near_kickoff_never_triggers_espn_fetch(fixture_db):
+    now,_,_=fixture_db
+    db.upsert_event(dict(id="demo-nfl-dolphins-at-jets",sport="NFL",league="NFL",
+                         home_team="New York Jets",away_team="Miami Dolphins",
+                         start_time=datetime.fromtimestamp(now+60,timezone.utc).isoformat(),
+                         status="STATUS_SCHEDULED",meta={"is_demo":True}))
+    provider=Provider()
+    result=capture_if_due(now=now,provider=provider)
+    assert result["target_games"]==1
+    assert result["games_without_quotes"]==[]

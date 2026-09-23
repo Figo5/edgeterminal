@@ -4,7 +4,7 @@ from __future__ import annotations
 import json
 import time
 
-from . import db, nfl_market
+from . import db, nfl_identity, nfl_market
 from .integrity import parse_time
 from .providers.espn import EspnOdds
 
@@ -12,12 +12,26 @@ WINDOW_S = 15 * 60
 INACTIVE = {"STATUS_POSTPONED","STATUS_CANCELED","STATUS_CANCELLED","STATUS_FINAL"}
 
 
+def _mapped_live_game(event):
+    if nfl_identity.canonical_id(event) != event["id"]:
+        return False
+    try:
+        meta=json.loads(event.get("meta") or "{}")
+    except (TypeError,ValueError):
+        return False
+    if meta.get("is_demo"):
+        return False
+    return db.q1("SELECT 1 FROM nfl_provider_games WHERE provider='espn' AND game_id=? LIMIT 1",
+                 (event["id"],)) is not None
+
+
 def capture_if_due(now=None, provider=None):
     stamp=time.time() if now is None else now
     targets={}
     for event in db.q("SELECT * FROM events WHERE sport='NFL'"):
         kickoff=parse_time(event.get("start_time"))
-        if (kickoff is not None and 0 < kickoff-stamp <= WINDOW_S and
+        if (_mapped_live_game(event) and kickoff is not None and
+                0 < kickoff-stamp <= WINDOW_S and
                 str(event.get("status") or "").upper() not in INACTIVE):
             targets[event["id"]]=event
     return _capture(targets,provider)
@@ -30,7 +44,7 @@ def capture_week(season,week,provider=None,now=None):
     targets={}
     for event in db.q("SELECT * FROM events WHERE sport='NFL' AND id LIKE ?",(prefix+"%",)):
         kickoff=parse_time(event.get("start_time"))
-        if (kickoff is not None and stamp<kickoff and
+        if (_mapped_live_game(event) and kickoff is not None and stamp<kickoff and
                 str(event.get("status") or "").upper() not in INACTIVE):
             targets[event["id"]]=event
     return _capture(targets,provider)
