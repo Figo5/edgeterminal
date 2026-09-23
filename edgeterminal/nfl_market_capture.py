@@ -34,7 +34,7 @@ def capture_if_due(now=None, provider=None):
                 0 < kickoff-stamp <= WINDOW_S and
                 str(event.get("status") or "").upper() not in INACTIVE):
             targets[event["id"]]=event
-    return _capture(targets,provider)
+    return _capture(targets,provider,stamp)
 
 
 def capture_week(season,week,provider=None,now=None):
@@ -47,25 +47,43 @@ def capture_week(season,week,provider=None,now=None):
         if (_mapped_live_game(event) and kickoff is not None and stamp<kickoff and
                 str(event.get("status") or "").upper() not in INACTIVE):
             targets[event["id"]]=event
-    return _capture(targets,provider)
+    return _capture(targets,provider,stamp)
 
 
-def _capture(targets,provider):
+def _record_attempts(targets, stamp, outcomes, error_type=None):
+    with db.tx() as c:
+        c.executemany(
+            "INSERT INTO nfl_capture_attempts(game_id,kickoff_utc,attempted_at,provider,"
+            "outcome,rows_stored,error_type) VALUES(?,?,?,?,?,?,?)",
+            [(game_id,parse_time(event["start_time"]),stamp,"espn-odds",
+              outcomes.get(game_id,0) and "success" or ("error" if error_type else "no_quote"),
+              outcomes.get(game_id,0),error_type) for game_id,event in targets.items()])
+
+
+def _capture(targets,provider,stamp):
     result={"provider":"espn-odds","target_games":len(targets),"rows_stored":0}
     if not targets:
         return result
     # Explicit ESPN adapter: this job cannot consume an Odds API request.
-    raw=(provider or EspnOdds()).fetch_odds("NFL")
-    by_game={game_id:[] for game_id in targets}
-    for row in raw:
-        mapped=db.mapped_nfl_game("espn",str(row.get("event_id") or ""))
-        if mapped in targets:
-            by_game[mapped].append(dict(row,event_id=mapped))
-    accepted=[]
-    for game_id,rows in by_game.items():
-        accepted.extend(nfl_market.valid_game_quotes(rows,targets[game_id]))
-    if accepted:
-        result["rows_stored"]=db.store_odds(accepted,source="espn-odds",is_demo=False)
+    try:
+        raw=(provider or EspnOdds()).fetch_odds("NFL")
+        if not isinstance(raw,list) or any(not isinstance(row,dict) for row in raw):
+            raise ValueError("malformed ESPN odds response")
+        by_game={game_id:[] for game_id in targets}
+        for row in raw:
+            mapped=db.mapped_nfl_game("espn",str(row.get("event_id") or ""))
+            if mapped in targets:
+                by_game[mapped].append(dict(row,event_id=mapped))
+        accepted=[]
+        for game_id,rows in by_game.items():
+            accepted.extend(nfl_market.valid_game_quotes(rows,targets[game_id]))
+        if accepted:
+            result["rows_stored"]=db.store_odds(accepted,source="espn-odds",is_demo=False)
+    except Exception as exc:
+        _record_attempts(targets,stamp,{},type(exc).__name__)
+        raise
+    outcomes={game_id:sum(row["event_id"]==game_id for row in accepted) for game_id in targets}
+    _record_attempts(targets,stamp,outcomes)
     result["games_with_quotes"]=len({r["event_id"] for r in accepted})
     result["games_without_quotes"]=sorted(set(targets)-{r["event_id"] for r in accepted})
     return result

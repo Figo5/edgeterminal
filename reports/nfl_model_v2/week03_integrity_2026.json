@@ -1,0 +1,260 @@
+{
+  "all_espn_identities_match": true,
+  "all_frozen_before_kickoff": true,
+  "all_kickoffs_match": true,
+  "all_market_sidecars_traceable": true,
+  "code_commit_sha256_matches": true,
+  "code_sha256_matches": true,
+  "committed_file_matches": true,
+  "committed_sha256": "399566baa6ae059d8fac55050ab07201796837a91541000e482dcfa5b1b776d1",
+  "current_schedule_target_games": 16,
+  "current_schedule_target_scores_blank": true,
+  "designation": "PASS",
+  "feature_hash_recorded": true,
+  "freeze_sha256": "399566baa6ae059d8fac55050ab07201796837a91541000e482dcfa5b1b776d1",
+  "frozen_at": 1790177705.08724,
+  "game_count": 16,
+  "games": [
+    {
+      "canonical_id": "nfl-2026-reg-03-ari-sf",
+      "espn_event_id": "espn-401872958",
+      "game_id": "2026_03_ARI_SF",
+      "identity_ok": true,
+      "kickoff_ok": true,
+      "market_rows": 4,
+      "prices_traceable": true,
+      "source_snapshot_id": "702b9280de0b4699e067063e",
+      "source_snapshot_sha_ok": true,
+      "spread_sign_sidecar_ok": true
+    },
+    {
+      "canonical_id": "nfl-2026-reg-03-atl-gb",
+      "espn_event_id": "espn-401872948",
+      "game_id": "2026_03_ATL_GB",
+      "identity_ok": true,
+      "kickoff_ok": true,
+      "market_rows": 4,
+      "prices_traceable": true,
+      "source_snapshot_id": "df34c1f0c4ef06f7628a0b82",
+      "source_snapshot_sha_ok": true,
+      "spread_sign_sidecar_ok": true
+    },
+    {
+      "canonical_id": "nfl-2026-reg-03-bal-dal",
+      "espn_event_id": "espn-401872960",
+      "game_id": "2026_03_BAL_DAL",
+      "identity_ok": true,
+      "kickoff_ok": true,
+      "market_rows": 4,
+      "prices_traceable": true,
+      "source_snapshot_id": "f8884e04620bb4db9a5f737b",
+      "source_snapshot_sha_ok": true,
+      "spread_sign_sidecar_ok": true
+    },
+    {
+      "canonical_id": "nfl-2026-reg-03-car-cle",
+      "espn_event_id": "espn-401872949",
+      "game_id": "2026_03_CAR_CLE",
+      "identity_ok": true,
+      "kickoff_ok": true,
+      "market_rows": 4,
+      "prices_traceable": true,
+      "source_snapshot_id": "259c2a855de5f2f5a464be27",
+      "source_snapshot_sha_ok": true,
+      "spread_sign_sidecar_ok": true
+    },
+    {
+      "canonical_id": "nfl-2026-reg-03-cin-pit",
+      "espn_event_id": "espn-401872950",
+      "game_id": "2026_03_CIN_PIT",
+      "identity_ok": true,
+      "kickoff_ok": true,
+      "market_rows": 4,
+      "prices_traceable": true,
+      "source_snapshot_id": "ca716725783d813e4ba9e0c6",
+      "source_snapshot_sha_ok": true,
+      "spread_sign_sidecar_ok": true
+    },
+    {
+      "canonical_id": "nfl-2026-reg-03-hou-ind",
+      "espn_event_id": "espn-401872951",
+      "game_id": "2026_03_HOU_IND",
+      "identity_ok": true,
+      "kickoff_ok": true,
+      "market_rows": 4,
+      "prices_traceable": true,
+      "source_snapshot_id": "cb4f8bd94d27998058f2fda0",
+      "source_snapshot_sha_ok": true,
+      "spread_sign_sidecar_ok": true
+    },
+    {
+      "canonical_id": "nfl-2026-reg-03-kc-mia",
+      "espn_event_id": "espn-401872952",
+      "game_id": "2026_03_KC_MIA",
+      "identity_ok": true,
+      "kickoff_ok": true,
+      "market_rows": 4,
+      "prices_traceable": true,
+      "source_snapshot_id": "338e3a8186a6d7872b397b5c",
+      "source_snapshot_sha_ok": true,
+      "spread_sign_sidecar_ok": true
+    },
+    {
+      "canonical_id": "nfl-2026-reg-03-lac-buf",
+      "espn_event_id": "espn-401872953",
+      "game_id": "2026_03_LAC_BUF",
+      "identity_ok": true,
+      "kickoff_ok": true,
+      "market_rows": 4,
+      "prices_traceable": true,
+      "source_snapshot_id": "52d228c25da4f51c066b8940",
+      "source_snapshot_sha_ok": true,
+      "spread_sign_sidecar_ok": true
+    },
+    {
+      "canonical_id": "nfl-2026-reg-03-lar-den",
+      "espn_event_id": "espn-401872962",
+      "game_id": "2026_03_LA_DEN",
+      "identity_ok": true,
+      "kickoff_ok": true,
+      "market_rows": 4,
+      "prices_traceable": true,
+      "source_snapshot_id": "8106800d0f0dfbb8cdc4917e",
+      "source_snapshot_sha_ok": true,
+      "spread_sign_sidecar_ok": true
+    },
+    {
+      "canonical_id": "nfl-2026-reg-03-lv-no",
+      "espn_event_id": "espn-401872961",
+      "game_id": "2026_03_LV_NO",
+      "identity_ok": true,
+      "kickoff_ok": true,
+      "market_rows": 4,
+      "prices_traceable": true,
+      "source_snapshot_id": "e1ab57d77b2d9df6f6c87e04",
+      "source_snapshot_sha_ok": true,
+      "spread_sign_sidecar_ok": true
+    },
+    {
+      "canonical_id": "nfl-2026-reg-03-min-tb",
+      "espn_event_id": "espn-401872959",
+      "game_id": "2026_03_MIN_TB",
+      "identity_ok": true,
+      "kickoff_ok": true,
+      "market_rows": 4,
+      "prices_traceable": true,
+      "source_snapshot_id": "72c6d77cbbaadab6e07dd29f",
+      "source_snapshot_sha_ok": true,
+      "spread_sign_sidecar_ok": true
+    },
+    {
+      "canonical_id": "nfl-2026-reg-03-ne-jax",
+      "espn_event_id": "espn-401872957",
+      "game_id": "2026_03_NE_JAX",
+      "identity_ok": true,
+      "kickoff_ok": true,
+      "market_rows": 4,
+      "prices_traceable": true,
+      "source_snapshot_id": "64f04898782d367fc88e3fce",
+      "source_snapshot_sha_ok": true,
+      "spread_sign_sidecar_ok": true
+    },
+    {
+      "canonical_id": "nfl-2026-reg-03-nyj-det",
+      "espn_event_id": "espn-401872954",
+      "game_id": "2026_03_NYJ_DET",
+      "identity_ok": true,
+      "kickoff_ok": true,
+      "market_rows": 4,
+      "prices_traceable": true,
+      "source_snapshot_id": "329b96279d548d7511cd749c",
+      "source_snapshot_sha_ok": true,
+      "spread_sign_sidecar_ok": true
+    },
+    {
+      "canonical_id": "nfl-2026-reg-03-phi-chi",
+      "espn_event_id": "espn-401872963",
+      "game_id": "2026_03_PHI_CHI",
+      "identity_ok": true,
+      "kickoff_ok": true,
+      "market_rows": 4,
+      "prices_traceable": true,
+      "source_snapshot_id": "05ac728742c44a9af01ebf78",
+      "source_snapshot_sha_ok": true,
+      "spread_sign_sidecar_ok": true
+    },
+    {
+      "canonical_id": "nfl-2026-reg-03-sea-wsh",
+      "espn_event_id": "espn-401872955",
+      "game_id": "2026_03_SEA_WAS",
+      "identity_ok": true,
+      "kickoff_ok": true,
+      "market_rows": 4,
+      "prices_traceable": true,
+      "source_snapshot_id": "2c53a40a08fecf98de95066d",
+      "source_snapshot_sha_ok": true,
+      "spread_sign_sidecar_ok": true
+    },
+    {
+      "canonical_id": "nfl-2026-reg-03-ten-nyg",
+      "espn_event_id": "espn-401872956",
+      "game_id": "2026_03_TEN_NYG",
+      "identity_ok": true,
+      "kickoff_ok": true,
+      "market_rows": 4,
+      "prices_traceable": true,
+      "source_snapshot_id": "cfff85da178cf8d8ca78ce0f",
+      "source_snapshot_sha_ok": true,
+      "spread_sign_sidecar_ok": true
+    }
+  ],
+  "grade_count": 0,
+  "immutable_db_triggers_present": true,
+  "model_hash_recorded": true,
+  "postgame_delay_seconds": 14400,
+  "source_hash_drift": [
+    "games.csv.gz"
+  ],
+  "source_hashes": {
+    "games.csv.gz": {
+      "current": "f32f9fad68dd5802bfa43c03e012b21c2632486fb5e03586ce4c9823e6b6e8a7",
+      "frozen": "a06349d3c8e909847211600e31c86c090d33888fd29104733ea0b365326c64ba"
+    },
+    "play_by_play_2019.csv.gz": {
+      "current": "b764668137052be23745953cbc33fa17e537a70c81e9b73785a19a15e7288216",
+      "frozen": "b764668137052be23745953cbc33fa17e537a70c81e9b73785a19a15e7288216"
+    },
+    "play_by_play_2020.csv.gz": {
+      "current": "bc954b5780e325df4faa255fac092585c981a4de5d2f553a8a4e0a3c8b3a3cf2",
+      "frozen": "bc954b5780e325df4faa255fac092585c981a4de5d2f553a8a4e0a3c8b3a3cf2"
+    },
+    "play_by_play_2021.csv.gz": {
+      "current": "e8743a568f99667a8bdcd29ba12224ee1782ad2b7916bee78ee335c099383739",
+      "frozen": "e8743a568f99667a8bdcd29ba12224ee1782ad2b7916bee78ee335c099383739"
+    },
+    "play_by_play_2022.csv.gz": {
+      "current": "0c69a71eb39498956c7b1d5c1ca52ce7fe679934a95d1af249facb5ea9829ea4",
+      "frozen": "0c69a71eb39498956c7b1d5c1ca52ce7fe679934a95d1af249facb5ea9829ea4"
+    },
+    "play_by_play_2023.csv.gz": {
+      "current": "4649804ee0f0a40b41e51ec75a1ce921949d7fab5459213488656b92f78560e8",
+      "frozen": "4649804ee0f0a40b41e51ec75a1ce921949d7fab5459213488656b92f78560e8"
+    },
+    "play_by_play_2024.csv.gz": {
+      "current": "23370d5d10f8104d80d46a1fc5e61f4f6f5a3263fe96fe2dd629913cfcb08c06",
+      "frozen": "23370d5d10f8104d80d46a1fc5e61f4f6f5a3263fe96fe2dd629913cfcb08c06"
+    },
+    "play_by_play_2025.csv.gz": {
+      "current": "2f135887790a013fd004e609e37096bb4816d5cc80b9f19122e1bad478961978",
+      "frozen": "2f135887790a013fd004e609e37096bb4816d5cc80b9f19122e1bad478961978"
+    },
+    "play_by_play_2026.csv.gz": {
+      "current": "40eef5cb9c1f2c9e0cfc2efaf4050d61c937b0d6457ae6e4b07739ae883b7682",
+      "frozen": "40eef5cb9c1f2c9e0cfc2efaf4050d61c937b0d6457ae6e4b07739ae883b7682"
+    }
+  },
+  "status": "RESEARCH_ONLY",
+  "training_games": 1903,
+  "version_registry_linked": true,
+  "week3_training_plays": 0
+}

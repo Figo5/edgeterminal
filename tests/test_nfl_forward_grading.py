@@ -10,6 +10,7 @@ import pytest
 from edgeterminal import db
 from edgeterminal.config import settings
 from edgeterminal.nfl_forward_grading import register_freeze, sync_all, sync_freeze, report
+from edgeterminal.nfl_model_registry import register as register_model, retire as retire_model, versions as model_versions
 
 
 @pytest.fixture
@@ -202,3 +203,145 @@ def test_closing_market_comparison_needs_timed_same_book_quotes(frozen):
     assert market["total"]["n"]==1
     assert market["brier"]["n"]==1
     assert market["margin"]["candidate_minus_close_mae"]==-3.5
+
+
+@pytest.mark.parametrize("status",["STATUS_POSTPONED","STATUS_CANCELED",
+                                    "STATUS_IN_PROGRESS","STATUS_SUSPENDED"])
+def test_nonfinal_status_stays_ungraded(frozen,status):
+    result=_result(frozen)
+    result["status"]=status
+    assert sync_freeze(frozen["path"],provider=Provider(result),
+                       now=frozen["kickoff"]+5*3600)["unmatched"]==1
+    assert db.q1("SELECT COUNT(*) n FROM nfl_research_grades")["n"]==0
+
+
+def test_moved_kickoff_waits_after_actual_start(frozen):
+    result=_result(frozen)
+    result["start_time"]=datetime.fromtimestamp(frozen["kickoff"]+2*3600,timezone.utc).isoformat()
+    result["meta"]["retrieved_at"]=frozen["kickoff"]+5*3600
+    assert sync_freeze(frozen["path"],provider=Provider(result),
+                       now=frozen["kickoff"]+5*3600)["graded"]==0
+    assert sync_freeze(frozen["path"],provider=Provider(result),
+                       now=frozen["kickoff"]+6*3600+1)["graded"]==1
+
+
+def test_final_score_is_not_graded_before_four_hour_delay(frozen):
+    result=_result(frozen)
+    result["meta"]["retrieved_at"]=frozen["kickoff"]+3*3600
+    counts=sync_freeze(frozen["path"],provider=Provider(result),
+                       now=frozen["kickoff"]+4*3600-1)
+    assert counts["due"]==0 and counts["graded"]==0
+    assert db.q1("SELECT COUNT(*) n FROM nfl_research_grades")["n"]==0
+
+
+def test_large_reschedule_requires_manual_review(frozen):
+    result=_result(frozen)
+    result["start_time"]=datetime.fromtimestamp(frozen["kickoff"]+5*3600,timezone.utc).isoformat()
+    result["meta"]["retrieved_at"]=frozen["kickoff"]+10*3600
+    assert sync_freeze(frozen["path"],provider=Provider(result),
+                       now=frozen["kickoff"]+10*3600)["graded"]==0
+
+
+def test_overtime_final_and_tie_are_explicit(frozen):
+    overtime=_result(frozen,31,28)
+    overtime["meta"]["period"]=5
+    assert sync_freeze(frozen["path"],provider=Provider(overtime),
+                       now=frozen["kickoff"]+5*3600)["graded"]==1
+    tie=_result(frozen,24,24)
+    assert sync_freeze(frozen["path"],provider=Provider(tie),
+                       now=frozen["kickoff"]+6*3600)["corrected"]==1
+    latest=json.loads(db.q1("SELECT payload FROM nfl_research_grades ORDER BY revision DESC")["payload"])
+    assert latest["straight_up_result"]=="push"
+    assert latest["brier_contribution"] is None
+
+
+def test_missing_spread_and_total_do_not_create_decisions(frozen):
+    payload=json.loads(frozen["path"].read_text())
+    payload["games"][0]["frozen_quote"]={}
+    frozen["path"].write_text(json.dumps(payload))
+    sync_freeze(frozen["path"],provider=Provider(_result(frozen)),
+                now=frozen["kickoff"]+5*3600)
+    grade=json.loads(db.q1("SELECT payload FROM nfl_research_grades")["payload"])
+    assert grade["ats_result"]=="unavailable"
+    assert grade["total_result"]=="unavailable"
+
+
+@pytest.mark.parametrize("bad",[None,[None]])
+def test_malformed_scoreboard_fails_without_partial_grade(frozen,bad):
+    class Bad:
+        def list_events_for_week(self,*args):return bad
+    with pytest.raises(ValueError,match="malformed"):
+        sync_freeze(frozen["path"],provider=Bad(),now=frozen["kickoff"]+5*3600)
+    assert db.q1("SELECT COUNT(*) n FROM nfl_research_grades")["n"]==0
+
+
+def test_duplicate_scoreboard_identity_fails_closed(frozen):
+    class Duplicate:
+        def list_events_for_week(self,*args):return [_result(frozen),_result(frozen,28,20)]
+    with pytest.raises(ValueError,match="duplicate ESPN"):
+        sync_freeze(frozen["path"],provider=Duplicate(),now=frozen["kickoff"]+5*3600)
+    assert db.q1("SELECT COUNT(*) n FROM nfl_research_grades")["n"]==0
+
+
+def test_model_version_is_linked_without_rewriting_freeze(frozen):
+    digest=register_freeze(frozen["path"])
+    version=register_model(digest,"fixture-code-commit",2026,3)
+    assert register_model(digest,"fixture-code-commit",2026,3)==version
+    assert model_versions()[0]["status"]=="research"
+    assert model_versions()[0]["freeze_sha"]==digest
+    with pytest.raises(ValueError,match="another immutable"):
+        register_model(digest,"different-code-commit",2026,3)
+    with pytest.raises(sqlite3.IntegrityError):
+        db.ex("UPDATE nfl_research_model_versions SET model_hash='changed'")
+    retire_model(version,2026,3)
+    assert model_versions()[0]["status"]=="retired"
+    assert model_versions()[0]["last_eligible_week"]==3
+    with pytest.raises(ValueError,match="active research"):
+        retire_model(version,2026,3)
+
+
+def test_late_source_snapshot_cannot_backfill_registered_prices(frozen):
+    payload=json.loads(frozen["path"].read_text())
+    payload["games"][0]["frozen_quote"]={
+        "source":"existing_immutable_live_shadow","home_handicap":3.5,"total":44.5,
+        "spread_captured_at":frozen["now"]-120,
+        "total_captured_at":frozen["now"]-120}
+    frozen["path"].write_text(json.dumps(payload))
+    digest=register_freeze(frozen["path"])
+    assert db.q1("SELECT COUNT(*) n FROM nfl_research_market_freezes")["n"]==0
+    snapshot="late-source"
+    db.save_nfl_snapshot(snapshot,"nfl-2026-reg-03-atl-gb",{"market":[
+        dict(id=1,market="spread",selection="Green Bay Packers",line=-3.5,
+             price=-110,book="draftkings",captured_at=frozen["now"]-120)]},"v1","f1")
+    db.ex("INSERT INTO nfl_shadow_entries(game_id,prediction_id,snapshot_id,model_version,"
+          "feature_version,season,season_type,week,home_team,away_team,kickoff_utc,frozen_at,"
+          "designation,projected_home_points,projected_away_points,projected_margin,"
+          "projected_total,home_win_probability) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+          ("nfl-2026-reg-03-atl-gb","pred",snapshot,"v1","f1",2026,2,3,
+           "Green Bay Packers","Atlanta Falcons",frozen["kickoff"],frozen["now"]-60,
+           "PASS",27,20,7,47,.7))
+    assert register_freeze(frozen["path"])==digest
+    assert db.q1("SELECT COUNT(*) n FROM nfl_research_market_freezes")["n"]==0
+    with pytest.raises(sqlite3.IntegrityError,match="registration is closed"):
+        db.ex("INSERT INTO nfl_research_market_freezes VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+              (digest,"2026_03_ATL_GB","latebook","spread","Green Bay Packers",
+               -3.5,-110,"fixture",frozen["now"]-120,frozen["kickoff"],
+               "current",snapshot,1))
+
+
+def test_later_research_version_coexists_with_week3_history(frozen):
+    week3_sha=register_freeze(frozen["path"])
+    first=register_model(week3_sha,"fixture-code-commit",2026,3)
+    future=json.loads(frozen["path"].read_text())
+    future["week"]=4
+    future["games"][0]["game_id"]="2026_04_ATL_GB"
+    future["games"][0]["kickoff_et"]=datetime.fromtimestamp(
+        frozen["kickoff"]+7*86400,timezone.utc).isoformat()
+    next_path=frozen["path"].with_name("forward_2026_week04.json")
+    next_path.write_text(json.dumps(future))
+    week4_sha=register_freeze(next_path)
+    second=register_model(week4_sha,"fixture-code-commit",2026,4,
+                          version="linear-2026w04")
+    assert first!=second
+    assert {row["freeze_sha"] for row in model_versions()}=={week3_sha,week4_sha}
+    assert db.q1("SELECT freeze_sha FROM nfl_research_freezes WHERE week=3")["freeze_sha"]==week3_sha

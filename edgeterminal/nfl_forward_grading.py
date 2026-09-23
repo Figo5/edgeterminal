@@ -99,6 +99,7 @@ def _embedded_market(freeze_sha, payload, game):
     # prices. The immutable live shadow snapshot is the source of those lines.
     # Recover its exact observed batch, never a later quote.
     if not quote.get("spread_book") and quote.get("source") == "existing_immutable_live_shadow":
+        rows = []
         canonical = _game_id(payload, game)
         shadow = db.q1("SELECT * FROM nfl_shadow_entries WHERE game_id=?",(canonical,))
         if shadow:
@@ -153,13 +154,8 @@ def register_freeze(path, now=None):
     if row:
         if row["freeze_sha"] != digest:
             raise ValueError("freeze hash changed after registration")
-        # A prior registration may have lacked a price sidecar. Append only
-        # exact-match rows traceable to the original immutable snapshot.
-        with db.tx() as c:
-            for game in payload["games"]:
-                c.executemany("INSERT OR IGNORE INTO nfl_research_market_freezes VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                              _embedded_market(digest, payload, game))
-            _attest_market(c,digest,time.time() if now is None else now)
+        # Registration is the market freeze boundary. A later source snapshot
+        # cannot turn a previously missing quote into a retroactive price.
         return digest
     names = sorted({name for game in payload["games"] for name in game.get("features", {})})
     feature_hash = payload.get("feature_hash") or hashlib.sha256(
@@ -167,16 +163,18 @@ def register_freeze(path, now=None):
     model_hash = payload.get("model_hash") or payload["code_sha256"]
     stamp = time.time() if now is None else now
     with db.tx() as c:
+        for game in payload["games"]:
+            c.executemany("INSERT INTO nfl_research_market_freezes VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                          _embedded_market(digest, payload, game))
+        _attest_market(c,digest,stamp)
+        # This final insert seals both sidecar tables through no-late-insert
+        # triggers, in the same transaction as the initial quote registration.
         c.execute("INSERT INTO nfl_research_freezes VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                   (digest, payload["season"], payload["week"], payload["family"],
                    str(Path(path).resolve()), payload["frozen_at"],
                    payload.get("model_version") or payload["family"], model_hash,
                    payload.get("feature_version") or "feature-names-and-code", feature_hash,
                    payload["training_games"], stamp))
-        for game in payload["games"]:
-            c.executemany("INSERT INTO nfl_research_market_freezes VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
-                          _embedded_market(digest, payload, game))
-        _attest_market(c,digest,stamp)
     return digest
 
 
@@ -202,6 +200,8 @@ def _decision(predicted, actual):
 
 
 def _validate_result(freeze, game, result, now):
+    if not isinstance(result, dict):
+        return None
     if str(result.get("status") or "").upper() not in {"STATUS_FINAL", "FINAL"}:
         return None
     expected = _game_id(freeze, game)
@@ -211,13 +211,17 @@ def _validate_result(freeze, game, result, now):
     if mapped != expected:
         return None
     kickoff = parse_time(game["kickoff_et"])
-    if abs((parse_time(result.get("start_time")) or 0) - kickoff) > 4*3600:
+    result_kickoff = parse_time(result.get("start_time"))
+    if (result_kickoff is None or abs(result_kickoff-kickoff) > 4*3600 or
+            now < result_kickoff + RESULT_WAIT_S):
         return None
     meta = result.get("meta") or {}
+    if not isinstance(meta, dict):
+        return None
     home, away = _score(meta.get("home_score")), _score(meta.get("away_score"))
     retrieved = parse_time(meta.get("retrieved_at"))
     if (home is None or away is None or retrieved is None or
-            retrieved < kickoff or retrieved > now + 60):
+            retrieved < result_kickoff or retrieved > now + 60):
         return None
     return home, away, retrieved, str(meta.get("source_url") or "ESPN scoreboard")
 
@@ -290,7 +294,20 @@ def sync_freeze(path, provider=None, now=None):
     if not due:
         return counts
     results = (provider or EspnEvents()).list_events_for_week(freeze["season"],2,freeze["week"])
-    by_id = {identity.canonical_id(r):r for r in results if identity.canonical_id(r)}
+    if not isinstance(results,list):
+        raise ValueError("malformed ESPN scoreboard response")
+    by_id = {}
+    for result in results:
+        if not isinstance(result,dict):
+            raise ValueError("malformed ESPN scoreboard event")
+        try:
+            canonical = identity.canonical_id(result)
+        except (AttributeError,TypeError,ValueError) as exc:
+            raise ValueError("malformed ESPN scoreboard event") from exc
+        if canonical:
+            if canonical in by_id:
+                raise ValueError("duplicate ESPN scoreboard event identity")
+            by_id[canonical] = result
     for game in due:
         result = by_id.get(_game_id(freeze, game))
         validated = _validate_result(freeze, game, result, stamp) if result else None

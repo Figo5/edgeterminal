@@ -121,6 +121,9 @@ CREATE TRIGGER IF NOT EXISTS nfl_research_market_no_update BEFORE UPDATE ON nfl_
 BEGIN SELECT RAISE(ABORT, 'research market freezes are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS nfl_research_market_no_delete BEFORE DELETE ON nfl_research_market_freezes
 BEGIN SELECT RAISE(ABORT, 'research market freezes cannot be deleted'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_research_market_no_late_insert BEFORE INSERT ON nfl_research_market_freezes
+WHEN EXISTS(SELECT 1 FROM nfl_research_freezes WHERE freeze_sha=NEW.freeze_sha)
+BEGIN SELECT RAISE(ABORT, 'research market registration is closed'); END;
 
 CREATE TABLE IF NOT EXISTS nfl_research_market_attestations (
   freeze_sha TEXT NOT NULL, game_id TEXT NOT NULL, snapshot_id TEXT NOT NULL,
@@ -130,6 +133,9 @@ CREATE TRIGGER IF NOT EXISTS nfl_research_attestation_no_update BEFORE UPDATE ON
 BEGIN SELECT RAISE(ABORT, 'research market attestations are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS nfl_research_attestation_no_delete BEFORE DELETE ON nfl_research_market_attestations
 BEGIN SELECT RAISE(ABORT, 'research market attestations cannot be deleted'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_research_attestation_no_late_insert BEFORE INSERT ON nfl_research_market_attestations
+WHEN EXISTS(SELECT 1 FROM nfl_research_freezes WHERE freeze_sha=NEW.freeze_sha)
+BEGIN SELECT RAISE(ABORT, 'research market attestation registration is closed'); END;
 
 CREATE TABLE IF NOT EXISTS nfl_research_grades (
   freeze_sha TEXT NOT NULL, game_id TEXT NOT NULL, revision INTEGER NOT NULL,
@@ -165,6 +171,43 @@ CREATE TRIGGER IF NOT EXISTS nfl_research_context_no_update BEFORE UPDATE ON nfl
 BEGIN SELECT RAISE(ABORT, 'research context is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS nfl_research_context_no_delete BEFORE DELETE ON nfl_research_context_observations
 BEGIN SELECT RAISE(ABORT, 'research context cannot be deleted'); END;
+
+CREATE TABLE IF NOT EXISTS nfl_capture_attempts (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, game_id TEXT NOT NULL,
+  kickoff_utc REAL NOT NULL, attempted_at REAL NOT NULL,
+  provider TEXT NOT NULL, outcome TEXT NOT NULL,
+  rows_stored INTEGER NOT NULL, error_type TEXT);
+CREATE INDEX IF NOT EXISTS ix_nfl_capture_attempt_game ON nfl_capture_attempts(game_id,attempted_at);
+CREATE TRIGGER IF NOT EXISTS nfl_capture_attempt_no_update BEFORE UPDATE ON nfl_capture_attempts
+BEGIN SELECT RAISE(ABORT, 'capture attempts are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_capture_attempt_no_delete BEFORE DELETE ON nfl_capture_attempts
+BEGIN SELECT RAISE(ABORT, 'capture attempts cannot be deleted'); END;
+
+CREATE TABLE IF NOT EXISTS nfl_research_model_versions (
+  version_id TEXT PRIMARY KEY, model_name TEXT NOT NULL, version TEXT NOT NULL,
+  code_commit TEXT NOT NULL, training_cutoff REAL NOT NULL,
+  feature_hash TEXT NOT NULL, model_hash TEXT NOT NULL,
+  first_eligible_season INTEGER NOT NULL, first_eligible_week INTEGER NOT NULL,
+  registered_at REAL NOT NULL, UNIQUE(model_name,version));
+CREATE TRIGGER IF NOT EXISTS nfl_model_version_no_update BEFORE UPDATE ON nfl_research_model_versions
+BEGIN SELECT RAISE(ABORT, 'model versions are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_model_version_no_delete BEFORE DELETE ON nfl_research_model_versions
+BEGIN SELECT RAISE(ABORT, 'model versions cannot be deleted'); END;
+CREATE TABLE IF NOT EXISTS nfl_research_model_version_events (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, version_id TEXT NOT NULL,
+  status TEXT NOT NULL CHECK(status IN ('research','retired','promoted')),
+  last_eligible_season INTEGER, last_eligible_week INTEGER,
+  recorded_at REAL NOT NULL);
+CREATE TRIGGER IF NOT EXISTS nfl_model_event_no_update BEFORE UPDATE ON nfl_research_model_version_events
+BEGIN SELECT RAISE(ABORT, 'model version events are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_model_event_no_delete BEFORE DELETE ON nfl_research_model_version_events
+BEGIN SELECT RAISE(ABORT, 'model version events cannot be deleted'); END;
+CREATE TABLE IF NOT EXISTS nfl_research_model_freeze_links (
+  freeze_sha TEXT PRIMARY KEY, version_id TEXT NOT NULL, linked_at REAL NOT NULL);
+CREATE TRIGGER IF NOT EXISTS nfl_model_link_no_update BEFORE UPDATE ON nfl_research_model_freeze_links
+BEGIN SELECT RAISE(ABORT, 'model freeze links are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_model_link_no_delete BEFORE DELETE ON nfl_research_model_freeze_links
+BEGIN SELECT RAISE(ABORT, 'model freeze links cannot be deleted'); END;
 
 CREATE TABLE IF NOT EXISTS odds_snapshots (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
