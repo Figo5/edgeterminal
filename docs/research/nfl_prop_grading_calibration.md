@@ -1,0 +1,29 @@
+# NFL player-prop grading and calibration research
+
+This phase leaves the 2026 Week 3 prop freeze, its point projections, and its Normal probabilities unchanged. It never emits a pick, staking amount, expected profit, or edge threshold. Game-model and game-line research remain separate.
+
+## Prospective grading
+
+`python -m edgeterminal.nfl_prop_grading` reads all registered 2026 prop freezes, completed local game research grades, and the local nflverse weekly player-stat CSV with a matching source URL, retrieval timestamp, and SHA-256 sidecar. It makes no provider request. For each confirmed final game, it waits at least four hours after the current recorded kickoff. It appends sourced evidence to `nfl_prop_grade_evidence`, then appends per-quote grade revisions to `nfl_prop_grade_revisions`. Both tables reject UPDATE and DELETE. Repeated identical results add no grade revision; a changed sourced stat adds a new revision and leaves the earlier one queryable. The original freeze is read and SHA-256 verified, never rewritten.
+
+A weekly player-stat row with an explicit numeric zero is a zero result only when some other tracked action confirms participation. An all-zero row, missing player, or missing market stat remains pending: absence is not interpreted as either zero or inactive. Explicit sourced `active` status can establish a dressed player with zero recorded actions. Explicit sourced `inactive` status yields a research `void`; a canceled game yields `void`; postponed and suspended games remain pending. The void convention is a research settlement proxy and may differ from a particular book's rules. A manually sourced JSON evidence file can supply verified player status or a corrected stat, using `--freeze-sha SHA --evidence PATH`. Every evidence item needs `game_id`, `game_status`, `actual_kickoff_utc`, `result_source`, `result_retrieved_at`, and `players`; each player needs GSIS ID, `active`/`inactive`/`unknown` status, and a `stats` object. The CLI records evidence provenance and never fabricates an official stat. `--stats-path` points the automatic local grader to an explicitly supplied weekly CSV.
+
+The cumulative forward report is `data/research/nfl_prop_forward_report.json`. It contains per-market distinct-player MAE/bias, Brier and ten-bin reliability tables on completed two-sided market groups, quote-side and model-direction diagnostic counts by market/book/predeclared standardized difference bucket, and quote-level comparison rows retaining book, both prices, observed time, kickoff, projection, line, model Over probability, raw implied probabilities, and realized outcome when available. Raw implied probabilities include vig. Model-direction counts are diagnostics, not picks or a betting strategy. Retrospective validation and prospective 2026 results occupy separate top-level sections.
+
+As of 2026-09-23 before the first Week 3 kickoff: **0 of 1,746 frozen quote sides are graded; all 873 complete two-sided market groups are pending**. No forward accuracy, calibration, or market-performance claim can be made yet. The automatic local grader depends on completed game research grades and refreshed nflverse player stats. Official inactive evidence and major reschedules require a sourced manual observation because neither can be inferred safely from a missing weekly row.
+
+## Retrospective uncertainty comparison
+
+Point-model families are fixed to the Week 3 lab selections. Their 2024 and 2025 chronological MAEs are replayed exactly before calibration proceeds. Residuals from 2023 walk-forward predictions initialize the uncertainty pool. Each week's residuals enter only after every game that week was predicted. Four methods are compared: global Normal residual standard deviation, position-group Normal standard deviation (minimum 80 prior residuals), player rolling Normal variance (minimum five, shrunk toward the global scale), and empirical residual tail frequency. The 2024 development Brier score chooses the method; 2025 is untouched for method selection. The 2025 replay also evaluates the Week 3 freeze's original fixed 2024 global Normal scale without changing the freeze.
+
+There are **no historical timestamped sportsbook prop lines** in this dataset. Calibration uses one predeclared synthetic half-point threshold per player-game. A SHA-256 of market, game, and player assigns one of four fixed thresholds for that market without observing its outcome. These results test probability calibration on a reproducible synthetic task; they are not a sportsbook backtest. Full ten-bin reliability tables and every method's 2024/2025 Brier and log loss are in `data/research/nfl_prop_calibration_2026w3.json`.
+
+| Market | Method selected on 2024 | 2024 Brier | 2025 Brier | 2025 log loss | Frozen Normal 2025 Brier | 2025 point bias, game-cluster 95% CI |
+|---|---|---:|---:|---:|---:|---|
+| Passing yards | player rolling Normal | 0.1633 | 0.1625 | 0.4955 | 0.1624 | +13.50 yd [6.14, 20.28] |
+| Rushing yards | player rolling Normal | 0.1014 | 0.0999 | 0.3211 | 0.1019 | +0.66 yd [−0.28, 1.60] |
+| Rushing attempts | position Normal | 0.0909 | 0.0841 | 0.2681 | 0.0859 | +0.09 [−0.06, 0.23] |
+| Receptions | empirical residual quantiles | 0.1228 | 0.1135 | 0.3574 | 0.1152 | +0.10 [0.04, 0.15] |
+| Receiving yards | empirical residual quantiles | 0.1090 | 0.1085 | 0.3467 | 0.1108 | +1.36 yd [0.49, 2.14] |
+
+Positive point bias means overprediction. Passing yards, receptions, and receiving yards have positive 2025 game-cluster bootstrap intervals excluding zero; these intervals are unadjusted for five-market multiple comparison. Passing yards has the most material bias. Differences in Brier are modest, and the method selected in 2024 is not always the lowest 2025 scorer. No uncertainty method is promoted to the frozen Week 3 record from this analysis.

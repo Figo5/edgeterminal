@@ -1,0 +1,3183 @@
+{
+  "input_sha256": {
+    "stats_player_week_2022.csv": "ad426c3fe5bf1cc30c3f137fdfe96d054e19d400879ee4413129da49fa7b54be",
+    "stats_player_week_2023.csv": "f19cb71a5de0dce7fd09376026237c9ee9d5a93fe13815a2ea3ec2d37204cb17",
+    "stats_player_week_2024.csv": "3ddc45a84f759aa348ce465ae001752c530575455717657cdfe1f8abfcdb4759",
+    "stats_player_week_2025.csv": "e5e0615b3d96a3eaebfaee91e55afb4a4e7fe0caf057454177bcd7d6ad4bcfc2",
+    "stats_player_week_2026.csv": "736bdddef4779023f7eb1831a1f2c8627181aee60cc280d5f0464cf5f41a8e67"
+  },
+  "markets": {
+    "passing_yards": {
+      "development_2024": {
+        "methods": {
+          "empirical_quantile": {
+            "brier": 0.1635629763830795,
+            "log_loss": 0.4966307956864165,
+            "n": 590,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.04821175123309881,
+                "n": 79,
+                "realized_over": 0.0379746835443038
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14505592148840585,
+                "n": 77,
+                "realized_over": 0.14285714285714285
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.25637749451512865,
+                "n": 65,
+                "realized_over": 0.3076923076923077
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3360260686528962,
+                "n": 48,
+                "realized_over": 0.3541666666666667
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.45600177970756633,
+                "n": 66,
+                "realized_over": 0.4393939393939394
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5487683937659388,
+                "n": 61,
+                "realized_over": 0.4098360655737705
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6593582333424908,
+                "n": 38,
+                "realized_over": 0.631578947368421
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7492616945416642,
+                "n": 62,
+                "realized_over": 0.7741935483870968
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8467904376329518,
+                "n": 83,
+                "realized_over": 0.9036144578313253
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9133102247025953,
+                "n": 11,
+                "realized_over": 1.0
+              }
+            ]
+          },
+          "global_normal": {
+            "brier": 0.1639623441994998,
+            "log_loss": 0.49696375493433126,
+            "n": 590,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.04814587911693718,
+                "n": 57,
+                "realized_over": 0.05263157894736842
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.1492707215696251,
+                "n": 79,
+                "realized_over": 0.10126582278481013
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.2515051911823287,
+                "n": 64,
+                "realized_over": 0.25
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.34286023057666065,
+                "n": 62,
+                "realized_over": 0.3387096774193548
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4500307304827593,
+                "n": 62,
+                "realized_over": 0.3870967741935484
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5497102002294109,
+                "n": 57,
+                "realized_over": 0.47368421052631576
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6449624612445868,
+                "n": 46,
+                "realized_over": 0.5869565217391305
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7437725760865338,
+                "n": 52,
+                "realized_over": 0.6923076923076923
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8538110401256275,
+                "n": 75,
+                "realized_over": 0.9066666666666666
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9258992030832552,
+                "n": 36,
+                "realized_over": 0.9166666666666666
+              }
+            ]
+          },
+          "player_rolling_normal": {
+            "brier": 0.16329983067787554,
+            "log_loss": 0.49621378151556517,
+            "n": 590,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.05197560136872627,
+                "n": 62,
+                "realized_over": 0.04838709677419355
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.15248810240595273,
+                "n": 75,
+                "realized_over": 0.13333333333333333
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.2513323192211426,
+                "n": 67,
+                "realized_over": 0.22388059701492538
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.34307205299429966,
+                "n": 60,
+                "realized_over": 0.3333333333333333
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.44949889007134,
+                "n": 60,
+                "realized_over": 0.4
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.55070218036002,
+                "n": 58,
+                "realized_over": 0.46551724137931033
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6495481800930637,
+                "n": 46,
+                "realized_over": 0.5434782608695652
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7480234099977192,
+                "n": 51,
+                "realized_over": 0.7254901960784313
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8546709769735341,
+                "n": 62,
+                "realized_over": 0.9032258064516129
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9319257961326392,
+                "n": 49,
+                "realized_over": 0.9387755102040817
+              }
+            ]
+          },
+          "position_normal": {
+            "brier": 0.1639623441994998,
+            "log_loss": 0.49696375493433126,
+            "n": 590,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.04814587911693718,
+                "n": 57,
+                "realized_over": 0.05263157894736842
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.1492707215696251,
+                "n": 79,
+                "realized_over": 0.10126582278481013
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.2515051911823287,
+                "n": 64,
+                "realized_over": 0.25
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.34286023057666065,
+                "n": 62,
+                "realized_over": 0.3387096774193548
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4500307304827593,
+                "n": 62,
+                "realized_over": 0.3870967741935484
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5497102002294109,
+                "n": 57,
+                "realized_over": 0.47368421052631576
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6449624612445868,
+                "n": 46,
+                "realized_over": 0.5869565217391305
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7437725760865338,
+                "n": 52,
+                "realized_over": 0.6923076923076923
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8538110401256275,
+                "n": 75,
+                "realized_over": 0.9066666666666666
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9258992030832552,
+                "n": 36,
+                "realized_over": 0.9166666666666666
+              }
+            ]
+          }
+        },
+        "point_bias": 7.069721579664084,
+        "point_bias_game_cluster_ci95": [
+          -0.24805236365537,
+          13.877226789139508
+        ]
+      },
+      "fixed_point_family": "ridge",
+      "frozen_week3_global_normal_on_2025": {
+        "brier": 0.1624104232481628,
+        "log_loss": 0.4942711350952316,
+        "n": 591,
+        "reliability": [
+          {
+            "bucket": "0.0-0.1",
+            "mean_predicted": 0.04882408647562254,
+            "n": 64,
+            "realized_over": 0.03125
+          },
+          {
+            "bucket": "0.1-0.2",
+            "mean_predicted": 0.15171725515485787,
+            "n": 72,
+            "realized_over": 0.125
+          },
+          {
+            "bucket": "0.2-0.3",
+            "mean_predicted": 0.24835939908232402,
+            "n": 82,
+            "realized_over": 0.14634146341463414
+          },
+          {
+            "bucket": "0.3-0.4",
+            "mean_predicted": 0.34754974475195355,
+            "n": 60,
+            "realized_over": 0.3333333333333333
+          },
+          {
+            "bucket": "0.4-0.5",
+            "mean_predicted": 0.4418808866231968,
+            "n": 69,
+            "realized_over": 0.4057971014492754
+          },
+          {
+            "bucket": "0.5-0.6",
+            "mean_predicted": 0.5535057496581415,
+            "n": 47,
+            "realized_over": 0.5319148936170213
+          },
+          {
+            "bucket": "0.6-0.7",
+            "mean_predicted": 0.6536535223252724,
+            "n": 52,
+            "realized_over": 0.6923076923076923
+          },
+          {
+            "bucket": "0.7-0.8",
+            "mean_predicted": 0.7502514734059856,
+            "n": 49,
+            "realized_over": 0.7551020408163265
+          },
+          {
+            "bucket": "0.8-0.9",
+            "mean_predicted": 0.8517761061007001,
+            "n": 65,
+            "realized_over": 0.7846153846153846
+          },
+          {
+            "bucket": "0.9-1.0",
+            "mean_predicted": 0.9210057238862399,
+            "n": 31,
+            "realized_over": 0.9354838709677419
+          }
+        ]
+      },
+      "holdout_2025": {
+        "methods": {
+          "empirical_quantile": {
+            "brier": 0.16169501169940836,
+            "log_loss": 0.49202273279050607,
+            "n": 591,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.04559519849073188,
+                "n": 78,
+                "realized_over": 0.038461538461538464
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.1484586418535027,
+                "n": 83,
+                "realized_over": 0.14457831325301204
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.2483665196452547,
+                "n": 77,
+                "realized_over": 0.18181818181818182
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3495541967571834,
+                "n": 55,
+                "realized_over": 0.34545454545454546
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4406216291778003,
+                "n": 62,
+                "realized_over": 0.46774193548387094
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5487590078727436,
+                "n": 51,
+                "realized_over": 0.5490196078431373
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6537641042211512,
+                "n": 57,
+                "realized_over": 0.6666666666666666
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7533441840812293,
+                "n": 48,
+                "realized_over": 0.8125
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8493924140281082,
+                "n": 74,
+                "realized_over": 0.8378378378378378
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9143531806638036,
+                "n": 6,
+                "realized_over": 0.8333333333333334
+              }
+            ]
+          },
+          "global_normal": {
+            "brier": 0.1624987148423034,
+            "log_loss": 0.4945334948027612,
+            "n": 591,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.04956108725298581,
+                "n": 63,
+                "realized_over": 0.031746031746031744
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.151377151013909,
+                "n": 70,
+                "realized_over": 0.12857142857142856
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.24871766779435558,
+                "n": 85,
+                "realized_over": 0.1411764705882353
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.34888537764751804,
+                "n": 60,
+                "realized_over": 0.3333333333333333
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.44239344209535825,
+                "n": 69,
+                "realized_over": 0.4057971014492754
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5529760859992414,
+                "n": 47,
+                "realized_over": 0.5319148936170213
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.653197625108955,
+                "n": 53,
+                "realized_over": 0.6792452830188679
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.750188274014755,
+                "n": 49,
+                "realized_over": 0.7755102040816326
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8508815870384278,
+                "n": 65,
+                "realized_over": 0.7846153846153846
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9195098259405063,
+                "n": 30,
+                "realized_over": 0.9333333333333333
+              }
+            ]
+          },
+          "player_rolling_normal": {
+            "brier": 0.16252465030250635,
+            "log_loss": 0.49546813276746865,
+            "n": 591,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.048251859738907846,
+                "n": 61,
+                "realized_over": 0.04918032786885246
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14943183981835417,
+                "n": 73,
+                "realized_over": 0.0958904109589041
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.2530501538598243,
+                "n": 92,
+                "realized_over": 0.18478260869565216
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3482574458720061,
+                "n": 51,
+                "realized_over": 0.3333333333333333
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.44179093229521543,
+                "n": 70,
+                "realized_over": 0.38571428571428573
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5536327922895253,
+                "n": 46,
+                "realized_over": 0.5217391304347826
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6480115512597093,
+                "n": 46,
+                "realized_over": 0.6739130434782609
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7471666558984201,
+                "n": 52,
+                "realized_over": 0.75
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8496137398195092,
+                "n": 58,
+                "realized_over": 0.7931034482758621
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.925638456013037,
+                "n": 42,
+                "realized_over": 0.9047619047619048
+              }
+            ]
+          },
+          "position_normal": {
+            "brier": 0.1624987148423034,
+            "log_loss": 0.4945334948027612,
+            "n": 591,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.04956108725298581,
+                "n": 63,
+                "realized_over": 0.031746031746031744
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.151377151013909,
+                "n": 70,
+                "realized_over": 0.12857142857142856
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.24871766779435558,
+                "n": 85,
+                "realized_over": 0.1411764705882353
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.34888537764751804,
+                "n": 60,
+                "realized_over": 0.3333333333333333
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.44239344209535825,
+                "n": 69,
+                "realized_over": 0.4057971014492754
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5529760859992414,
+                "n": 47,
+                "realized_over": 0.5319148936170213
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.653197625108955,
+                "n": 53,
+                "realized_over": 0.6792452830188679
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.750188274014755,
+                "n": 49,
+                "realized_over": 0.7755102040816326
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8508815870384278,
+                "n": 65,
+                "realized_over": 0.7846153846153846
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9195098259405063,
+                "n": 30,
+                "realized_over": 0.9333333333333333
+              }
+            ]
+          }
+        },
+        "point_bias": 13.496814942550056,
+        "point_bias_game_cluster_ci95": [
+          6.1358022960983885,
+          20.278098473555946
+        ]
+      },
+      "selected_uncertainty_on_2024": "player_rolling_normal"
+    },
+    "receiving_yards": {
+      "development_2024": {
+        "methods": {
+          "empirical_quantile": {
+            "brier": 0.10899663454765186,
+            "log_loss": 0.3506817331480168,
+            "n": 4156,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.0415242365536345,
+                "n": 2046,
+                "realized_over": 0.03519061583577713
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14354470599804903,
+                "n": 678,
+                "realized_over": 0.15339233038348082
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.24794583973677817,
+                "n": 459,
+                "realized_over": 0.24836601307189543
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.34467244473864705,
+                "n": 252,
+                "realized_over": 0.3253968253968254
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4459851074947399,
+                "n": 137,
+                "realized_over": 0.4744525547445255
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5510718855382496,
+                "n": 124,
+                "realized_over": 0.5
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.652285654025744,
+                "n": 85,
+                "realized_over": 0.5764705882352941
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7518831045708104,
+                "n": 85,
+                "realized_over": 0.6352941176470588
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8534625224346747,
+                "n": 121,
+                "realized_over": 0.7355371900826446
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9562695589352259,
+                "n": 169,
+                "realized_over": 0.8520710059171598
+              }
+            ]
+          },
+          "global_normal": {
+            "brier": 0.11140720088857482,
+            "log_loss": 0.351504976393264,
+            "n": 4156,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.024998363070204782,
+                "n": 1979,
+                "realized_over": 0.032844871147043965
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14448293453717084,
+                "n": 483,
+                "realized_over": 0.14699792960662525
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.25001179750608693,
+                "n": 344,
+                "realized_over": 0.16279069767441862
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3509531773111674,
+                "n": 324,
+                "realized_over": 0.25
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4453136581501412,
+                "n": 270,
+                "realized_over": 0.32592592592592595
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5482811600622857,
+                "n": 202,
+                "realized_over": 0.4603960396039604
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6461626350994325,
+                "n": 171,
+                "realized_over": 0.52046783625731
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7499981767029418,
+                "n": 141,
+                "realized_over": 0.6595744680851063
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.843145779295443,
+                "n": 129,
+                "realized_over": 0.8062015503875969
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9415136908151691,
+                "n": 113,
+                "realized_over": 0.8407079646017699
+              }
+            ]
+          },
+          "player_rolling_normal": {
+            "brier": 0.11006937837424806,
+            "log_loss": 0.34530641748616986,
+            "n": 4156,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.022434153696843907,
+                "n": 2030,
+                "realized_over": 0.03152709359605911
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14840345238706043,
+                "n": 423,
+                "realized_over": 0.14420803782505912
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.2474385100049283,
+                "n": 361,
+                "realized_over": 0.1745152354570637
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.34930780129194916,
+                "n": 318,
+                "realized_over": 0.2830188679245283
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4456087298106331,
+                "n": 268,
+                "realized_over": 0.30970149253731344
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.549223632796063,
+                "n": 218,
+                "realized_over": 0.463302752293578
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6453283919150052,
+                "n": 184,
+                "realized_over": 0.5652173913043478
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7465528313074252,
+                "n": 172,
+                "realized_over": 0.7034883720930233
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8474588436174605,
+                "n": 137,
+                "realized_over": 0.8029197080291971
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9339325970692494,
+                "n": 45,
+                "realized_over": 0.8444444444444444
+              }
+            ]
+          },
+          "position_normal": {
+            "brier": 0.11026218426708588,
+            "log_loss": 0.3467663973192605,
+            "n": 4156,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.02116027534901638,
+                "n": 2016,
+                "realized_over": 0.03125
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14927365551723332,
+                "n": 466,
+                "realized_over": 0.12875536480686695
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.24864924263932267,
+                "n": 369,
+                "realized_over": 0.2032520325203252
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3504848942031261,
+                "n": 275,
+                "realized_over": 0.2909090909090909
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4443397059931613,
+                "n": 274,
+                "realized_over": 0.3029197080291971
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5492662838088713,
+                "n": 216,
+                "realized_over": 0.44907407407407407
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6465843107682437,
+                "n": 175,
+                "realized_over": 0.5828571428571429
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7474809906170264,
+                "n": 161,
+                "realized_over": 0.6645962732919255
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8496094502478313,
+                "n": 132,
+                "realized_over": 0.803030303030303
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9376850003893017,
+                "n": 72,
+                "realized_over": 0.8611111111111112
+              }
+            ]
+          }
+        },
+        "point_bias": 0.723956533479041,
+        "point_bias_game_cluster_ci95": [
+          -0.129041857072949,
+          1.5902128741463784
+        ]
+      },
+      "fixed_point_family": "ridge",
+      "frozen_week3_global_normal_on_2025": {
+        "brier": 0.11075139036865152,
+        "log_loss": 0.3483296944398418,
+        "n": 4190,
+        "reliability": [
+          {
+            "bucket": "0.0-0.1",
+            "mean_predicted": 0.024644885801777622,
+            "n": 2120,
+            "realized_over": 0.0330188679245283
+          },
+          {
+            "bucket": "0.1-0.2",
+            "mean_predicted": 0.14266238133381082,
+            "n": 467,
+            "realized_over": 0.15631691648822268
+          },
+          {
+            "bucket": "0.2-0.3",
+            "mean_predicted": 0.25009649340828455,
+            "n": 341,
+            "realized_over": 0.17302052785923755
+          },
+          {
+            "bucket": "0.3-0.4",
+            "mean_predicted": 0.3472893901034534,
+            "n": 312,
+            "realized_over": 0.23397435897435898
+          },
+          {
+            "bucket": "0.4-0.5",
+            "mean_predicted": 0.4469357921668091,
+            "n": 257,
+            "realized_over": 0.35797665369649806
+          },
+          {
+            "bucket": "0.5-0.6",
+            "mean_predicted": 0.5482024497791226,
+            "n": 180,
+            "realized_over": 0.4222222222222222
+          },
+          {
+            "bucket": "0.6-0.7",
+            "mean_predicted": 0.6469511563166342,
+            "n": 170,
+            "realized_over": 0.5235294117647059
+          },
+          {
+            "bucket": "0.7-0.8",
+            "mean_predicted": 0.7447129084495799,
+            "n": 134,
+            "realized_over": 0.5522388059701493
+          },
+          {
+            "bucket": "0.8-0.9",
+            "mean_predicted": 0.8510522960769523,
+            "n": 127,
+            "realized_over": 0.6929133858267716
+          },
+          {
+            "bucket": "0.9-1.0",
+            "mean_predicted": 0.9476110170945022,
+            "n": 82,
+            "realized_over": 0.9024390243902439
+          }
+        ]
+      },
+      "holdout_2025": {
+        "methods": {
+          "empirical_quantile": {
+            "brier": 0.1084612014668698,
+            "log_loss": 0.34666509883807056,
+            "n": 4190,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.041462345698165114,
+                "n": 2196,
+                "realized_over": 0.03642987249544627
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14360141112842453,
+                "n": 645,
+                "realized_over": 0.16589147286821707
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.24475312487630876,
+                "n": 445,
+                "realized_over": 0.23370786516853934
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3437288846631771,
+                "n": 241,
+                "realized_over": 0.35269709543568467
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.44672775214388116,
+                "n": 123,
+                "realized_over": 0.3821138211382114
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5514142914221389,
+                "n": 116,
+                "realized_over": 0.5086206896551724
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6506417839923758,
+                "n": 97,
+                "realized_over": 0.5670103092783505
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7520749203192344,
+                "n": 88,
+                "realized_over": 0.5454545454545454
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8552419655290097,
+                "n": 91,
+                "realized_over": 0.7032967032967034
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9519921524285276,
+                "n": 148,
+                "realized_over": 0.8040540540540541
+              }
+            ]
+          },
+          "global_normal": {
+            "brier": 0.11075387810049894,
+            "log_loss": 0.3482185772593275,
+            "n": 4190,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.02471893959873544,
+                "n": 2116,
+                "realized_over": 0.03260869565217391
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.1426726854456013,
+                "n": 470,
+                "realized_over": 0.15531914893617021
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.2501578740306002,
+                "n": 339,
+                "realized_over": 0.17994100294985252
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3470733937018785,
+                "n": 314,
+                "realized_over": 0.22929936305732485
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.44688165897554993,
+                "n": 258,
+                "realized_over": 0.35658914728682173
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5486307622936824,
+                "n": 182,
+                "realized_over": 0.4230769230769231
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6480636459518284,
+                "n": 171,
+                "realized_over": 0.52046783625731
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7451981895758116,
+                "n": 131,
+                "realized_over": 0.5572519083969466
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8506668253843989,
+                "n": 128,
+                "realized_over": 0.6953125
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9477658730051256,
+                "n": 81,
+                "realized_over": 0.9012345679012346
+              }
+            ]
+          },
+          "player_rolling_normal": {
+            "brier": 0.10857169803972753,
+            "log_loss": 0.34064648963729766,
+            "n": 4190,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.021507267794897474,
+                "n": 2146,
+                "realized_over": 0.02982292637465051
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14469710298811536,
+                "n": 450,
+                "realized_over": 0.1622222222222222
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.251279994699558,
+                "n": 347,
+                "realized_over": 0.18155619596541786
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.34674087601864484,
+                "n": 303,
+                "realized_over": 0.2508250825082508
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.448452636336594,
+                "n": 251,
+                "realized_over": 0.36254980079681276
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.548682720534093,
+                "n": 195,
+                "realized_over": 0.4256410256410256
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6465274531066195,
+                "n": 183,
+                "realized_over": 0.48633879781420764
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7463957411020409,
+                "n": 159,
+                "realized_over": 0.6289308176100629
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8465048168715894,
+                "n": 119,
+                "realized_over": 0.8067226890756303
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9325919732620033,
+                "n": 37,
+                "realized_over": 0.8918918918918919
+              }
+            ]
+          },
+          "position_normal": {
+            "brier": 0.10944922671181778,
+            "log_loss": 0.34757786831262394,
+            "n": 4190,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.021273743156845527,
+                "n": 2148,
+                "realized_over": 0.03212290502793296
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14716630412732304,
+                "n": 472,
+                "realized_over": 0.1419491525423729
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.24806777311779044,
+                "n": 334,
+                "realized_over": 0.218562874251497
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3498019792350492,
+                "n": 292,
+                "realized_over": 0.24315068493150685
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4482981435149165,
+                "n": 251,
+                "realized_over": 0.3466135458167331
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5500469043161827,
+                "n": 200,
+                "realized_over": 0.42
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6484680424561631,
+                "n": 167,
+                "realized_over": 0.5029940119760479
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7436030604942879,
+                "n": 137,
+                "realized_over": 0.6496350364963503
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8455129823840196,
+                "n": 127,
+                "realized_over": 0.6929133858267716
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9420389943387579,
+                "n": 62,
+                "realized_over": 0.9032258064516129
+              }
+            ]
+          }
+        },
+        "point_bias": 1.3599550767619837,
+        "point_bias_game_cluster_ci95": [
+          0.4921945146360695,
+          2.1387704010743627
+        ]
+      },
+      "selected_uncertainty_on_2024": "empirical_quantile"
+    },
+    "receptions": {
+      "development_2024": {
+        "methods": {
+          "empirical_quantile": {
+            "brier": 0.12282369184801561,
+            "log_loss": 0.38948886219548945,
+            "n": 4156,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.0340033856836953,
+                "n": 1616,
+                "realized_over": 0.040222772277227724
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.13850201831429348,
+                "n": 683,
+                "realized_over": 0.12884333821376281
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.2419354425977199,
+                "n": 296,
+                "realized_over": 0.23310810810810811
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.35388881843789827,
+                "n": 420,
+                "realized_over": 0.319047619047619
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4414246699797893,
+                "n": 209,
+                "realized_over": 0.4449760765550239
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5449272763818787,
+                "n": 188,
+                "realized_over": 0.5478723404255319
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6441413730502743,
+                "n": 160,
+                "realized_over": 0.5375
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7540220777858406,
+                "n": 103,
+                "realized_over": 0.7378640776699029
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8514808210615737,
+                "n": 182,
+                "realized_over": 0.7857142857142857
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.959258824945661,
+                "n": 299,
+                "realized_over": 0.8528428093645485
+              }
+            ]
+          },
+          "global_normal": {
+            "brier": 0.12445986438453462,
+            "log_loss": 0.3905794463436831,
+            "n": 4156,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.02283248526489111,
+                "n": 1638,
+                "realized_over": 0.040293040293040296
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14008763387392548,
+                "n": 561,
+                "realized_over": 0.1140819964349376
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.2476355830011536,
+                "n": 259,
+                "realized_over": 0.20463320463320464
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3502254489184335,
+                "n": 232,
+                "realized_over": 0.29310344827586204
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.44849114674693946,
+                "n": 363,
+                "realized_over": 0.33608815426997246
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5456657672946409,
+                "n": 279,
+                "realized_over": 0.4838709677419355
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6485486072019936,
+                "n": 191,
+                "realized_over": 0.5235602094240838
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7487671451680865,
+                "n": 191,
+                "realized_over": 0.7329842931937173
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8460795975200108,
+                "n": 224,
+                "realized_over": 0.7767857142857143
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9538061886458465,
+                "n": 218,
+                "realized_over": 0.8715596330275229
+              }
+            ]
+          },
+          "player_rolling_normal": {
+            "brier": 0.12423480296050685,
+            "log_loss": 0.3903558367352368,
+            "n": 4156,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.02473474700915629,
+                "n": 1752,
+                "realized_over": 0.037100456621004564
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14095355096289455,
+                "n": 425,
+                "realized_over": 0.14823529411764705
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.24651452562855306,
+                "n": 277,
+                "realized_over": 0.20577617328519857
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3556481563134351,
+                "n": 250,
+                "realized_over": 0.28
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.44836866135056336,
+                "n": 349,
+                "realized_over": 0.33810888252148996
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5451831900425063,
+                "n": 277,
+                "realized_over": 0.48736462093862815
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6476691750032105,
+                "n": 208,
+                "realized_over": 0.5384615384615384
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7518500174124142,
+                "n": 222,
+                "realized_over": 0.7297297297297297
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8498891331880108,
+                "n": 218,
+                "realized_over": 0.8027522935779816
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9419010457601165,
+                "n": 178,
+                "realized_over": 0.8707865168539326
+              }
+            ]
+          },
+          "position_normal": {
+            "brier": 0.12422555887833127,
+            "log_loss": 0.38929472448592717,
+            "n": 4156,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.02415231416845213,
+                "n": 1689,
+                "realized_over": 0.037892243931320305
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14163234126172702,
+                "n": 490,
+                "realized_over": 0.12653061224489795
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.2447871885310883,
+                "n": 282,
+                "realized_over": 0.2198581560283688
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.35150354963617453,
+                "n": 236,
+                "realized_over": 0.2711864406779661
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4487821323659287,
+                "n": 356,
+                "realized_over": 0.3398876404494382
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5444717236261744,
+                "n": 272,
+                "realized_over": 0.48161764705882354
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6481284781468436,
+                "n": 206,
+                "realized_over": 0.529126213592233
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.754288205535099,
+                "n": 195,
+                "realized_over": 0.6974358974358974
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8470054502175262,
+                "n": 223,
+                "realized_over": 0.820627802690583
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9518550683459772,
+                "n": 207,
+                "realized_over": 0.8695652173913043
+              }
+            ]
+          }
+        },
+        "point_bias": 0.00909170342550456,
+        "point_bias_game_cluster_ci95": [
+          -0.047538440657957544,
+          0.06910814013012591
+        ]
+      },
+      "fixed_point_family": "boosted",
+      "frozen_week3_global_normal_on_2025": {
+        "brier": 0.1152422709929376,
+        "log_loss": 0.3576938859877056,
+        "n": 4190,
+        "reliability": [
+          {
+            "bucket": "0.0-0.1",
+            "mean_predicted": 0.02281647290084933,
+            "n": 1740,
+            "realized_over": 0.023563218390804597
+          },
+          {
+            "bucket": "0.1-0.2",
+            "mean_predicted": 0.13930939967851635,
+            "n": 558,
+            "realized_over": 0.11827956989247312
+          },
+          {
+            "bucket": "0.2-0.3",
+            "mean_predicted": 0.24848322034102355,
+            "n": 246,
+            "realized_over": 0.1991869918699187
+          },
+          {
+            "bucket": "0.3-0.4",
+            "mean_predicted": 0.35961669354316056,
+            "n": 184,
+            "realized_over": 0.24456521739130435
+          },
+          {
+            "bucket": "0.4-0.5",
+            "mean_predicted": 0.4465511126096962,
+            "n": 350,
+            "realized_over": 0.33714285714285713
+          },
+          {
+            "bucket": "0.5-0.6",
+            "mean_predicted": 0.5479940741408211,
+            "n": 259,
+            "realized_over": 0.46332046332046334
+          },
+          {
+            "bucket": "0.6-0.7",
+            "mean_predicted": 0.6513172939819016,
+            "n": 228,
+            "realized_over": 0.5263157894736842
+          },
+          {
+            "bucket": "0.7-0.8",
+            "mean_predicted": 0.7518076733929806,
+            "n": 197,
+            "realized_over": 0.6852791878172588
+          },
+          {
+            "bucket": "0.8-0.9",
+            "mean_predicted": 0.8449426643706536,
+            "n": 203,
+            "realized_over": 0.7339901477832512
+          },
+          {
+            "bucket": "0.9-1.0",
+            "mean_predicted": 0.9505574132113617,
+            "n": 225,
+            "realized_over": 0.9244444444444444
+          }
+        ]
+      },
+      "holdout_2025": {
+        "methods": {
+          "empirical_quantile": {
+            "brier": 0.11347735234528197,
+            "log_loss": 0.3573875751613365,
+            "n": 4190,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.03439334128567234,
+                "n": 1735,
+                "realized_over": 0.022478386167146973
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.13693924253138828,
+                "n": 672,
+                "realized_over": 0.1324404761904762
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.2380169285190746,
+                "n": 226,
+                "realized_over": 0.2079646017699115
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3529340834039727,
+                "n": 424,
+                "realized_over": 0.3231132075471698
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.44807507313412415,
+                "n": 185,
+                "realized_over": 0.40540540540540543
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5496371798576853,
+                "n": 193,
+                "realized_over": 0.5077720207253886
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6404102027930881,
+                "n": 169,
+                "realized_over": 0.5857988165680473
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7563861188400509,
+                "n": 105,
+                "realized_over": 0.7238095238095238
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8539449069532526,
+                "n": 184,
+                "realized_over": 0.6739130434782609
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9605310140354351,
+                "n": 297,
+                "realized_over": 0.898989898989899
+              }
+            ]
+          },
+          "global_normal": {
+            "brier": 0.11527484047253027,
+            "log_loss": 0.3579105026799271,
+            "n": 4190,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.023264571046868788,
+                "n": 1775,
+                "realized_over": 0.024225352112676058
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.1398976384368304,
+                "n": 533,
+                "realized_over": 0.12195121951219512
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.248527228661541,
+                "n": 240,
+                "realized_over": 0.2
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.36048881918833575,
+                "n": 186,
+                "realized_over": 0.24193548387096775
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4466835311961553,
+                "n": 344,
+                "realized_over": 0.3430232558139535
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5480015560262392,
+                "n": 256,
+                "realized_over": 0.4609375
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6511768881218968,
+                "n": 225,
+                "realized_over": 0.5333333333333333
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7502131577803882,
+                "n": 192,
+                "realized_over": 0.671875
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8443404688219015,
+                "n": 209,
+                "realized_over": 0.7272727272727273
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9513241860528402,
+                "n": 230,
+                "realized_over": 0.9260869565217391
+              }
+            ]
+          },
+          "player_rolling_normal": {
+            "brier": 0.11451156001471276,
+            "log_loss": 0.35477992100590616,
+            "n": 4190,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.023678278718931495,
+                "n": 1868,
+                "realized_over": 0.023554603854389723
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.1417186179059326,
+                "n": 417,
+                "realized_over": 0.14148681055155876
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.24854880458387368,
+                "n": 252,
+                "realized_over": 0.1865079365079365
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3605919194071361,
+                "n": 210,
+                "realized_over": 0.2619047619047619
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4479038530303543,
+                "n": 331,
+                "realized_over": 0.34441087613293053
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5484867329596352,
+                "n": 261,
+                "realized_over": 0.47126436781609193
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6493160458816984,
+                "n": 232,
+                "realized_over": 0.5474137931034483
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7521396838642331,
+                "n": 231,
+                "realized_over": 0.670995670995671
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.850152496709206,
+                "n": 225,
+                "realized_over": 0.7777777777777778
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9416304040117506,
+                "n": 163,
+                "realized_over": 0.9325153374233128
+              }
+            ]
+          },
+          "position_normal": {
+            "brier": 0.11514183153902649,
+            "log_loss": 0.3585962976820043,
+            "n": 4190,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.023802902712013775,
+                "n": 1812,
+                "realized_over": 0.026490066225165563
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14251446076469906,
+                "n": 493,
+                "realized_over": 0.1359026369168357
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.24575126729098729,
+                "n": 240,
+                "realized_over": 0.16666666666666666
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3593421619779089,
+                "n": 190,
+                "realized_over": 0.2578947368421053
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.44649428204548464,
+                "n": 343,
+                "realized_over": 0.33527696793002915
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5472619118845005,
+                "n": 253,
+                "realized_over": 0.45849802371541504
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6495743770531526,
+                "n": 226,
+                "realized_over": 0.5398230088495575
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7531008320169043,
+                "n": 203,
+                "realized_over": 0.6403940886699507
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8496393071266839,
+                "n": 219,
+                "realized_over": 0.771689497716895
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9504606932364578,
+                "n": 211,
+                "realized_over": 0.9241706161137441
+              }
+            ]
+          }
+        },
+        "point_bias": 0.09708882721585443,
+        "point_bias_game_cluster_ci95": [
+          0.03615929313366996,
+          0.1516997789647622
+        ]
+      },
+      "selected_uncertainty_on_2024": "empirical_quantile"
+    },
+    "rushing_attempts": {
+      "development_2024": {
+        "methods": {
+          "empirical_quantile": {
+            "brier": 0.0923026502001299,
+            "log_loss": 0.30241704922292384,
+            "n": 2060,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.03115994141499218,
+                "n": 1033,
+                "realized_over": 0.028073572120038724
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.1422036037150945,
+                "n": 223,
+                "realized_over": 0.16143497757847533
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.2516831992660878,
+                "n": 200,
+                "realized_over": 0.19
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.34473410926500175,
+                "n": 104,
+                "realized_over": 0.3557692307692308
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.45143574887954147,
+                "n": 75,
+                "realized_over": 0.52
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5458139470881748,
+                "n": 44,
+                "realized_over": 0.6590909090909091
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6564743895173943,
+                "n": 43,
+                "realized_over": 0.6511627906976745
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.754762692818651,
+                "n": 33,
+                "realized_over": 0.696969696969697
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8509678966593277,
+                "n": 79,
+                "realized_over": 0.759493670886076
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9689832869230549,
+                "n": 226,
+                "realized_over": 0.9203539823008849
+              }
+            ]
+          },
+          "global_normal": {
+            "brier": 0.0932114961370539,
+            "log_loss": 0.30860685622249023,
+            "n": 2060,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.020391529255753025,
+                "n": 1024,
+                "realized_over": 0.02734375
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.1410925354952889,
+                "n": 155,
+                "realized_over": 0.15483870967741936
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.24510089625138778,
+                "n": 120,
+                "realized_over": 0.14166666666666666
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.34611548360705774,
+                "n": 159,
+                "realized_over": 0.22012578616352202
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4424136905848826,
+                "n": 111,
+                "realized_over": 0.34234234234234234
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5483021250945238,
+                "n": 98,
+                "realized_over": 0.6122448979591837
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6493565327372355,
+                "n": 61,
+                "realized_over": 0.6229508196721312
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.755465128887122,
+                "n": 67,
+                "realized_over": 0.7164179104477612
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8519097254539618,
+                "n": 75,
+                "realized_over": 0.7866666666666666
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9697516458890012,
+                "n": 190,
+                "realized_over": 0.9473684210526315
+              }
+            ]
+          },
+          "player_rolling_normal": {
+            "brier": 0.0916228045147912,
+            "log_loss": 0.3027980417724172,
+            "n": 2060,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.016055687244707878,
+                "n": 1018,
+                "realized_over": 0.0206286836935167
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.1457225501732133,
+                "n": 158,
+                "realized_over": 0.16455696202531644
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.2517280052025387,
+                "n": 152,
+                "realized_over": 0.1513157894736842
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.35155449023812424,
+                "n": 142,
+                "realized_over": 0.2676056338028169
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4453505765312562,
+                "n": 99,
+                "realized_over": 0.3434343434343434
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5470700302932803,
+                "n": 101,
+                "realized_over": 0.6039603960396039
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6467512868171441,
+                "n": 69,
+                "realized_over": 0.6231884057971014
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7541759824003902,
+                "n": 69,
+                "realized_over": 0.7536231884057971
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8554080782362603,
+                "n": 91,
+                "realized_over": 0.8131868131868132
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9619318534147139,
+                "n": 161,
+                "realized_over": 0.9627329192546584
+              }
+            ]
+          },
+          "position_normal": {
+            "brier": 0.09085639143037513,
+            "log_loss": 0.2928678502560521,
+            "n": 2060,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.012870659674225255,
+                "n": 1010,
+                "realized_over": 0.02178217821782178
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14978468051902824,
+                "n": 197,
+                "realized_over": 0.1319796954314721
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.24292193931096057,
+                "n": 130,
+                "realized_over": 0.19230769230769232
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3533263820383429,
+                "n": 128,
+                "realized_over": 0.25
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4437973295263723,
+                "n": 104,
+                "realized_over": 0.3557692307692308
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5483798414532612,
+                "n": 105,
+                "realized_over": 0.6095238095238096
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6489740387119853,
+                "n": 65,
+                "realized_over": 0.6307692307692307
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7526921474378754,
+                "n": 75,
+                "realized_over": 0.7333333333333333
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8579572200001407,
+                "n": 74,
+                "realized_over": 0.8243243243243243
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9604529930264694,
+                "n": 172,
+                "realized_over": 0.9534883720930233
+              }
+            ]
+          }
+        },
+        "point_bias": 0.039823483147306216,
+        "point_bias_game_cluster_ci95": [
+          -0.10541404094685251,
+          0.19111636611088761
+        ]
+      },
+      "fixed_point_family": "boosted",
+      "frozen_week3_global_normal_on_2025": {
+        "brier": 0.08588126804191099,
+        "log_loss": 0.27446861640706943,
+        "n": 2084,
+        "reliability": [
+          {
+            "bucket": "0.0-0.1",
+            "mean_predicted": 0.018794502189654234,
+            "n": 1069,
+            "realized_over": 0.01683816651075772
+          },
+          {
+            "bucket": "0.1-0.2",
+            "mean_predicted": 0.14045652721796784,
+            "n": 152,
+            "realized_over": 0.13815789473684212
+          },
+          {
+            "bucket": "0.2-0.3",
+            "mean_predicted": 0.24945042091678918,
+            "n": 127,
+            "realized_over": 0.12598425196850394
+          },
+          {
+            "bucket": "0.3-0.4",
+            "mean_predicted": 0.3449986341854095,
+            "n": 149,
+            "realized_over": 0.2348993288590604
+          },
+          {
+            "bucket": "0.4-0.5",
+            "mean_predicted": 0.4496356000769023,
+            "n": 110,
+            "realized_over": 0.33636363636363636
+          },
+          {
+            "bucket": "0.5-0.6",
+            "mean_predicted": 0.5400471076405053,
+            "n": 77,
+            "realized_over": 0.4805194805194805
+          },
+          {
+            "bucket": "0.6-0.7",
+            "mean_predicted": 0.6465508875659995,
+            "n": 60,
+            "realized_over": 0.4666666666666667
+          },
+          {
+            "bucket": "0.7-0.8",
+            "mean_predicted": 0.753119430407643,
+            "n": 60,
+            "realized_over": 0.7333333333333333
+          },
+          {
+            "bucket": "0.8-0.9",
+            "mean_predicted": 0.8494308685212354,
+            "n": 90,
+            "realized_over": 0.8111111111111111
+          },
+          {
+            "bucket": "0.9-1.0",
+            "mean_predicted": 0.9674953186182486,
+            "n": 190,
+            "realized_over": 0.9368421052631579
+          }
+        ]
+      },
+      "holdout_2025": {
+        "methods": {
+          "empirical_quantile": {
+            "brier": 0.08421736498883434,
+            "log_loss": 0.2736258814043573,
+            "n": 2084,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.029723665666517844,
+                "n": 1080,
+                "realized_over": 0.016666666666666666
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.1403320135966177,
+                "n": 212,
+                "realized_over": 0.16037735849056603
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.2449851441752359,
+                "n": 202,
+                "realized_over": 0.18316831683168316
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3518911661499147,
+                "n": 102,
+                "realized_over": 0.3431372549019608
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4495359895324176,
+                "n": 70,
+                "realized_over": 0.4857142857142857
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5408248868652227,
+                "n": 27,
+                "realized_over": 0.4074074074074074
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6481895775255805,
+                "n": 46,
+                "realized_over": 0.45652173913043476
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7503442805845556,
+                "n": 30,
+                "realized_over": 0.6666666666666666
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8563734682896544,
+                "n": 77,
+                "realized_over": 0.7922077922077922
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9642138875869452,
+                "n": 238,
+                "realized_over": 0.907563025210084
+              }
+            ]
+          },
+          "global_normal": {
+            "brier": 0.08585081281701268,
+            "log_loss": 0.27445189978602963,
+            "n": 2084,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.01865261523556185,
+                "n": 1072,
+                "realized_over": 0.016791044776119403
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14115395578996867,
+                "n": 152,
+                "realized_over": 0.13815789473684212
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.25154211834902246,
+                "n": 129,
+                "realized_over": 0.13953488372093023
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3461368979386884,
+                "n": 145,
+                "realized_over": 0.22758620689655173
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4497658822927378,
+                "n": 109,
+                "realized_over": 0.3394495412844037
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5402691346829205,
+                "n": 77,
+                "realized_over": 0.4805194805194805
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6472698525664907,
+                "n": 60,
+                "realized_over": 0.4666666666666667
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7530976573068431,
+                "n": 59,
+                "realized_over": 0.7288135593220338
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8496320433149912,
+                "n": 90,
+                "realized_over": 0.8222222222222222
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9676922251258058,
+                "n": 191,
+                "realized_over": 0.9319371727748691
+              }
+            ]
+          },
+          "player_rolling_normal": {
+            "brier": 0.08474515501403823,
+            "log_loss": 0.26995642355246907,
+            "n": 2084,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.01583300744819548,
+                "n": 1068,
+                "realized_over": 0.0149812734082397
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14299218539300956,
+                "n": 147,
+                "realized_over": 0.12244897959183673
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.24710320954650966,
+                "n": 154,
+                "realized_over": 0.14285714285714285
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.34877755389230347,
+                "n": 138,
+                "realized_over": 0.26811594202898553
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4523559304473278,
+                "n": 100,
+                "realized_over": 0.34
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5414326326830707,
+                "n": 79,
+                "realized_over": 0.4810126582278481
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6412578976732406,
+                "n": 67,
+                "realized_over": 0.5074626865671642
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7523428352000042,
+                "n": 74,
+                "realized_over": 0.7837837837837838
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8572027795104004,
+                "n": 100,
+                "realized_over": 0.81
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9652319867442091,
+                "n": 157,
+                "realized_over": 0.9490445859872612
+              }
+            ]
+          },
+          "position_normal": {
+            "brier": 0.08408872615592512,
+            "log_loss": 0.26810448680105436,
+            "n": 2084,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.012840660751000075,
+                "n": 1060,
+                "realized_over": 0.016037735849056604
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14914369710112454,
+                "n": 205,
+                "realized_over": 0.07317073170731707
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.24657776016664365,
+                "n": 112,
+                "realized_over": 0.26785714285714285
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3513064874921841,
+                "n": 123,
+                "realized_over": 0.23577235772357724
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.45174728937493475,
+                "n": 107,
+                "realized_over": 0.3364485981308411
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.540605541774992,
+                "n": 76,
+                "realized_over": 0.5131578947368421
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6472749828121686,
+                "n": 72,
+                "realized_over": 0.4722222222222222
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7545676815037884,
+                "n": 81,
+                "realized_over": 0.7777777777777778
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8508897944211136,
+                "n": 91,
+                "realized_over": 0.8241758241758241
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9604274655763603,
+                "n": 157,
+                "realized_over": 0.9490445859872612
+              }
+            ]
+          }
+        },
+        "point_bias": 0.08767160661579283,
+        "point_bias_game_cluster_ci95": [
+          -0.05922073215367896,
+          0.23111696902742804
+        ]
+      },
+      "selected_uncertainty_on_2024": "position_normal"
+    },
+    "rushing_yards": {
+      "development_2024": {
+        "methods": {
+          "empirical_quantile": {
+            "brier": 0.10258532433192195,
+            "log_loss": 0.33140164627611496,
+            "n": 2060,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.035160430660407506,
+                "n": 1105,
+                "realized_over": 0.0334841628959276
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.15276765799191716,
+                "n": 291,
+                "realized_over": 0.12371134020618557
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.24873212074769052,
+                "n": 181,
+                "realized_over": 0.3314917127071823
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3448870062520221,
+                "n": 121,
+                "realized_over": 0.371900826446281
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.45094414595724275,
+                "n": 50,
+                "realized_over": 0.36
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5446470222679918,
+                "n": 51,
+                "realized_over": 0.5490196078431373
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6512046852493713,
+                "n": 37,
+                "realized_over": 0.5405405405405406
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7521458770354664,
+                "n": 42,
+                "realized_over": 0.5238095238095238
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.858569801655752,
+                "n": 59,
+                "realized_over": 0.7288135593220338
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9594588077674912,
+                "n": 123,
+                "realized_over": 0.8617886178861789
+              }
+            ]
+          },
+          "global_normal": {
+            "brier": 0.10320917483241529,
+            "log_loss": 0.33312853353116717,
+            "n": 2060,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.02125121538102252,
+                "n": 1075,
+                "realized_over": 0.03348837209302326
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14929540379594633,
+                "n": 186,
+                "realized_over": 0.10752688172043011
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.248041940589597,
+                "n": 160,
+                "realized_over": 0.15
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.347164051514501,
+                "n": 131,
+                "realized_over": 0.3435114503816794
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.45100324414016496,
+                "n": 125,
+                "realized_over": 0.336
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5455565520815113,
+                "n": 97,
+                "realized_over": 0.4536082474226804
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6477447856927991,
+                "n": 69,
+                "realized_over": 0.4927536231884058
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7486904330136869,
+                "n": 57,
+                "realized_over": 0.6491228070175439
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.849204236997055,
+                "n": 74,
+                "realized_over": 0.7837837837837838
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9541218372728055,
+                "n": 86,
+                "realized_over": 0.872093023255814
+              }
+            ]
+          },
+          "player_rolling_normal": {
+            "brier": 0.10135152333128306,
+            "log_loss": 0.3224794123684079,
+            "n": 2060,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.01740916919258042,
+                "n": 1067,
+                "realized_over": 0.026241799437675725
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.15095502617425557,
+                "n": 193,
+                "realized_over": 0.10880829015544041
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.2518381882542328,
+                "n": 165,
+                "realized_over": 0.18787878787878787
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3487480393963278,
+                "n": 125,
+                "realized_over": 0.344
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.45097796628464426,
+                "n": 127,
+                "realized_over": 0.3464566929133858
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5459408654943115,
+                "n": 104,
+                "realized_over": 0.4519230769230769
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6486681216237044,
+                "n": 75,
+                "realized_over": 0.52
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.746388925636685,
+                "n": 74,
+                "realized_over": 0.7027027027027027
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8517680388204374,
+                "n": 78,
+                "realized_over": 0.8333333333333334
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.933286746370088,
+                "n": 52,
+                "realized_over": 0.8653846153846154
+              }
+            ]
+          },
+          "position_normal": {
+            "brier": 0.10185587066116987,
+            "log_loss": 0.32268250314517843,
+            "n": 2060,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.017408413300271052,
+                "n": 1085,
+                "realized_over": 0.025806451612903226
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14706739053248175,
+                "n": 194,
+                "realized_over": 0.15979381443298968
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.24940289542483854,
+                "n": 149,
+                "realized_over": 0.1610738255033557
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3541898392460063,
+                "n": 122,
+                "realized_over": 0.36065573770491804
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.45206528119893946,
+                "n": 127,
+                "realized_over": 0.31496062992125984
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5469845060552889,
+                "n": 105,
+                "realized_over": 0.45714285714285713
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6477907580913747,
+                "n": 65,
+                "realized_over": 0.47692307692307695
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7556820892141245,
+                "n": 74,
+                "realized_over": 0.6891891891891891
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8470447069610637,
+                "n": 71,
+                "realized_over": 0.8028169014084507
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9436981196267723,
+                "n": 68,
+                "realized_over": 0.8970588235294118
+              }
+            ]
+          }
+        },
+        "point_bias": -0.4780348798848692,
+        "point_bias_game_cluster_ci95": [
+          -1.479232074742621,
+          0.47236150965514084
+        ]
+      },
+      "fixed_point_family": "ridge",
+      "frozen_week3_global_normal_on_2025": {
+        "brier": 0.10194935946731315,
+        "log_loss": 0.32634634626117787,
+        "n": 2084,
+        "reliability": [
+          {
+            "bucket": "0.0-0.1",
+            "mean_predicted": 0.02341424430962253,
+            "n": 1013,
+            "realized_over": 0.023692003948667325
+          },
+          {
+            "bucket": "0.1-0.2",
+            "mean_predicted": 0.15201706144063454,
+            "n": 214,
+            "realized_over": 0.1308411214953271
+          },
+          {
+            "bucket": "0.2-0.3",
+            "mean_predicted": 0.25153377100314783,
+            "n": 181,
+            "realized_over": 0.16022099447513813
+          },
+          {
+            "bucket": "0.3-0.4",
+            "mean_predicted": 0.34751077606863473,
+            "n": 165,
+            "realized_over": 0.24848484848484848
+          },
+          {
+            "bucket": "0.4-0.5",
+            "mean_predicted": 0.44898941114185364,
+            "n": 112,
+            "realized_over": 0.3482142857142857
+          },
+          {
+            "bucket": "0.5-0.6",
+            "mean_predicted": 0.5516391115204923,
+            "n": 90,
+            "realized_over": 0.5444444444444444
+          },
+          {
+            "bucket": "0.6-0.7",
+            "mean_predicted": 0.6459575575216185,
+            "n": 80,
+            "realized_over": 0.5375
+          },
+          {
+            "bucket": "0.7-0.8",
+            "mean_predicted": 0.7477573669610303,
+            "n": 76,
+            "realized_over": 0.6447368421052632
+          },
+          {
+            "bucket": "0.8-0.9",
+            "mean_predicted": 0.8525120617343094,
+            "n": 64,
+            "realized_over": 0.71875
+          },
+          {
+            "bucket": "0.9-1.0",
+            "mean_predicted": 0.9513041499797368,
+            "n": 89,
+            "realized_over": 0.9325842696629213
+          }
+        ]
+      },
+      "holdout_2025": {
+        "methods": {
+          "empirical_quantile": {
+            "brier": 0.10115645495638684,
+            "log_loss": 0.32763743411671303,
+            "n": 2084,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.036869685125108416,
+                "n": 1053,
+                "realized_over": 0.027540360873694207
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.15085683951963266,
+                "n": 329,
+                "realized_over": 0.1458966565349544
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.24415508807119446,
+                "n": 214,
+                "realized_over": 0.2383177570093458
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.3378421414588738,
+                "n": 98,
+                "realized_over": 0.37755102040816324
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4427036149135139,
+                "n": 49,
+                "realized_over": 0.4897959183673469
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.548616517417948,
+                "n": 58,
+                "realized_over": 0.603448275862069
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6518479983387222,
+                "n": 42,
+                "realized_over": 0.5476190476190477
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7517674814390117,
+                "n": 46,
+                "realized_over": 0.5869565217391305
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.844080497679753,
+                "n": 65,
+                "realized_over": 0.6615384615384615
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9623410734476066,
+                "n": 130,
+                "realized_over": 0.8769230769230769
+              }
+            ]
+          },
+          "global_normal": {
+            "brier": 0.10187904930490421,
+            "log_loss": 0.32664068154824716,
+            "n": 2084,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.02265276719763827,
+                "n": 1029,
+                "realized_over": 0.024295432458697766
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.1536940278206158,
+                "n": 214,
+                "realized_over": 0.14018691588785046
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.2549834038939497,
+                "n": 180,
+                "realized_over": 0.17222222222222222
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.34959774357123313,
+                "n": 153,
+                "realized_over": 0.24183006535947713
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4491551991372866,
+                "n": 109,
+                "realized_over": 0.3486238532110092
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5506424503433934,
+                "n": 86,
+                "realized_over": 0.5465116279069767
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6451176981018751,
+                "n": 81,
+                "realized_over": 0.5308641975308642
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7497121445602374,
+                "n": 77,
+                "realized_over": 0.6363636363636364
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8526599930612878,
+                "n": 61,
+                "realized_over": 0.7377049180327869
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9520536835606229,
+                "n": 94,
+                "realized_over": 0.9148936170212766
+              }
+            ]
+          },
+          "player_rolling_normal": {
+            "brier": 0.09988827014931183,
+            "log_loss": 0.32109380710375723,
+            "n": 2084,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.0174617473191067,
+                "n": 1009,
+                "realized_over": 0.019821605550049554
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14879843591485004,
+                "n": 233,
+                "realized_over": 0.10300429184549356
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.24952096816552738,
+                "n": 175,
+                "realized_over": 0.19428571428571428
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.34764915474491653,
+                "n": 149,
+                "realized_over": 0.28859060402684567
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.44755995100922275,
+                "n": 119,
+                "realized_over": 0.33613445378151263
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5501181502798083,
+                "n": 93,
+                "realized_over": 0.5483870967741935
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6463545416767509,
+                "n": 90,
+                "realized_over": 0.5222222222222223
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7497785846039013,
+                "n": 85,
+                "realized_over": 0.7058823529411765
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8529267941870335,
+                "n": 76,
+                "realized_over": 0.8026315789473685
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9332045084223511,
+                "n": 55,
+                "realized_over": 0.9272727272727272
+              }
+            ]
+          },
+          "position_normal": {
+            "brier": 0.10002941146408943,
+            "log_loss": 0.313456827560868,
+            "n": 2084,
+            "reliability": [
+              {
+                "bucket": "0.0-0.1",
+                "mean_predicted": 0.018708834648680027,
+                "n": 1048,
+                "realized_over": 0.020038167938931296
+              },
+              {
+                "bucket": "0.1-0.2",
+                "mean_predicted": 0.14058154504986256,
+                "n": 211,
+                "realized_over": 0.12796208530805686
+              },
+              {
+                "bucket": "0.2-0.3",
+                "mean_predicted": 0.24706330842860347,
+                "n": 149,
+                "realized_over": 0.22818791946308725
+              },
+              {
+                "bucket": "0.3-0.4",
+                "mean_predicted": 0.34828888898700877,
+                "n": 162,
+                "realized_over": 0.24074074074074073
+              },
+              {
+                "bucket": "0.4-0.5",
+                "mean_predicted": 0.4493830507901278,
+                "n": 115,
+                "realized_over": 0.34782608695652173
+              },
+              {
+                "bucket": "0.5-0.6",
+                "mean_predicted": 0.5521748226180204,
+                "n": 93,
+                "realized_over": 0.5053763440860215
+              },
+              {
+                "bucket": "0.6-0.7",
+                "mean_predicted": 0.6482197571156554,
+                "n": 87,
+                "realized_over": 0.5862068965517241
+              },
+              {
+                "bucket": "0.7-0.8",
+                "mean_predicted": 0.7433821298759952,
+                "n": 85,
+                "realized_over": 0.6588235294117647
+              },
+              {
+                "bucket": "0.8-0.9",
+                "mean_predicted": 0.8545331622416785,
+                "n": 65,
+                "realized_over": 0.7846153846153846
+              },
+              {
+                "bucket": "0.9-1.0",
+                "mean_predicted": 0.9422365437431555,
+                "n": 69,
+                "realized_over": 0.9420289855072463
+              }
+            ]
+          }
+        },
+        "point_bias": 0.6635087902268951,
+        "point_bias_game_cluster_ci95": [
+          -0.27636815385504865,
+          1.5994274925298653
+        ]
+      },
+      "selected_uncertainty_on_2024": "player_rolling_normal"
+    }
+  },
+  "methodology": {
+    "final_holdout": "2025 chronological walk-forward; never used for selection",
+    "point_family_source": "2024 development MAE in frozen 2026 Week 3 lab report",
+    "residual_methods": [
+      "global_normal",
+      "position_normal",
+      "player_rolling_normal",
+      "empirical_quantile"
+    ],
+    "residual_warmup": "2023 walk-forward predictions; each week's outcomes enter after all that week's predictions",
+    "source_note": "Synthetic thresholds are not sportsbook lines. No historical price or betting-performance claim.",
+    "synthetic_thresholds": {
+      "passing_yards": [
+        149.5,
+        199.5,
+        249.5,
+        299.5
+      ],
+      "receiving_yards": [
+        24.5,
+        49.5,
+        74.5,
+        99.5
+      ],
+      "receptions": [
+        1.5,
+        3.5,
+        5.5,
+        7.5
+      ],
+      "rushing_attempts": [
+        4.5,
+        9.5,
+        14.5,
+        19.5
+      ],
+      "rushing_yards": [
+        24.5,
+        49.5,
+        74.5,
+        99.5
+      ]
+    },
+    "threshold_assignment": "one predeclared half-point threshold per player-game selected by SHA-256 of market/game/player",
+    "uncertainty_selection": "lowest 2024 development Brier, log loss tie-break"
+  },
+  "status": "RETROSPECTIVE_SYNTHETIC_THRESHOLDS_ONLY"
+}

@@ -101,6 +101,28 @@ CREATE TRIGGER IF NOT EXISTS nfl_prop_snapshot_no_insert_after_freeze BEFORE INS
 WHEN EXISTS(SELECT 1 FROM nfl_prop_research_freezes WHERE source_batch_id=NEW.batch_id)
 BEGIN SELECT RAISE(ABORT, 'frozen prop snapshot batch cannot be extended'); END;
 
+CREATE TABLE IF NOT EXISTS nfl_prop_grade_evidence (
+  evidence_sha TEXT PRIMARY KEY, freeze_sha TEXT NOT NULL,
+  game_id TEXT NOT NULL, game_status TEXT NOT NULL,
+  result_source TEXT NOT NULL, result_retrieved_at REAL NOT NULL,
+  observed_at REAL NOT NULL, payload TEXT NOT NULL,
+  FOREIGN KEY(freeze_sha) REFERENCES nfl_prop_research_freezes(freeze_sha));
+CREATE TRIGGER IF NOT EXISTS nfl_prop_grade_evidence_no_update BEFORE UPDATE ON nfl_prop_grade_evidence
+BEGIN SELECT RAISE(ABORT, 'prop grade evidence is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_prop_grade_evidence_no_delete BEFORE DELETE ON nfl_prop_grade_evidence
+BEGIN SELECT RAISE(ABORT, 'prop grade evidence cannot be deleted'); END;
+
+CREATE TABLE IF NOT EXISTS nfl_prop_grade_revisions (
+  freeze_sha TEXT NOT NULL, quote_id INTEGER NOT NULL, revision INTEGER NOT NULL,
+  evidence_sha TEXT NOT NULL, graded_at REAL NOT NULL, payload TEXT NOT NULL,
+  PRIMARY KEY(freeze_sha,quote_id,revision),
+  FOREIGN KEY(freeze_sha) REFERENCES nfl_prop_research_freezes(freeze_sha),
+  FOREIGN KEY(evidence_sha) REFERENCES nfl_prop_grade_evidence(evidence_sha));
+CREATE TRIGGER IF NOT EXISTS nfl_prop_grade_revision_no_update BEFORE UPDATE ON nfl_prop_grade_revisions
+BEGIN SELECT RAISE(ABORT, 'prop grade revisions are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_prop_grade_revision_no_delete BEFORE DELETE ON nfl_prop_grade_revisions
+BEGIN SELECT RAISE(ABORT, 'prop grade revisions cannot be deleted'); END;
+
 CREATE TABLE IF NOT EXISTS nfl_game_snapshots (
   id TEXT PRIMARY KEY, game_id TEXT NOT NULL, payload TEXT NOT NULL,
   model_version TEXT NOT NULL, feature_version TEXT NOT NULL,
