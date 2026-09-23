@@ -1,0 +1,863 @@
+{
+  "alternate_line_groups": 6965,
+  "alternate_quotes": 7101,
+  "archived_http_responses": 1,
+  "batch_id": "7bf93452-5e1b-409a-bb93-18007ff97abe",
+  "book_quote_counts": {
+    "betmgm": 550,
+    "bovada": 788,
+    "caesars": 2178,
+    "draftkings": 3072,
+    "espnbet": 1779,
+    "fanduel": 2360
+  },
+  "books": [
+    "betmgm",
+    "bovada",
+    "caesars",
+    "draftkings",
+    "espnbet",
+    "fanduel"
+  ],
+  "designation": "PASS",
+  "duplicate_same_line_groups": 0,
+  "events_mapped": 16,
+  "events_seen": 16,
+  "games": [
+    {
+      "alternate_offers_seen": 1874,
+      "books": [
+        "betmgm",
+        "bovada",
+        "caesars",
+        "draftkings",
+        "espnbet",
+        "fanduel"
+      ],
+      "canonical_game_id": "nfl-2026-reg-03-atl-gb",
+      "freshest_quote_timestamp": 1790190717.173,
+      "mapped": true,
+      "markets": [
+        "anytime_touchdowns",
+        "interceptions",
+        "passing_touchdowns",
+        "passing_yards",
+        "receiving_yards",
+        "receptions",
+        "rushing_attempts",
+        "rushing_yards"
+      ],
+      "offers_seen": 2468,
+      "players_in_feed": 38,
+      "players_with_quotes": 25,
+      "provider_event_id": "0QPH7IUrjDzHoBKual5i",
+      "quotes": 1701,
+      "warnings": {
+        "missing_by_bookmaker": 2,
+        "missing_player_id": 4,
+        "unavailable_offer": 767,
+        "unsupported_variant": 594
+      }
+    },
+    {
+      "alternate_offers_seen": 429,
+      "books": [
+        "betmgm",
+        "bovada",
+        "caesars",
+        "draftkings",
+        "espnbet",
+        "fanduel"
+      ],
+      "canonical_game_id": "nfl-2026-reg-03-kc-mia",
+      "freshest_quote_timestamp": 1790190741.226,
+      "mapped": true,
+      "markets": [
+        "anytime_touchdowns",
+        "passing_touchdowns",
+        "passing_yards",
+        "receiving_yards",
+        "receptions",
+        "rushing_attempts",
+        "rushing_yards"
+      ],
+      "offers_seen": 640,
+      "players_in_feed": 25,
+      "players_with_quotes": 22,
+      "provider_event_id": "ESvtyfFibM9hvbkamIkG",
+      "quotes": 611,
+      "warnings": {
+        "missing_by_bookmaker": 3,
+        "missing_player_id": 4,
+        "unavailable_offer": 29,
+        "unsupported_variant": 285
+      }
+    },
+    {
+      "alternate_offers_seen": 838,
+      "books": [
+        "betmgm",
+        "bovada",
+        "caesars",
+        "draftkings",
+        "espnbet",
+        "fanduel"
+      ],
+      "canonical_game_id": "nfl-2026-reg-03-nyj-det",
+      "freshest_quote_timestamp": 1790190735.846,
+      "mapped": true,
+      "markets": [
+        "anytime_touchdowns",
+        "interceptions",
+        "passing_touchdowns",
+        "passing_yards",
+        "receiving_yards",
+        "receptions",
+        "rushing_attempts",
+        "rushing_yards"
+      ],
+      "offers_seen": 1182,
+      "players_in_feed": 29,
+      "players_with_quotes": 25,
+      "provider_event_id": "FOSE1zBUNvmhacWfDJh5",
+      "quotes": 1090,
+      "warnings": {
+        "missing_by_bookmaker": 3,
+        "missing_player_id": 4,
+        "unavailable_offer": 92,
+        "unsupported_variant": 399
+      }
+    },
+    {
+      "alternate_offers_seen": 0,
+      "books": [
+        "betmgm",
+        "bovada",
+        "caesars",
+        "draftkings",
+        "espnbet"
+      ],
+      "canonical_game_id": "nfl-2026-reg-03-car-cle",
+      "freshest_quote_timestamp": 1790190736.124,
+      "mapped": true,
+      "markets": [
+        "anytime_touchdowns"
+      ],
+      "offers_seen": 101,
+      "players_in_feed": 28,
+      "players_with_quotes": 22,
+      "provider_event_id": "N7NOi3M6n1BxFnb2HEeg",
+      "quotes": 94,
+      "warnings": {
+        "missing_by_bookmaker": 3,
+        "missing_player_id": 4,
+        "unavailable_offer": 7,
+        "unsupported_variant": 236
+      }
+    },
+    {
+      "alternate_offers_seen": 619,
+      "books": [
+        "betmgm",
+        "bovada",
+        "caesars",
+        "draftkings",
+        "espnbet",
+        "fanduel"
+      ],
+      "canonical_game_id": "nfl-2026-reg-03-cin-pit",
+      "freshest_quote_timestamp": 1790190729.712,
+      "mapped": true,
+      "markets": [
+        "anytime_touchdowns",
+        "interceptions",
+        "passing_touchdowns",
+        "passing_yards",
+        "receiving_yards",
+        "receptions",
+        "rushing_attempts",
+        "rushing_yards"
+      ],
+      "offers_seen": 900,
+      "players_in_feed": 27,
+      "players_with_quotes": 23,
+      "provider_event_id": "Nn93CE6r1lUECiQZwWgQ",
+      "quotes": 816,
+      "warnings": {
+        "missing_by_bookmaker": 9,
+        "missing_player_id": 4,
+        "unavailable_offer": 84,
+        "unsupported_variant": 332
+      }
+    },
+    {
+      "alternate_offers_seen": 771,
+      "books": [
+        "betmgm",
+        "bovada",
+        "caesars",
+        "draftkings",
+        "espnbet",
+        "fanduel"
+      ],
+      "canonical_game_id": "nfl-2026-reg-03-lac-buf",
+      "freshest_quote_timestamp": 1790190739.567,
+      "mapped": true,
+      "markets": [
+        "anytime_touchdowns",
+        "interceptions",
+        "passing_touchdowns",
+        "passing_yards",
+        "receiving_yards",
+        "receptions",
+        "rushing_attempts",
+        "rushing_yards"
+      ],
+      "offers_seen": 1103,
+      "players_in_feed": 27,
+      "players_with_quotes": 22,
+      "provider_event_id": "VgLWOqsMZA96fIe0KZSP",
+      "quotes": 971,
+      "warnings": {
+        "missing_by_bookmaker": 9,
+        "missing_player_id": 4,
+        "unavailable_offer": 132,
+        "unsupported_variant": 367
+      }
+    },
+    {
+      "alternate_offers_seen": 0,
+      "books": [],
+      "canonical_game_id": "nfl-2026-reg-03-sea-wsh",
+      "freshest_quote_timestamp": null,
+      "mapped": true,
+      "markets": [],
+      "offers_seen": 0,
+      "players_in_feed": 29,
+      "players_with_quotes": 0,
+      "provider_event_id": "eUlyYGlpZPVnyu1oODcx",
+      "quotes": 0,
+      "warnings": {
+        "missing_by_bookmaker": 18,
+        "missing_player_id": 5,
+        "unsupported_variant": 236
+      }
+    },
+    {
+      "alternate_offers_seen": 0,
+      "books": [
+        "bovada",
+        "caesars",
+        "draftkings",
+        "espnbet"
+      ],
+      "canonical_game_id": "nfl-2026-reg-03-hou-ind",
+      "freshest_quote_timestamp": 1790190730.037,
+      "mapped": true,
+      "markets": [
+        "anytime_touchdowns"
+      ],
+      "offers_seen": 24,
+      "players_in_feed": 32,
+      "players_with_quotes": 6,
+      "provider_event_id": "kmtQjhKbb7xyPLLKrbAp",
+      "quotes": 24,
+      "warnings": {
+        "missing_by_bookmaker": 13,
+        "missing_player_id": 4,
+        "unsupported_variant": 166
+      }
+    },
+    {
+      "alternate_offers_seen": 0,
+      "books": [
+        "caesars",
+        "draftkings"
+      ],
+      "canonical_game_id": "nfl-2026-reg-03-ten-nyg",
+      "freshest_quote_timestamp": 1790190615.361,
+      "mapped": true,
+      "markets": [
+        "anytime_touchdowns"
+      ],
+      "offers_seen": 37,
+      "players_in_feed": 30,
+      "players_with_quotes": 24,
+      "provider_event_id": "rELr7JbZPQZgbJtOMLsh",
+      "quotes": 37,
+      "warnings": {
+        "missing_by_bookmaker": 10,
+        "missing_player_id": 5,
+        "unsupported_variant": 223
+      }
+    },
+    {
+      "alternate_offers_seen": 1120,
+      "books": [
+        "betmgm",
+        "bovada",
+        "caesars",
+        "draftkings",
+        "espnbet",
+        "fanduel"
+      ],
+      "canonical_game_id": "nfl-2026-reg-03-ne-jax",
+      "freshest_quote_timestamp": 1790190741.669,
+      "mapped": true,
+      "markets": [
+        "anytime_touchdowns",
+        "interceptions",
+        "passing_touchdowns",
+        "passing_yards",
+        "receiving_yards",
+        "receptions",
+        "rushing_attempts",
+        "rushing_yards"
+      ],
+      "offers_seen": 1610,
+      "players_in_feed": 27,
+      "players_with_quotes": 24,
+      "provider_event_id": "u0NluMQO7DCgO44ry2hE",
+      "quotes": 1465,
+      "warnings": {
+        "missing_by_bookmaker": 1,
+        "missing_player_id": 4,
+        "unavailable_offer": 145,
+        "unsupported_variant": 571
+      }
+    },
+    {
+      "alternate_offers_seen": 642,
+      "books": [
+        "betmgm",
+        "bovada",
+        "caesars",
+        "draftkings",
+        "espnbet",
+        "fanduel"
+      ],
+      "canonical_game_id": "nfl-2026-reg-03-min-tb",
+      "freshest_quote_timestamp": 1790190734.324,
+      "mapped": true,
+      "markets": [
+        "anytime_touchdowns",
+        "interceptions",
+        "passing_touchdowns",
+        "passing_yards",
+        "receiving_yards",
+        "receptions",
+        "rushing_attempts",
+        "rushing_yards"
+      ],
+      "offers_seen": 933,
+      "players_in_feed": 30,
+      "players_with_quotes": 26,
+      "provider_event_id": "APgCtTjgC4d3bgL5EeOH",
+      "quotes": 880,
+      "warnings": {
+        "missing_by_bookmaker": 6,
+        "missing_player_id": 4,
+        "unavailable_offer": 53,
+        "unsupported_variant": 467
+      }
+    },
+    {
+      "alternate_offers_seen": 408,
+      "books": [
+        "betmgm",
+        "bovada",
+        "caesars",
+        "draftkings",
+        "espnbet",
+        "fanduel"
+      ],
+      "canonical_game_id": "nfl-2026-reg-03-ari-sf",
+      "freshest_quote_timestamp": 1790190706.227,
+      "mapped": true,
+      "markets": [
+        "anytime_touchdowns",
+        "passing_touchdowns",
+        "passing_yards",
+        "receiving_yards",
+        "receptions",
+        "rushing_attempts",
+        "rushing_yards"
+      ],
+      "offers_seen": 605,
+      "players_in_feed": 28,
+      "players_with_quotes": 24,
+      "provider_event_id": "Z5kQch0mnf6Kts1yLHEi",
+      "quotes": 549,
+      "warnings": {
+        "missing_by_bookmaker": 4,
+        "missing_player_id": 3,
+        "unavailable_offer": 56,
+        "unsupported_variant": 311
+      }
+    },
+    {
+      "alternate_offers_seen": 920,
+      "books": [
+        "betmgm",
+        "bovada",
+        "caesars",
+        "draftkings",
+        "espnbet",
+        "fanduel"
+      ],
+      "canonical_game_id": "nfl-2026-reg-03-bal-dal",
+      "freshest_quote_timestamp": 1790190710.006,
+      "mapped": true,
+      "markets": [
+        "anytime_touchdowns",
+        "interceptions",
+        "passing_touchdowns",
+        "passing_yards",
+        "receiving_yards",
+        "receptions",
+        "rushing_attempts",
+        "rushing_yards"
+      ],
+      "offers_seen": 1293,
+      "players_in_feed": 28,
+      "players_with_quotes": 25,
+      "provider_event_id": "EuQk9IyehJpE6rM9zHFg",
+      "quotes": 1093,
+      "warnings": {
+        "missing_by_bookmaker": 2,
+        "missing_player_id": 4,
+        "unavailable_offer": 200,
+        "unsupported_variant": 492
+      }
+    },
+    {
+      "alternate_offers_seen": 158,
+      "books": [
+        "betmgm",
+        "bovada",
+        "caesars",
+        "draftkings",
+        "espnbet",
+        "fanduel"
+      ],
+      "canonical_game_id": "nfl-2026-reg-03-lv-no",
+      "freshest_quote_timestamp": 1790190737.08,
+      "mapped": true,
+      "markets": [
+        "anytime_touchdowns",
+        "interceptions",
+        "passing_touchdowns",
+        "passing_yards"
+      ],
+      "offers_seen": 299,
+      "players_in_feed": 26,
+      "players_with_quotes": 21,
+      "provider_event_id": "udDSNFp0iMXuIIVOnoSe",
+      "quotes": 274,
+      "warnings": {
+        "missing_by_bookmaker": 5,
+        "missing_player_id": 4,
+        "unavailable_offer": 25,
+        "unsupported_variant": 264
+      }
+    },
+    {
+      "alternate_offers_seen": 487,
+      "books": [
+        "betmgm",
+        "bovada",
+        "caesars",
+        "draftkings",
+        "espnbet",
+        "fanduel"
+      ],
+      "canonical_game_id": "nfl-2026-reg-03-lar-den",
+      "freshest_quote_timestamp": 1790190742.665,
+      "mapped": true,
+      "markets": [
+        "anytime_touchdowns",
+        "interceptions",
+        "passing_touchdowns",
+        "passing_yards",
+        "receiving_yards",
+        "receptions",
+        "rushing_attempts",
+        "rushing_yards"
+      ],
+      "offers_seen": 706,
+      "players_in_feed": 31,
+      "players_with_quotes": 16,
+      "provider_event_id": "dC2i8TCB9oM585C9aaET",
+      "quotes": 628,
+      "warnings": {
+        "missing_by_bookmaker": 15,
+        "missing_player_id": 4,
+        "unavailable_offer": 78,
+        "unsupported_variant": 352
+      }
+    },
+    {
+      "alternate_offers_seen": 346,
+      "books": [
+        "betmgm",
+        "bovada",
+        "caesars",
+        "draftkings",
+        "fanduel"
+      ],
+      "canonical_game_id": "nfl-2026-reg-03-phi-chi",
+      "freshest_quote_timestamp": 1790190685.559,
+      "mapped": true,
+      "markets": [
+        "anytime_touchdowns",
+        "interceptions",
+        "passing_touchdowns",
+        "passing_yards",
+        "receiving_yards",
+        "receptions",
+        "rushing_attempts",
+        "rushing_yards"
+      ],
+      "offers_seen": 553,
+      "players_in_feed": 24,
+      "players_with_quotes": 23,
+      "provider_event_id": "iVXqTw1LGEj0TGVxDgTs",
+      "quotes": 494,
+      "warnings": {
+        "missing_by_bookmaker": 18,
+        "missing_player_id": 5,
+        "unavailable_offer": 59,
+        "unsupported_variant": 290
+      }
+    }
+  ],
+  "main_line_groups": 1102,
+  "mapping_rate": 1.0,
+  "market_quote_counts": {
+    "anytime_touchdowns": 1480,
+    "interceptions": 138,
+    "passing_touchdowns": 512,
+    "passing_yards": 1418,
+    "receiving_yards": 3032,
+    "receptions": 1918,
+    "rushing_attempts": 311,
+    "rushing_yards": 1918
+  },
+  "markets": [
+    "anytime_touchdowns",
+    "interceptions",
+    "passing_touchdowns",
+    "passing_yards",
+    "receiving_yards",
+    "receptions",
+    "rushing_attempts",
+    "rushing_yards"
+  ],
+  "normalization_samples": {
+    "anytime_touchdowns": {
+      "all_passed": true,
+      "canonical_game_id": "nfl-2026-reg-03-ari-sf",
+      "checks": {
+        "canonical_game": true,
+        "line_and_price": true,
+        "market_and_side": true,
+        "player_alias": true,
+        "player_name": true,
+        "provider_event_mapping": true,
+        "raw_offer": true,
+        "raw_player": true,
+        "raw_provider_event": true,
+        "sportsbook": true,
+        "team_and_opponent": true,
+        "timestamps": true
+      },
+      "kickoff_utc": 1790539500.0,
+      "line": null,
+      "line_type": "main",
+      "market": "anytime_touchdowns",
+      "offer_index": 0,
+      "opponent": "San Francisco 49ers",
+      "player_id": "sgo:ZONOVAN_KNIGHT_1_NFL",
+      "player_name": "Bam Knight",
+      "price": 2800,
+      "provider_event_id": "Z5kQch0mnf6Kts1yLHEi",
+      "provider_player_id": "ZONOVAN_KNIGHT_1_NFL",
+      "retrieved_at": 1790190855.547101,
+      "side": "yes",
+      "sportsbook": "betmgm",
+      "team": "Arizona Cardinals"
+    },
+    "interceptions": {
+      "all_passed": true,
+      "canonical_game_id": "nfl-2026-reg-03-atl-gb",
+      "checks": {
+        "canonical_game": true,
+        "line_and_price": true,
+        "market_and_side": true,
+        "player_alias": true,
+        "player_name": true,
+        "provider_event_mapping": true,
+        "raw_offer": true,
+        "raw_player": true,
+        "raw_provider_event": true,
+        "sportsbook": true,
+        "team_and_opponent": true,
+        "timestamps": true
+      },
+      "kickoff_utc": 1790295300.0,
+      "line": 0.5,
+      "line_type": "main",
+      "market": "interceptions",
+      "offer_index": 0,
+      "opponent": "Atlanta Falcons",
+      "player_id": "sgo:JORDAN_LOVE_1_NFL",
+      "player_name": "Jordan Love",
+      "price": 100,
+      "provider_event_id": "0QPH7IUrjDzHoBKual5i",
+      "provider_player_id": "JORDAN_LOVE_1_NFL",
+      "retrieved_at": 1790190855.547101,
+      "side": "over",
+      "sportsbook": "betmgm",
+      "team": "Green Bay Packers"
+    },
+    "passing_touchdowns": {
+      "all_passed": true,
+      "canonical_game_id": "nfl-2026-reg-03-ari-sf",
+      "checks": {
+        "canonical_game": true,
+        "line_and_price": true,
+        "market_and_side": true,
+        "player_alias": true,
+        "player_name": true,
+        "provider_event_mapping": true,
+        "raw_offer": true,
+        "raw_player": true,
+        "raw_provider_event": true,
+        "sportsbook": true,
+        "team_and_opponent": true,
+        "timestamps": true
+      },
+      "kickoff_utc": 1790539500.0,
+      "line": 1.5,
+      "line_type": "main",
+      "market": "passing_touchdowns",
+      "offer_index": 0,
+      "opponent": "Arizona Cardinals",
+      "player_id": "sgo:BROCK_PURDY_1_NFL",
+      "player_name": "Brock Purdy",
+      "price": -154,
+      "provider_event_id": "Z5kQch0mnf6Kts1yLHEi",
+      "provider_player_id": "BROCK_PURDY_1_NFL",
+      "retrieved_at": 1790190855.547101,
+      "side": "over",
+      "sportsbook": "bovada",
+      "team": "San Francisco 49ers"
+    },
+    "passing_yards": {
+      "all_passed": true,
+      "canonical_game_id": "nfl-2026-reg-03-ari-sf",
+      "checks": {
+        "canonical_game": true,
+        "line_and_price": true,
+        "market_and_side": true,
+        "player_alias": true,
+        "player_name": true,
+        "provider_event_mapping": true,
+        "raw_offer": true,
+        "raw_player": true,
+        "raw_provider_event": true,
+        "sportsbook": true,
+        "team_and_opponent": true,
+        "timestamps": true
+      },
+      "kickoff_utc": 1790539500.0,
+      "line": 240.5,
+      "line_type": "main",
+      "market": "passing_yards",
+      "offer_index": 0,
+      "opponent": "Arizona Cardinals",
+      "player_id": "sgo:BROCK_PURDY_1_NFL",
+      "player_name": "Brock Purdy",
+      "price": -115,
+      "provider_event_id": "Z5kQch0mnf6Kts1yLHEi",
+      "provider_player_id": "BROCK_PURDY_1_NFL",
+      "retrieved_at": 1790190855.547101,
+      "side": "over",
+      "sportsbook": "espnbet",
+      "team": "San Francisco 49ers"
+    },
+    "receiving_yards": {
+      "all_passed": true,
+      "canonical_game_id": "nfl-2026-reg-03-ari-sf",
+      "checks": {
+        "canonical_game": true,
+        "line_and_price": true,
+        "market_and_side": true,
+        "player_alias": true,
+        "player_name": true,
+        "provider_event_mapping": true,
+        "raw_offer": true,
+        "raw_player": true,
+        "raw_provider_event": true,
+        "sportsbook": true,
+        "team_and_opponent": true,
+        "timestamps": true
+      },
+      "kickoff_utc": 1790539500.0,
+      "line": 27.5,
+      "line_type": "main",
+      "market": "receiving_yards",
+      "offer_index": 0,
+      "opponent": "San Francisco 49ers",
+      "player_id": "sgo:MARVIN_HARRISON_JR_1_NFL",
+      "player_name": "Marvin Harrison Jr.",
+      "price": -114,
+      "provider_event_id": "Z5kQch0mnf6Kts1yLHEi",
+      "provider_player_id": "MARVIN_HARRISON_JR_1_NFL",
+      "retrieved_at": 1790190855.547101,
+      "side": "over",
+      "sportsbook": "bovada",
+      "team": "Arizona Cardinals"
+    },
+    "receptions": {
+      "all_passed": true,
+      "canonical_game_id": "nfl-2026-reg-03-ari-sf",
+      "checks": {
+        "canonical_game": true,
+        "line_and_price": true,
+        "market_and_side": true,
+        "player_alias": true,
+        "player_name": true,
+        "provider_event_mapping": true,
+        "raw_offer": true,
+        "raw_player": true,
+        "raw_provider_event": true,
+        "sportsbook": true,
+        "team_and_opponent": true,
+        "timestamps": true
+      },
+      "kickoff_utc": 1790539500.0,
+      "line": 2.5,
+      "line_type": "main",
+      "market": "receptions",
+      "offer_index": 0,
+      "opponent": "San Francisco 49ers",
+      "player_id": "sgo:MARVIN_HARRISON_JR_1_NFL",
+      "player_name": "Marvin Harrison Jr.",
+      "price": 136,
+      "provider_event_id": "Z5kQch0mnf6Kts1yLHEi",
+      "provider_player_id": "MARVIN_HARRISON_JR_1_NFL",
+      "retrieved_at": 1790190855.547101,
+      "side": "over",
+      "sportsbook": "bovada",
+      "team": "Arizona Cardinals"
+    },
+    "rushing_attempts": {
+      "all_passed": true,
+      "canonical_game_id": "nfl-2026-reg-03-ari-sf",
+      "checks": {
+        "canonical_game": true,
+        "line_and_price": true,
+        "market_and_side": true,
+        "player_alias": true,
+        "player_name": true,
+        "provider_event_mapping": true,
+        "raw_offer": true,
+        "raw_player": true,
+        "raw_provider_event": true,
+        "sportsbook": true,
+        "team_and_opponent": true,
+        "timestamps": true
+      },
+      "kickoff_utc": 1790539500.0,
+      "line": 13.5,
+      "line_type": "main",
+      "market": "rushing_attempts",
+      "offer_index": 0,
+      "opponent": "Arizona Cardinals",
+      "player_id": "sgo:CHRISTIAN_MCCAFFREY_1_NFL",
+      "player_name": "Christian McCaffrey",
+      "price": -114,
+      "provider_event_id": "Z5kQch0mnf6Kts1yLHEi",
+      "provider_player_id": "CHRISTIAN_MCCAFFREY_1_NFL",
+      "retrieved_at": 1790190855.547101,
+      "side": "over",
+      "sportsbook": "fanduel",
+      "team": "San Francisco 49ers"
+    },
+    "rushing_yards": {
+      "all_passed": true,
+      "canonical_game_id": "nfl-2026-reg-03-ari-sf",
+      "checks": {
+        "canonical_game": true,
+        "line_and_price": true,
+        "market_and_side": true,
+        "player_alias": true,
+        "player_name": true,
+        "provider_event_mapping": true,
+        "raw_offer": true,
+        "raw_player": true,
+        "raw_provider_event": true,
+        "sportsbook": true,
+        "team_and_opponent": true,
+        "timestamps": true
+      },
+      "kickoff_utc": 1790539500.0,
+      "line": 54.5,
+      "line_type": "main",
+      "market": "rushing_yards",
+      "offer_index": 0,
+      "opponent": "Arizona Cardinals",
+      "player_id": "sgo:CHRISTIAN_MCCAFFREY_1_NFL",
+      "player_name": "Christian McCaffrey",
+      "price": -114,
+      "provider_event_id": "Z5kQch0mnf6Kts1yLHEi",
+      "provider_player_id": "CHRISTIAN_MCCAFFREY_1_NFL",
+      "retrieved_at": 1790190855.547101,
+      "side": "over",
+      "sportsbook": "bovada",
+      "team": "San Francisco 49ers"
+    }
+  },
+  "normalization_warning_counts": {
+    "missing_by_bookmaker": 121,
+    "missing_player_id": 66,
+    "unavailable_offer": 1727,
+    "unsupported_variant": 5585
+  },
+  "numeric_line_quotes": 9247,
+  "paired_alternate_line_groups": 136,
+  "paired_main_line_groups": 1044,
+  "price_complete_quotes": 10727,
+  "provider": "sportsgameodds",
+  "provider_notices": [
+    "Response is missing 38861 bookmaker odds. Upgrade your API key to access all data from this query."
+  ],
+  "provider_quote_timestamp_missing": 0,
+  "raw_books_present": [
+    "betmgm",
+    "bovada",
+    "caesars",
+    "draftkings",
+    "espnbet",
+    "fanduel",
+    "pointsbet",
+    "unibet",
+    "williamhill"
+  ],
+  "raw_pages": [
+    {
+      "body_sha256": "c0e88b361c7ea643b38a7712affa1522c8411476085ce4d4a271d320c4a78f1f",
+      "fetched_at": 1790190855.547101,
+      "http_status": 200,
+      "page_number": 1,
+      "response_headers": {
+        "capture_body_kind": "http_body"
+      }
+    }
+  ],
+  "readiness": "RESEARCH_ONLY",
+  "retrieved_at": 1790190855.547101,
+  "total_quotes": 10727,
+  "unique_players": 328
+}

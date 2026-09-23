@@ -102,6 +102,21 @@ def get_json_meta(url: str, params: Optional[Dict] = None, provider: str = "http
         raise ProviderError(provider, _safe_error_detail(e))
 
 
+def get_raw_meta(url: str, params: Optional[Dict] = None, provider: str = "http",
+                 timeout: float = DEFAULT_TIMEOUT,
+                 headers: Optional[Dict] = None) -> Tuple[int, bytes, Dict[str, str]]:
+    """Return one HTTP response body as bytes, including non-2xx responses.
+
+    A capture can archive the exact response body before parsing or raising on
+    HTTP status. Authentication headers are never returned or logged.
+    """
+    try:
+        r = client().get(url, params=params, timeout=timeout, headers=headers)
+        return r.status_code, r.content, {k.lower(): v for k, v in r.headers.items()}
+    except Exception as e:  # noqa: BLE001
+        raise ProviderError(provider, _safe_error_detail(e)) from e
+
+
 # ------------------------------------------------------------------ interfaces
 class OddsProvider:
     name = "odds"

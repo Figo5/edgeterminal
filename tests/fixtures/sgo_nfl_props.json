@@ -17,7 +17,7 @@
     "odds": {
       "passing_yards-JOSH_ALLEN_1_NFL-game-ou-over": {
         "oddID": "passing_yards-JOSH_ALLEN_1_NFL-game-ou-over", "statID": "passing_yards", "statEntityID": "JOSH_ALLEN_1_NFL", "playerID": "JOSH_ALLEN_1_NFL", "periodID": "game", "betTypeID": "ou", "sideID": "over",
-        "byBookmaker": {"draftkings": {"odds": "-110", "overUnder": "224.5", "available": true}, "fanduel": {"odds": "+100", "overUnder": "225.5", "available": true}}
+        "byBookmaker": {"draftkings": {"odds": "-110", "overUnder": "224.5", "available": true, "altLines": [{"odds": "+120", "overUnder": "229.5", "available": true}, {"odds": "-130", "overUnder": "219.5", "available": true}]}, "fanduel": {"odds": "+100", "overUnder": "225.5", "available": true}}
       },
       "passing_touchdowns-JOSH_ALLEN_1_NFL-game-ou-over": {
         "oddID": "passing_touchdowns-JOSH_ALLEN_1_NFL-game-ou-over", "statID": "passing_touchdowns", "statEntityID": "JOSH_ALLEN_1_NFL", "periodID": "game", "betTypeID": "ou", "sideID": "over",

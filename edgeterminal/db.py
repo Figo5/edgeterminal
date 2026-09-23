@@ -55,11 +55,22 @@ CREATE TABLE IF NOT EXISTS nfl_prop_capture_batches (
   batch_id TEXT PRIMARY KEY, provider TEXT NOT NULL, retrieved_at REAL NOT NULL,
   raw_sha256 TEXT NOT NULL, raw_payload TEXT NOT NULL,
   events_seen INTEGER NOT NULL, events_mapped INTEGER NOT NULL,
-  quotes_stored INTEGER NOT NULL);
+  quotes_stored INTEGER NOT NULL, audit_json TEXT);
 CREATE TRIGGER IF NOT EXISTS nfl_prop_batch_no_update BEFORE UPDATE ON nfl_prop_capture_batches
 BEGIN SELECT RAISE(ABORT, 'prop capture batches are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS nfl_prop_batch_no_delete BEFORE DELETE ON nfl_prop_capture_batches
 BEGIN SELECT RAISE(ABORT, 'prop capture batches cannot be deleted'); END;
+
+CREATE TABLE IF NOT EXISTS nfl_prop_raw_responses (
+  batch_id TEXT NOT NULL, page_number INTEGER NOT NULL,
+  fetched_at REAL NOT NULL, http_status INTEGER NOT NULL,
+  request_params TEXT NOT NULL, response_headers TEXT NOT NULL,
+  body_sha256 TEXT NOT NULL, body BLOB NOT NULL,
+  PRIMARY KEY(batch_id, page_number));
+CREATE TRIGGER IF NOT EXISTS nfl_prop_raw_no_update BEFORE UPDATE ON nfl_prop_raw_responses
+BEGIN SELECT RAISE(ABORT, 'raw prop responses are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_prop_raw_no_delete BEFORE DELETE ON nfl_prop_raw_responses
+BEGIN SELECT RAISE(ABORT, 'raw prop responses cannot be deleted'); END;
 
 CREATE TABLE IF NOT EXISTS nfl_prop_snapshots (
   id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id TEXT NOT NULL,
@@ -69,6 +80,7 @@ CREATE TABLE IF NOT EXISTS nfl_prop_snapshots (
   market TEXT NOT NULL, line REAL, side TEXT NOT NULL, price INTEGER NOT NULL,
   sportsbook TEXT NOT NULL, retrieved_at REAL NOT NULL, kickoff_utc REAL NOT NULL,
   provider TEXT NOT NULL, source TEXT NOT NULL, provider_updated_at REAL,
+  line_type TEXT NOT NULL DEFAULT 'main', offer_index INTEGER NOT NULL DEFAULT 0,
   FOREIGN KEY(batch_id) REFERENCES nfl_prop_capture_batches(batch_id));
 CREATE INDEX IF NOT EXISTS ix_nfl_prop_board ON nfl_prop_snapshots
   (canonical_game_id, market, player_id, sportsbook, retrieved_at);
@@ -349,6 +361,10 @@ def conn() -> sqlite3.Connection:
             "provider": "TEXT", "fetched_at": "REAL", "kickoff_utc": "REAL",
             "quote_phase": "TEXT"})
         _ensure_columns(_conn, "predictions", {"snapshot_id": "TEXT"})
+        _ensure_columns(_conn, "nfl_prop_capture_batches", {"audit_json": "TEXT"})
+        _ensure_columns(_conn, "nfl_prop_snapshots", {"source": "TEXT NOT NULL DEFAULT 'https://api.sportsgameodds.com/v2/events'",
+                                                     "line_type": "TEXT NOT NULL DEFAULT 'main'",
+                                                     "offer_index": "INTEGER NOT NULL DEFAULT 0"})
         _conn.commit()
     return _conn
 
