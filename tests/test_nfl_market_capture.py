@@ -6,7 +6,8 @@ import pytest
 
 from edgeterminal import db
 from edgeterminal.config import settings
-from edgeterminal.nfl_market_capture import capture_if_due
+from edgeterminal.nfl_market_capture import capture_if_due,capture_week
+from edgeterminal.nfl_forward_research import _current_quote
 
 
 @pytest.fixture
@@ -49,6 +50,9 @@ def test_capture_only_when_game_is_near_and_mapped(fixture_db):
     assert len(rows)==2
     assert rows[0]["book"]=="draftkings"
     assert rows[0]["provider"]=="espn-odds"
+    frozen=_current_quote(game,"Green Bay Packers","Atlanta Falcons",time.time())
+    assert frozen["home_handicap"]==-3.5
+    assert frozen["spread_source_quote_id"] in {r["id"] for r in rows}
 
 
 def test_unmapped_offer_cannot_be_assigned_by_team_name(fixture_db):
@@ -59,3 +63,9 @@ def test_unmapped_offer_cannot_be_assigned_by_team_name(fixture_db):
     result=capture_if_due(now=now,provider=Unmapped())
     assert result["rows_stored"]==0
     assert result["games_without_quotes"]==[game]
+
+
+def test_weekly_capture_reads_only_espn_fixture(fixture_db):
+    now,_,_=fixture_db
+    result=capture_week(2026,3,provider=Provider(),now=now)
+    assert result["rows_stored"]==2

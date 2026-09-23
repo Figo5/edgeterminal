@@ -12,6 +12,7 @@ from . import engine
 from .backtest import _num, load_schedules
 from .nfl_forward_grading import sync_all
 from .nfl_forward_research import freeze
+from .nfl_market_capture import capture_week
 from .providers.nflverse import _ensure_archive
 
 
@@ -60,6 +61,10 @@ def run(season=2026, cache="data/nflverse/forward_2026",
             try:
                 if refresh_sources:
                     _ensure_archive(season,cache,refresh=True)
+                    try:
+                        result["market_capture"]=capture_week(season,week)
+                    except Exception as exc:
+                        result["market_error"]=f"{type(exc).__name__}: {exc}"
                 # freeze() checks every kickoff, all prior scores and play data,
                 # then creates with O_EXCL. Any missing or late data is a refusal.
                 result["freeze"]=freeze(cache,path,season,week,"linear")
@@ -79,6 +84,8 @@ def main():
     print(json.dumps(output))
     if (str(output["freeze"]).startswith("refused") or output.get("schedule_error") or
             output.get("live_schedule",{}).get("ok") is False or
+            output.get("market_error") or
+            output.get("market_capture",{}).get("games_without_quotes") or
             any("error" in item for item in output["grading"]["sync"])):
         raise SystemExit(2)
 

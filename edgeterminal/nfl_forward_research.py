@@ -13,8 +13,9 @@ from zoneinfo import ZoneInfo
 
 import numpy as np
 
-from . import db, nfl_research as lab
+from . import db, nfl_identity as NI, nfl_market as NM, nfl_research as lab
 from .backtest import _num, load_schedules
+from .config import settings
 from .nfl_baselines import baselines_before
 from .providers.normalize import normalize_team
 
@@ -82,6 +83,50 @@ def _write_freeze(out, payload):
         os.unlink(temp)
 
 
+def _current_quote(game_id,home,away,now):
+    """Use fresh observed rows; never infer a line from a later snapshot."""
+    rows=[r for r in db.latest_odds(event_id=game_id,max_age_s=15*60)
+          if not r.get("is_demo") and r.get("quote_phase")=="current" and
+          r.get("fetched_at") is not None and r["fetched_at"]<=now]
+    valid=NM.valid_game_quotes(rows,{"home_team":home,"away_team":away})
+    def choose(market,selection,book=None):
+        candidates=[r for r in valid if r["market"]==market and
+                    r["selection"]==selection and (book is None or r["book"]==book)]
+        order=lambda r:(settings.preferred_books.index(r["book"])
+                        if r["book"] in settings.preferred_books else 99,
+                        -r["fetched_at"],r["book"])
+        return min(candidates,key=order) if candidates else None
+    spread=choose("spread",home)
+    total=choose("total","Over")
+    ml_book=spread["book"] if spread else total["book"] if total else None
+    home_ml=choose("moneyline",home,ml_book)
+    away_ml=choose("moneyline",away,ml_book)
+    if not home_ml or not away_ml or home_ml["fetched_at"]!=away_ml["fetched_at"]:
+        home_ml=away_ml=None
+    if not any((spread,total,home_ml)):
+        return None
+    return dict(home_handicap=spread["line"] if spread else None,
+                total=total["line"] if total else None,
+                source="observed_current_market",
+                spread_book=spread["book"] if spread else None,
+                home_spread_price=spread["price"] if spread else None,
+                spread_captured_at=spread["fetched_at"] if spread else None,
+                spread_source_quote_id=spread["id"] if spread else None,
+                spread_provider=spread["provider"] if spread else None,
+                total_book=total["book"] if total else None,
+                over_price=total["price"] if total else None,
+                total_captured_at=total["fetched_at"] if total else None,
+                total_source_quote_id=total["id"] if total else None,
+                total_provider=total["provider"] if total else None,
+                moneyline_book=ml_book if home_ml else None,
+                home_moneyline_price=home_ml["price"] if home_ml else None,
+                away_moneyline_price=away_ml["price"] if away_ml else None,
+                moneyline_captured_at=home_ml["fetched_at"] if home_ml else None,
+                moneyline_home_source_quote_id=home_ml["id"] if home_ml else None,
+                moneyline_away_source_quote_id=away_ml["id"] if away_ml else None,
+                moneyline_provider=home_ml["provider"] if home_ml else None)
+
+
 def freeze(cache, out, season, week, family):
     cache, out = Path(cache), Path(out)
     if out.exists():
@@ -144,9 +189,11 @@ def freeze(cache, out, season, week, family):
                if quote else None)
         kickoff=datetime.fromisoformat(source["gameday"]+"T"+source["gametime"]).replace(
             tzinfo=ZoneInfo("America/New_York")).isoformat()
+        current_quote=_current_quote(f"nfl-{season}-reg-{week:02d}-{NI.team_code(away)}-{NI.team_code(home)}",
+                                     home,away,now)
         predictions.append(dict(game_id=source["game_id"],home=home,away=away,
                                 kickoff_et=kickoff,model=predicted,features=features,
-                                frozen_quote=_frozen_quote(quote,saved,home,away,now)))
+                                frozen_quote=current_quote or _frozen_quote(quote,saved,home,away,now)))
     inputs={p.name:_sha(p) for p in [cache/"games.csv.gz"]+
             [cache/f"play_by_play_{s}.csv.gz" for s in range(2019,season+1)]}
     payload=dict(status="RESEARCH_ONLY",designation="PASS",season=season,week=week,

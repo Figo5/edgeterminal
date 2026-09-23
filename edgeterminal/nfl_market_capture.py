@@ -9,6 +9,7 @@ from .integrity import parse_time
 from .providers.espn import EspnOdds
 
 WINDOW_S = 15 * 60
+INACTIVE = {"STATUS_POSTPONED","STATUS_CANCELED","STATUS_CANCELLED","STATUS_FINAL"}
 
 
 def capture_if_due(now=None, provider=None):
@@ -17,9 +18,25 @@ def capture_if_due(now=None, provider=None):
     for event in db.q("SELECT * FROM events WHERE sport='NFL'"):
         kickoff=parse_time(event.get("start_time"))
         if (kickoff is not None and 0 < kickoff-stamp <= WINDOW_S and
-                str(event.get("status") or "").upper() not in
-                {"STATUS_POSTPONED","STATUS_CANCELED","STATUS_CANCELLED","STATUS_FINAL"}):
+                str(event.get("status") or "").upper() not in INACTIVE):
             targets[event["id"]]=event
+    return _capture(targets,provider)
+
+
+def capture_week(season,week,provider=None,now=None):
+    """Freeze-time ESPN observation for every unstarted game in a week."""
+    stamp=time.time() if now is None else now
+    prefix=f"nfl-{int(season)}-reg-{int(week):02d}-"
+    targets={}
+    for event in db.q("SELECT * FROM events WHERE sport='NFL' AND id LIKE ?",(prefix+"%",)):
+        kickoff=parse_time(event.get("start_time"))
+        if (kickoff is not None and stamp<kickoff and
+                str(event.get("status") or "").upper() not in INACTIVE):
+            targets[event["id"]]=event
+    return _capture(targets,provider)
+
+
+def _capture(targets,provider):
     result={"provider":"espn-odds","target_games":len(targets),"rows_stored":0}
     if not targets:
         return result
