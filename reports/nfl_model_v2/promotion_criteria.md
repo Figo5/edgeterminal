@@ -1,0 +1,12 @@
+# Proposed gate for experimental NFL picks
+
+Status: proposal only. EdgeTerminal remains `RESEARCH_ONLY` and every live designation remains PASS.
+
+1. **Prospective sample.** Freeze and grade at least 500 regular-season games across at least two complete future seasons, including at least 200 games with timestamp-supported same-book observations in the final 15 minutes. Count every eligible game and all no-quote exclusions. A smaller sample may justify continued study, never promotion.
+2. **Paired market evidence.** On games with comparable observed prices, require candidate margin and total MAE and win-probability Brier to be at least competitive with the market. For any proposed betting subset, use available American prices and a declared stake rule to calculate net return after realistic execution slippage. Require a positive lower 95% confidence bound for net return using week-clustered resampling. A paired price/line comparison must use the same book and decision time.
+3. **Calibration.** Publish reliability bins, Brier score, log loss, and calibration error with counts and uncertainty. Investigate systematic favorite/underdog, home/away, and total biases. A nominal win-probability improvement alone is insufficient for ATS or totals picks.
+4. **Stability.** Evaluate each season and each quarter of the season separately. Any proposed edge bucket or game condition must have a predeclared definition, enough non-push decisions for a useful interval, and a directionally consistent result across seasons. Select a threshold before the next evaluation window; do not retune it on Week 3 or the final holdout.
+5. **Price quality and operations.** Show that the quoted book, line, and price could be obtained before kickoff, with order delays and line moves measured. ESPN fallback observations are insufficient to prove executable prices. Require reliable multi-book snapshots, result reconciliation, correction audit, and failed-provider alerts.
+6. **Independent review.** After the above gates pass, review leakage, identity mapping, missing-data exclusions, score corrections, and multiple-subset testing. Run a further untouched prospective period before enabling even experimental picks. Any change to the model or threshold starts a new candidate version and evaluation clock.
+
+These numbers are precommitted planning targets, not thresholds selected from current Week 3 outcomes. The present forward sample is zero graded games; no promotion decision is possible.

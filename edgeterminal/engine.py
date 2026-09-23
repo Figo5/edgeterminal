@@ -949,6 +949,11 @@ def analyze_event(event_id: str, persist: bool = True,
                                  settings.model_version, snapshot["feature_version"] or "unknown")
             db.save_nfl_game_prediction(uuid.uuid4().hex, ev["id"], snapshot_id,
                                         ctx["projection"], settings.model_version)
+            try:
+                from .nfl_context_observations import capture_snapshot
+                capture_snapshot(snapshot)
+            except ValueError as exc:
+                log.warning("prospective context capture refused for %s: %s",ev["id"],exc)
         for r in recs:
             r["snapshot_id"] = snapshot_id
     if persist:

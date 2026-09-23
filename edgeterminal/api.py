@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import calibration, db, engine, logs, parlay, props, shadow
+from . import calibration, db, engine, logs, nfl_forward_grading, parlay, props, shadow
 from .agents import llm
 from .config import ROOT, settings
 from .providers import registry as R
@@ -40,6 +40,12 @@ async def _lifespan(_app: FastAPI):
         shadow.sync_results()
     except Exception as e:  # noqa: BLE001
         log.warning("initial shadow sync failed: %s", type(e).__name__)
+    try:
+        research_sync=nfl_forward_grading.sync_all(freeze_dir=ROOT / "reports/nfl_model_v2")
+        if any("error" in row for row in research_sync["sync"]):
+            log.warning("initial research grade sync has pending errors: %s",research_sync["sync"])
+    except Exception as e:  # noqa: BLE001
+        log.warning("initial research grade sync failed: %s", type(e).__name__)
     yield
 
 
@@ -134,6 +140,12 @@ def refresh(body: RefreshBody) -> Dict:
         except Exception as e:  # noqa: BLE001
             log.warning("post-refresh shadow sync failed: %s", type(e).__name__)
             result["shadow_error"] = type(e).__name__
+        try:
+            result["research_sync"] = nfl_forward_grading.sync_all(
+                freeze_dir=ROOT / "reports/nfl_model_v2")
+        except Exception as e:  # noqa: BLE001
+            log.warning("post-refresh research grade sync failed: %s", type(e).__name__)
+            result["research_error"] = type(e).__name__
     out = dict(result, odds_age_s=engine.odds_age_s())
     if ignored:
         out["ignored_sports"] = ignored

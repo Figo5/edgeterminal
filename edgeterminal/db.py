@@ -41,6 +41,10 @@ CREATE TABLE IF NOT EXISTS nfl_game_snapshots (
   model_version TEXT NOT NULL, feature_version TEXT NOT NULL,
   created_at REAL NOT NULL);
 CREATE INDEX IF NOT EXISTS ix_nfl_snapshot_game ON nfl_game_snapshots(game_id, created_at);
+CREATE TRIGGER IF NOT EXISTS nfl_snapshot_no_update BEFORE UPDATE ON nfl_game_snapshots
+BEGIN SELECT RAISE(ABORT, 'NFL snapshots are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_snapshot_no_delete BEFORE DELETE ON nfl_game_snapshots
+BEGIN SELECT RAISE(ABORT, 'NFL snapshots cannot be deleted'); END;
 
 CREATE TABLE IF NOT EXISTS nfl_game_predictions (
   id TEXT PRIMARY KEY, game_id TEXT NOT NULL, snapshot_id TEXT NOT NULL,
@@ -94,13 +98,86 @@ BEGIN SELECT RAISE(ABORT, 'shadow audit is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS nfl_shadow_audit_no_delete BEFORE DELETE ON nfl_shadow_audit
 BEGIN SELECT RAISE(ABORT, 'shadow audit cannot be deleted'); END;
 
+CREATE TABLE IF NOT EXISTS nfl_research_freezes (
+  freeze_sha TEXT PRIMARY KEY, season INTEGER NOT NULL, week INTEGER NOT NULL,
+  family TEXT NOT NULL, file_path TEXT NOT NULL, frozen_at REAL NOT NULL,
+  model_version TEXT NOT NULL, model_hash TEXT NOT NULL,
+  feature_version TEXT NOT NULL, feature_hash TEXT NOT NULL,
+  training_games INTEGER NOT NULL, registered_at REAL NOT NULL,
+  UNIQUE(season, week, family));
+CREATE TRIGGER IF NOT EXISTS nfl_research_freeze_no_update BEFORE UPDATE ON nfl_research_freezes
+BEGIN SELECT RAISE(ABORT, 'research freezes are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_research_freeze_no_delete BEFORE DELETE ON nfl_research_freezes
+BEGIN SELECT RAISE(ABORT, 'research freezes cannot be deleted'); END;
+
+CREATE TABLE IF NOT EXISTS nfl_research_market_freezes (
+  freeze_sha TEXT NOT NULL, game_id TEXT NOT NULL,
+  book TEXT NOT NULL, market TEXT NOT NULL, selection TEXT NOT NULL,
+  line REAL, price REAL, provider TEXT NOT NULL, fetched_at REAL NOT NULL,
+  kickoff_utc REAL NOT NULL, quote_phase TEXT NOT NULL,
+  source_snapshot_id TEXT, source_quote_id INTEGER,
+  PRIMARY KEY(freeze_sha, game_id, book, market, selection));
+CREATE TRIGGER IF NOT EXISTS nfl_research_market_no_update BEFORE UPDATE ON nfl_research_market_freezes
+BEGIN SELECT RAISE(ABORT, 'research market freezes are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_research_market_no_delete BEFORE DELETE ON nfl_research_market_freezes
+BEGIN SELECT RAISE(ABORT, 'research market freezes cannot be deleted'); END;
+
+CREATE TABLE IF NOT EXISTS nfl_research_market_attestations (
+  freeze_sha TEXT NOT NULL, game_id TEXT NOT NULL, snapshot_id TEXT NOT NULL,
+  snapshot_sha256 TEXT NOT NULL, recorded_at REAL NOT NULL,
+  PRIMARY KEY(freeze_sha,game_id,snapshot_id));
+CREATE TRIGGER IF NOT EXISTS nfl_research_attestation_no_update BEFORE UPDATE ON nfl_research_market_attestations
+BEGIN SELECT RAISE(ABORT, 'research market attestations are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_research_attestation_no_delete BEFORE DELETE ON nfl_research_market_attestations
+BEGIN SELECT RAISE(ABORT, 'research market attestations cannot be deleted'); END;
+
+CREATE TABLE IF NOT EXISTS nfl_research_grades (
+  freeze_sha TEXT NOT NULL, game_id TEXT NOT NULL, revision INTEGER NOT NULL,
+  home_score INTEGER NOT NULL, away_score INTEGER NOT NULL,
+  result_source TEXT NOT NULL, source_retrieved_at REAL NOT NULL,
+  graded_at REAL NOT NULL, payload TEXT NOT NULL,
+  PRIMARY KEY(freeze_sha, game_id, revision));
+CREATE TRIGGER IF NOT EXISTS nfl_research_grade_no_update BEFORE UPDATE ON nfl_research_grades
+BEGIN SELECT RAISE(ABORT, 'research grades are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_research_grade_no_delete BEFORE DELETE ON nfl_research_grades
+BEGIN SELECT RAISE(ABORT, 'research grades cannot be deleted'); END;
+
+CREATE TABLE IF NOT EXISTS nfl_research_grade_audit (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, freeze_sha TEXT NOT NULL,
+  game_id TEXT NOT NULL, prior_revision INTEGER NOT NULL,
+  new_revision INTEGER NOT NULL, old_home_score INTEGER NOT NULL,
+  old_away_score INTEGER NOT NULL, new_home_score INTEGER NOT NULL,
+  new_away_score INTEGER NOT NULL, reason TEXT NOT NULL,
+  source TEXT NOT NULL, created_at REAL NOT NULL);
+CREATE TRIGGER IF NOT EXISTS nfl_research_audit_no_update BEFORE UPDATE ON nfl_research_grade_audit
+BEGIN SELECT RAISE(ABORT, 'research audit is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_research_audit_no_delete BEFORE DELETE ON nfl_research_grade_audit
+BEGIN SELECT RAISE(ABORT, 'research audit cannot be deleted'); END;
+
+CREATE TABLE IF NOT EXISTS nfl_research_context_observations (
+  observation_sha TEXT PRIMARY KEY, game_id TEXT NOT NULL,
+  kind TEXT NOT NULL, subject TEXT NOT NULL, payload TEXT NOT NULL,
+  source_url TEXT NOT NULL, source_published_at REAL,
+  fetched_at REAL NOT NULL, valid_for_utc REAL,
+  kickoff_utc REAL NOT NULL, provenance_level TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS ix_nfl_context_game ON nfl_research_context_observations(game_id,kind,fetched_at);
+CREATE TRIGGER IF NOT EXISTS nfl_research_context_no_update BEFORE UPDATE ON nfl_research_context_observations
+BEGIN SELECT RAISE(ABORT, 'research context is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_research_context_no_delete BEFORE DELETE ON nfl_research_context_observations
+BEGIN SELECT RAISE(ABORT, 'research context cannot be deleted'); END;
+
 CREATE TABLE IF NOT EXISTS odds_snapshots (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   event_id TEXT, sport TEXT, book TEXT, market TEXT, selection TEXT,
   line REAL, price REAL, captured_at REAL, source TEXT, is_demo INTEGER DEFAULT 0,
-  source_url TEXT, provider_updated_at REAL);
+  source_url TEXT, provider_updated_at REAL,
+  provider TEXT, fetched_at REAL, kickoff_utc REAL, quote_phase TEXT);
 CREATE INDEX IF NOT EXISTS ix_odds_event ON odds_snapshots(event_id, market, selection, captured_at);
 CREATE INDEX IF NOT EXISTS ix_odds_time ON odds_snapshots(captured_at);
+CREATE TRIGGER IF NOT EXISTS odds_snapshot_no_update BEFORE UPDATE ON odds_snapshots
+BEGIN SELECT RAISE(ABORT, 'odds snapshots are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS odds_snapshot_no_delete BEFORE DELETE ON odds_snapshots
+BEGIN SELECT RAISE(ABORT, 'odds snapshots cannot be deleted'); END;
 
 CREATE TABLE IF NOT EXISTS closing_lines (
   event_id TEXT, market TEXT, selection TEXT, book TEXT,
@@ -175,7 +252,9 @@ def conn() -> sqlite3.Connection:
         _conn = _connect()
         _conn.executescript(SCHEMA)
         _ensure_columns(_conn, "odds_snapshots", {
-            "source_url": "TEXT", "provider_updated_at": "REAL"})
+            "source_url": "TEXT", "provider_updated_at": "REAL",
+            "provider": "TEXT", "fetched_at": "REAL", "kickoff_utc": "REAL",
+            "quote_phase": "TEXT"})
         _ensure_columns(_conn, "predictions", {"snapshot_id": "TEXT"})
         _conn.commit()
     return _conn
@@ -290,15 +369,36 @@ def save_nfl_game_prediction(prediction_id: str, game_id: str, snapshot_id: str,
 
 def store_odds(rows: List[Dict], source: str, is_demo: bool = False) -> int:
     """Append odds rows to history. Every successful retrieval is kept."""
+    from .integrity import parse_time
+    from .providers.normalize import normalize_book
+
     ts = now()
-    payload = [(r["event_id"], r.get("sport"), r["book"], r["market"], r["selection"],
-                r.get("line"), r.get("price"), ts, source, 1 if is_demo else 0,
-                r.get("source_url"), r.get("provider_updated_at")) for r in rows]
+    event_ids = {r["event_id"] for r in rows}
+    kickoffs = {event_id: parse_time((q1("SELECT start_time FROM events WHERE id=?",
+                                        (event_id,)) or {}).get("start_time"))
+                for event_id in event_ids}
+    markets = {"h2h": "moneyline", "spreads": "spread", "totals": "total"}
+    payload = []
+    for r in rows:
+        fetched = r.get("fetched_at")
+        if fetched is None:
+            fetched = r.get("captured_at")
+        try:
+            fetched = float(fetched) if fetched is not None else ts
+        except (TypeError, ValueError):
+            fetched = ts
+        kickoff = kickoffs[r["event_id"]]
+        phase = "current" if kickoff is not None and fetched <= ts+1 and fetched < kickoff else "unclassified"
+        payload.append((r["event_id"],r.get("sport"),normalize_book(r["book"]),
+                        markets.get(r["market"],r["market"]),r["selection"],
+                        r.get("line"),r.get("price"),fetched,source,1 if is_demo else 0,
+                        r.get("source_url"),r.get("provider_updated_at"),source,
+                        fetched,kickoff,phase))
     with tx() as c:
         c.executemany(
             "INSERT INTO odds_snapshots(event_id,sport,book,market,selection,line,price,"
-            "captured_at,source,is_demo,source_url,provider_updated_at) "
-            "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)", payload)
+            "captured_at,source,is_demo,source_url,provider_updated_at,provider,fetched_at,"
+            "kickoff_utc,quote_phase) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)", payload)
     return len(payload)
 
 

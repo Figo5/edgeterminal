@@ -1,0 +1,238 @@
+{
+  "policy": "RESEARCH_ONLY; all live product behavior PASS",
+  "prospective_2026": {
+    "linear": {
+      "ats_record": {
+        "losses": 0,
+        "n_decisions": 0,
+        "passes": 0,
+        "pushes": 0,
+        "win_rate_ci95": null,
+        "wins": 0
+      },
+      "brier": null,
+      "edge_buckets": {
+        "spread": {
+          "0-1": {
+            "ats_record": {
+              "losses": 0,
+              "n_decisions": 0,
+              "passes": 0,
+              "pushes": 0,
+              "win_rate_ci95": null,
+              "wins": 0
+            },
+            "brier": null,
+            "games_graded": 0,
+            "margin_mae": null,
+            "total_mae": null,
+            "totals_record": {
+              "losses": 0,
+              "n_decisions": 0,
+              "passes": 0,
+              "pushes": 0,
+              "win_rate_ci95": null,
+              "wins": 0
+            }
+          },
+          "1-3": {
+            "ats_record": {
+              "losses": 0,
+              "n_decisions": 0,
+              "passes": 0,
+              "pushes": 0,
+              "win_rate_ci95": null,
+              "wins": 0
+            },
+            "brier": null,
+            "games_graded": 0,
+            "margin_mae": null,
+            "total_mae": null,
+            "totals_record": {
+              "losses": 0,
+              "n_decisions": 0,
+              "passes": 0,
+              "pushes": 0,
+              "win_rate_ci95": null,
+              "wins": 0
+            }
+          },
+          "3-6": {
+            "ats_record": {
+              "losses": 0,
+              "n_decisions": 0,
+              "passes": 0,
+              "pushes": 0,
+              "win_rate_ci95": null,
+              "wins": 0
+            },
+            "brier": null,
+            "games_graded": 0,
+            "margin_mae": null,
+            "total_mae": null,
+            "totals_record": {
+              "losses": 0,
+              "n_decisions": 0,
+              "passes": 0,
+              "pushes": 0,
+              "win_rate_ci95": null,
+              "wins": 0
+            }
+          },
+          "6-plus": {
+            "ats_record": {
+              "losses": 0,
+              "n_decisions": 0,
+              "passes": 0,
+              "pushes": 0,
+              "win_rate_ci95": null,
+              "wins": 0
+            },
+            "brier": null,
+            "games_graded": 0,
+            "margin_mae": null,
+            "total_mae": null,
+            "totals_record": {
+              "losses": 0,
+              "n_decisions": 0,
+              "passes": 0,
+              "pushes": 0,
+              "win_rate_ci95": null,
+              "wins": 0
+            }
+          }
+        },
+        "total": {
+          "0-1": {
+            "ats_record": {
+              "losses": 0,
+              "n_decisions": 0,
+              "passes": 0,
+              "pushes": 0,
+              "win_rate_ci95": null,
+              "wins": 0
+            },
+            "brier": null,
+            "games_graded": 0,
+            "margin_mae": null,
+            "total_mae": null,
+            "totals_record": {
+              "losses": 0,
+              "n_decisions": 0,
+              "passes": 0,
+              "pushes": 0,
+              "win_rate_ci95": null,
+              "wins": 0
+            }
+          },
+          "1-3": {
+            "ats_record": {
+              "losses": 0,
+              "n_decisions": 0,
+              "passes": 0,
+              "pushes": 0,
+              "win_rate_ci95": null,
+              "wins": 0
+            },
+            "brier": null,
+            "games_graded": 0,
+            "margin_mae": null,
+            "total_mae": null,
+            "totals_record": {
+              "losses": 0,
+              "n_decisions": 0,
+              "passes": 0,
+              "pushes": 0,
+              "win_rate_ci95": null,
+              "wins": 0
+            }
+          },
+          "3-6": {
+            "ats_record": {
+              "losses": 0,
+              "n_decisions": 0,
+              "passes": 0,
+              "pushes": 0,
+              "win_rate_ci95": null,
+              "wins": 0
+            },
+            "brier": null,
+            "games_graded": 0,
+            "margin_mae": null,
+            "total_mae": null,
+            "totals_record": {
+              "losses": 0,
+              "n_decisions": 0,
+              "passes": 0,
+              "pushes": 0,
+              "win_rate_ci95": null,
+              "wins": 0
+            }
+          },
+          "6-plus": {
+            "ats_record": {
+              "losses": 0,
+              "n_decisions": 0,
+              "passes": 0,
+              "pushes": 0,
+              "win_rate_ci95": null,
+              "wins": 0
+            },
+            "brier": null,
+            "games_graded": 0,
+            "margin_mae": null,
+            "total_mae": null,
+            "totals_record": {
+              "losses": 0,
+              "n_decisions": 0,
+              "passes": 0,
+              "pushes": 0,
+              "win_rate_ci95": null,
+              "wins": 0
+            }
+          }
+        }
+      },
+      "games_graded": 0,
+      "margin_mae": null,
+      "total_mae": null,
+      "totals_record": {
+        "losses": 0,
+        "n_decisions": 0,
+        "passes": 0,
+        "pushes": 0,
+        "win_rate_ci95": null,
+        "wins": 0
+      },
+      "versus_closing_market": {
+        "basis": "same-book quote fetched within 15m before kickoff; unavailable otherwise",
+        "brier": {
+          "candidate_mae": null,
+          "candidate_minus_close_mae": null,
+          "difference_ci95": null,
+          "n": 0,
+          "observed_close_mae": null
+        },
+        "margin": {
+          "candidate_mae": null,
+          "candidate_minus_close_mae": null,
+          "difference_ci95": null,
+          "n": 0,
+          "observed_close_mae": null
+        },
+        "total": {
+          "candidate_mae": null,
+          "candidate_minus_close_mae": null,
+          "difference_ci95": null,
+          "n": 0,
+          "observed_close_mae": null
+        }
+      },
+      "weeks": {}
+    }
+  },
+  "retrospective_development": {
+    "combined_with_forward": false,
+    "source": "reports/nfl_model_v2/research_results.json"
+  }
+}
