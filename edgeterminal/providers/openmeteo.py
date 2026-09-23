@@ -57,8 +57,10 @@ class OpenMeteo(WeatherProvider):
                 target = target.astimezone(dt.timezone.utc).replace(tzinfo=None)
                 idx = min(range(len(times)),
                           key=lambda i: abs(dt.datetime.fromisoformat(times[i]) - target))
-            except Exception:  # noqa: BLE001 - fall back to first hour
-                idx = 0
+                if abs((dt.datetime.fromisoformat(times[idx]) - target).total_seconds()) > 3600:
+                    raise ProviderError(self.name, "forecast does not cover kickoff hour")
+            except (ValueError, TypeError) as exc:
+                raise ProviderError(self.name, "invalid forecast kickoff time") from exc
         wd = (hourly.get("wind_direction_10m") or [None])[idx]
         return dict(
             temp_f=(hourly.get("temperature_2m") or [None])[idx],

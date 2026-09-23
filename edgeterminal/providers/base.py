@@ -12,6 +12,8 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import httpx
 
+from ..logs import RedactSecrets
+
 log = logging.getLogger("edgeterminal.providers")
 
 DEFAULT_TIMEOUT = 12.0
@@ -26,6 +28,21 @@ class ProviderError(Exception):
 
 
 _client: Optional[httpx.Client] = None
+
+
+def _safe_error_detail(error: Exception) -> str:
+    """Provider errors can reach logs and API status without logger filters.
+
+    HTTP exceptions include the full request URL, including query credentials.
+    Describe the endpoint without its query before constructing ProviderError.
+    """
+    if isinstance(error, (httpx.HTTPStatusError, httpx.RequestError)):
+        request = error.request
+        endpoint = f"{request.url.host}{request.url.path}" if request else "HTTP endpoint"
+        if isinstance(error, httpx.HTTPStatusError):
+            return f"HTTP {error.response.status_code} from {endpoint}"
+        return f"{type(error).__name__} from {endpoint}"
+    return f"{type(error).__name__}: {RedactSecrets().scrub(str(error))}"
 
 
 def client() -> httpx.Client:
@@ -53,7 +70,7 @@ def get_json(url: str, params: Optional[Dict] = None, provider: str = "http",
             r.raise_for_status()
             return r.json()
         except Exception as e:  # noqa: BLE001 - providers must never crash callers
-            last = f"{type(e).__name__}: {e}"
+            last = _safe_error_detail(e)
             if attempt < retries:
                 time.sleep(0.4 * (attempt + 1))
     raise ProviderError(provider, last or "unknown failure")
@@ -66,7 +83,7 @@ def get_text(url: str, params: Optional[Dict] = None, provider: str = "http",
         r.raise_for_status()
         return r.text
     except Exception as e:  # noqa: BLE001
-        raise ProviderError(provider, f"{type(e).__name__}: {e}")
+        raise ProviderError(provider, _safe_error_detail(e))
 
 
 def get_json_meta(url: str, params: Optional[Dict] = None, provider: str = "http",
@@ -82,7 +99,7 @@ def get_json_meta(url: str, params: Optional[Dict] = None, provider: str = "http
         r.raise_for_status()
         return r.json(), {k.lower(): v for k, v in r.headers.items()}
     except Exception as e:  # noqa: BLE001
-        raise ProviderError(provider, f"{type(e).__name__}: {e}")
+        raise ProviderError(provider, _safe_error_detail(e))
 
 
 # ------------------------------------------------------------------ interfaces

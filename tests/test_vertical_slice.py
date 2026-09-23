@@ -71,17 +71,20 @@ def test_second_refresh_creates_history_and_line_movement_inputs(client):
     assert rows[0]["captured_at"] <= rows[-1]["captured_at"]
 
 
-def test_dashboard_labels_provider_fallback_demo_data(client, monkeypatch):
+def test_live_provider_failure_does_not_seed_demo_data(client, monkeypatch):
     from edgeterminal.providers.base import ProviderError
-    from edgeterminal.providers.espn import EspnOdds
+    from edgeterminal.providers.espn import EspnEvents, EspnOdds
 
     monkeypatch.setattr(settings, "demo_mode", False)
     monkeypatch.setattr(settings, "odds_api_key", "")
     monkeypatch.setattr(EspnOdds, "fetch_odds", lambda self, sport: (_ for _ in ()).throw(
         ProviderError("espn-odds", "simulated outage")))
+    monkeypatch.setattr(EspnEvents, "list_events", lambda self, sport: [])
+    before = db.q1("SELECT COUNT(*) AS n FROM odds_snapshots")["n"]
     client.post("/api/refresh", json={"sports": ["NFL"]}).raise_for_status()
     dashboard = client.get("/api/dashboard", params={"sport": "NFL"}).json()
-    assert dashboard["demo_mode"] is True
+    assert dashboard["demo_mode"] is False
+    assert db.q1("SELECT COUNT(*) AS n FROM odds_snapshots")["n"] == before
 
 
 def test_chat_is_grounded_without_openai_key(client, monkeypatch):
@@ -115,7 +118,7 @@ def test_frontend_script_exists_and_wires_required_flows(client):
     response = client.get("/static/app.js")
     assert response.status_code == 200
     script = response.text
-    for endpoint in ("/api/dashboard", "/api/refresh", "/api/event/", "/api/chat", "/api/parlay"):
+    for endpoint in ("/api/dashboard", "/api/refresh", "/api/event/", "/api/chat", "/api/model-report"):
         assert endpoint in script
     for control in ("refreshBtn", "chatForm", "providerHealth"):
         assert control in script

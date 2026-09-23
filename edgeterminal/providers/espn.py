@@ -80,6 +80,7 @@ class EspnEvents:
                           week=(data.get("week") or {}).get("number"),
                           source="ESPN scoreboard", source_url=f"{SITE}/{_path(sport)}/scoreboard",
                           retrieved_at=retrieved, indoor=bool(venue.get("indoor")),
+                          neutral_site=bool(comp.get("neutralSite")),
                           city=addr.get("city"), state=addr.get("state"),
                           home_abbr=(home.get("team") or {}).get("abbreviation"),
                           away_abbr=(away.get("team") or {}).get("abbreviation"),
@@ -256,7 +257,7 @@ class EspnInjuries(InjuryProvider):
 
         data = _cached(f"inj:{sport}", fetch, ttl=1800)
         out: List[Dict] = []
-        retrieved = time.time()
+        retrieved = _cache.get(f"inj:{sport}", (time.time(), None))[0]
         for grp in (data or {}).get("injuries", []) or []:
             team_obj = grp.get("team") or {}
             tname = normalize_team(grp.get("displayName") or team_obj.get("displayName"),

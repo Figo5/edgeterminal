@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import logging
+import json
 import time
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
@@ -153,11 +154,6 @@ def dashboard(sport: Optional[str] = None, refresh_analysis: bool = False) -> Di
     recs = [r for r in recs if r["sport"] in sports]
     picks = [r for r in recs if r["state"] == "OFFICIAL PICK"]
     watch = [r for r in recs if r["state"] in ("LEAN", "WATCHLIST", "WAIT", "WAIT FOR PRICE")][:18]
-    try:
-        best_parlay = parlay.build_best(recs, max_legs=3)
-    except Exception as e:  # noqa: BLE001
-        log.warning("parlay build failed: %s", e)
-        best_parlay = None
     lr = engine.last_refresh() or {}
     refreshed = lr.get("sports", {})
     serving_demo = settings.demo_mode or any(
@@ -165,10 +161,11 @@ def dashboard(sport: Optional[str] = None, refresh_analysis: bool = False) -> Di
     return dict(
         generated_at=time.time(), odds_age_s=engine.odds_age_s(),
         last_refresh=lr or None, demo_mode=serving_demo,
-        headline=dict(_headline(recs), best_parlay=best_parlay),
+        headline=dict(_headline(recs), best_parlay=None),
         best_bets=picks[:25], watchlist=watch,
         line_moves=engine.line_moves(limit=10, sports=sports),
-        upcoming=engine.slate(sport=sports[0], limit_events=20),
+        upcoming=engine.weekly_board() if sports == ["NFL"] else engine.slate(
+            sport=sports[0], limit_events=20),
         counts=dict(total=len(recs),
                     official=len(picks),
                     leans=len([r for r in recs if r["state"] == "LEAN"]),
@@ -255,6 +252,17 @@ def golf() -> Dict:
 @app.get("/api/performance")
 def performance() -> Dict:
     return calibration.performance()
+
+
+@app.get("/api/model-report")
+def model_report() -> Dict:
+    """Read-only historical diagnostics; never presented as forward results."""
+    path = ROOT / "reports" / "nfl_model_v1" / "backtest_results.json"
+    if not path.exists():
+        return dict(readiness="RESEARCH_ONLY", historical={},
+                    note="Historical report has not been generated yet")
+    return dict(readiness="RESEARCH_ONLY", historical=json.loads(path.read_text()),
+                note="2025 retrospective walk-forward diagnostic; no forward shadow record")
 
 
 # ------------------------------------------------------------------- props

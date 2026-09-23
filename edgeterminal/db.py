@@ -30,6 +30,26 @@ CREATE TABLE IF NOT EXISTS events (
   home_team TEXT, away_team TEXT, start_time TEXT, venue TEXT,
   status TEXT, meta TEXT, updated_at REAL);
 
+CREATE TABLE IF NOT EXISTS nfl_provider_games (
+  provider TEXT NOT NULL, provider_game_id TEXT NOT NULL,
+  game_id TEXT NOT NULL, linked_at REAL NOT NULL,
+  PRIMARY KEY(provider, provider_game_id));
+CREATE INDEX IF NOT EXISTS ix_nfl_provider_game ON nfl_provider_games(game_id);
+
+CREATE TABLE IF NOT EXISTS nfl_game_snapshots (
+  id TEXT PRIMARY KEY, game_id TEXT NOT NULL, payload TEXT NOT NULL,
+  model_version TEXT NOT NULL, feature_version TEXT NOT NULL,
+  created_at REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS ix_nfl_snapshot_game ON nfl_game_snapshots(game_id, created_at);
+
+CREATE TABLE IF NOT EXISTS nfl_game_predictions (
+  id TEXT PRIMARY KEY, game_id TEXT NOT NULL, snapshot_id TEXT NOT NULL,
+  model_version TEXT NOT NULL, feature_version TEXT NOT NULL,
+  projected_home_points REAL, projected_away_points REAL,
+  projected_margin REAL, projected_total REAL, home_win_probability REAL,
+  uncertainty REAL, created_at REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS ix_nfl_game_prediction ON nfl_game_predictions(game_id, created_at);
+
 CREATE TABLE IF NOT EXISTS odds_snapshots (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   event_id TEXT, sport TEXT, book TEXT, market TEXT, selection TEXT,
@@ -52,7 +72,7 @@ CREATE TABLE IF NOT EXISTS predictions (
   data_quality TEXT, breakeven_price REAL,
   reasoning TEXT, risks TEXT, components TEXT, signals TEXT, sources TEXT,
   model_version TEXT, confidence_version TEXT, data_snapshot TEXT,
-  created_at REAL, trigger_note TEXT);
+  created_at REAL, trigger_note TEXT, snapshot_id TEXT);
 CREATE INDEX IF NOT EXISTS ix_pred_event ON predictions(event_id);
 CREATE INDEX IF NOT EXISTS ix_pred_created ON predictions(created_at);
 
@@ -111,6 +131,7 @@ def conn() -> sqlite3.Connection:
         _conn.executescript(SCHEMA)
         _ensure_columns(_conn, "odds_snapshots", {
             "source_url": "TEXT", "provider_updated_at": "REAL"})
+        _ensure_columns(_conn, "predictions", {"snapshot_id": "TEXT"})
         _conn.commit()
     return _conn
 
@@ -180,6 +201,46 @@ def upsert_event(e: Dict) -> None:
        (e["id"], e.get("sport"), e.get("league"), e.get("name"), e.get("home_team"),
         e.get("away_team"), e.get("start_time"), e.get("venue"), e.get("status", "scheduled"),
         json.dumps(e.get("meta") or {}), now()))
+
+
+def link_nfl_provider_game(provider: str, provider_game_id: str, game_id: str) -> None:
+    """A provider ID can never silently switch to another internal game."""
+    old = q1("SELECT game_id FROM nfl_provider_games WHERE provider=? AND provider_game_id=?",
+             (provider, str(provider_game_id)))
+    if old and old["game_id"] != game_id:
+        raise ValueError(f"provider event changed identity: {provider}:{provider_game_id}")
+    ex("INSERT OR IGNORE INTO nfl_provider_games(provider,provider_game_id,game_id,linked_at) "
+       "VALUES(?,?,?,?)", (provider, str(provider_game_id), game_id, now()))
+
+
+def mapped_nfl_game(provider: str, provider_game_id: str) -> Optional[str]:
+    row = q1("SELECT game_id FROM nfl_provider_games WHERE provider=? AND provider_game_id=?",
+             (provider, str(provider_game_id)))
+    return row["game_id"] if row else None
+
+
+def save_nfl_snapshot(snapshot_id: str, game_id: str, payload: Dict,
+                      model_version: str, feature_version: str) -> None:
+    """Frozen JSON: duplicate IDs are accepted only for byte-identical content."""
+    encoded = json.dumps(payload, sort_keys=True, separators=(",", ":"), default=str)
+    old = q1("SELECT payload FROM nfl_game_snapshots WHERE id=?", (snapshot_id,))
+    if old:
+        if old["payload"] != encoded:
+            raise ValueError("snapshot ID already exists with different contents")
+        return
+    ex("INSERT INTO nfl_game_snapshots(id,game_id,payload,model_version,feature_version,created_at) "
+       "VALUES(?,?,?,?,?,?)", (snapshot_id, game_id, encoded, model_version, feature_version, now()))
+
+
+def save_nfl_game_prediction(prediction_id: str, game_id: str, snapshot_id: str,
+                             projection: Dict, model_version: str) -> None:
+    ex("INSERT INTO nfl_game_predictions(id,game_id,snapshot_id,model_version,feature_version,"
+       "projected_home_points,projected_away_points,projected_margin,projected_total,"
+       "home_win_probability,uncertainty,created_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+       (prediction_id, game_id, snapshot_id, model_version,
+        projection.get("feature_version") or "unknown", projection.get("proj_home"),
+        projection.get("proj_away"), projection.get("margin"), projection.get("total"),
+        projection.get("home_win_prob"), projection.get("uncertainty"), now()))
 
 
 def store_odds(rows: List[Dict], source: str, is_demo: bool = False) -> int:
@@ -268,12 +329,14 @@ def save_prediction(p: Dict) -> None:
             "model_prob", "implied_prob", "fair_price", "edge_pct", "ev_per_unit", "confidence",
             "confidence_bucket", "units", "state", "data_quality", "breakeven_price",
             "reasoning", "risks", "components", "signals", "sources", "model_version",
-            "confidence_version", "data_snapshot", "created_at", "trigger_note"]
+            "confidence_version", "data_snapshot", "created_at", "trigger_note", "snapshot_id"]
     vals = []
     for c in cols:
         v = p.get(c)
         vals.append(json.dumps(v) if isinstance(v, (dict, list)) else v)
-    ex(f"INSERT OR REPLACE INTO predictions({','.join(cols)}) "
+    # A repeated ID is a data-integrity error. Issued predictions are never
+    # overwritten or silently discarded.
+    ex(f"INSERT INTO predictions({','.join(cols)}) "
        f"VALUES({','.join('?' * len(cols))})", vals)
 
 

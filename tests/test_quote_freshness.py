@@ -5,6 +5,7 @@ returned 0.0 for every board. A price of any age read as zero seconds old, the
 stale-quote gate could never fire, and confidence always took full freshness
 credit. Reading a cache must report the original age, not reset it.
 """
+import datetime as dt
 import time
 
 import pytest
@@ -15,7 +16,11 @@ from edgeterminal.providers import theoddsapi as toa
 from edgeterminal.integrity import parse_time
 from edgeterminal.research import cache as rcache
 
-NOW = 1_800_000_000.0
+# Tue 15 Sep 2026 12:00 UTC -- one frozen clock for every test in this file,
+# deliberately BEFORE the fixture event's kickoff (Thu 2026-09-18 00:15 UTC) so
+# the stored game is still upcoming under the frozen clock and the provider
+# payload is not rejected as already finished.
+NOW = dt.datetime(2026, 9, 15, 12, 0, tzinfo=dt.timezone.utc).timestamp()
 
 
 def _payload(last_update="2026-09-15T11:40:00Z"):
@@ -91,7 +96,9 @@ def test_fresh_prices_are_unaffected():
 # -------------------------------------------------------------------- caching
 def test_a_cache_hit_does_not_reset_quote_age(monkeypatch):
     """Serving from cache must report the original age, not a fresh one."""
-    store = rcache.TTLCache()
+    store = rcache.TTLCache(now=lambda: NOW)  # same frozen clock: the cache keeps
+    # serving the board so the test can prove the true age comes from the row
+    # stamps versus the fetch clock, not from a TTL restamp.
     api = _Api()
     captured = {}
 

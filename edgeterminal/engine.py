@@ -15,15 +15,18 @@ import json
 import logging
 import time
 import uuid
+from collections import defaultdict
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from . import db
+from . import nfl_identity as NI
+from . import nfl_market as NM
 from .agents import pipeline as ap
 from .analytics import football, nba
 from .analytics import golf as golfmod
 from .analytics.ratings import shrink_stats
-from .analytics.nfl_features import ranking_score, select_best_model_quote
+from .analytics.nfl_features import ranking_score
 from .config import SPORTS, settings
 from .confidence import (ConfidenceInputs, agreement_from_signals, bucket_of,
                          data_quality_score, quality_tier, score)
@@ -46,11 +49,98 @@ _ctx_cache: Dict[str, Tuple[float, Dict]] = {}
 CTX_TTL = 600.0
 
 
+def _neutral_site(event: Dict) -> bool:
+    meta = event.get("meta") or {}
+    if isinstance(meta, str):
+        try:
+            meta = json.loads(meta)
+        except (ValueError, TypeError):
+            return False
+    return bool(meta.get("neutral_site")) if isinstance(meta, dict) else False
+
+
 # ===================================================================== refresh
+def _ingest_nfl_schedule(events: List[Dict], source: str, is_demo: bool) -> List[Dict]:
+    """Store one canonical game per ESPN NFL schedule row.
+
+    Live mode: the ESPN scoreboard is the schedule authority. Provider ids are
+    aliases; the internal id is season/week/type + away/home. Rows that cannot
+    produce a canonical identity are refused (never inferred), and a response
+    that mixes more than one season/week/type keeps the modal week so the board
+    kv never claims a mixed week is the current one.
+    """
+    if is_demo:
+        for e in events:
+            e["meta"] = dict(e.get("meta") or {}, is_demo=True, source=source)
+            db.upsert_event(e)
+        return events
+    canonical = []
+    for external in events:
+        game_id = NI.canonical_id(external)
+        if not game_id:
+            log.warning("NFL schedule row rejected: missing canonical identity for %s", external.get("id"))
+            continue
+        provider_id = str(external["id"])
+        e = dict(external, id=game_id)
+        home, away = NI.canonical_team(external.get("home_team")), NI.canonical_team(external.get("away_team"))
+        if not home or not away:
+            continue
+        e["home_team"], e["away_team"] = home, away
+        e["name"] = f"{away} @ {home}"
+        e["meta"] = dict(e.get("meta") or {}, is_demo=False, source=source,
+                         provider_game_id=provider_id, provider="espn")
+        canonical.append(e)
+
+    # One scoreboard response must describe one week. The modal
+    # (season, season_type, week) is authoritative; stray rows from another
+    # page (they should not happen) are logged and ignored rather than mixed
+    # into the board identity.
+    week_key = lambda g: tuple(g["id"].split("-")[1:4])  # ("2026","reg","02")
+    counts: Dict = defaultdict(int)
+    for e in canonical:
+        counts[week_key(e)] += 1
+    if not counts:
+        log.warning("NFL schedule contained no usable canonical games")
+        return []
+    modal = max(counts, key=counts.get)
+    kept = [e for e in canonical if week_key(e) == modal]
+    for e in canonical:
+        if week_key(e) != modal:
+            log.warning("NFL schedule row dropped (not the modal week %s): %s",
+                        modal, e["id"])
+    for e in kept:
+        db.link_nfl_provider_game("espn", e["meta"]["provider_game_id"], e["id"])
+        db.upsert_event(e)
+    if kept:
+        k = kept[0]["id"].split("-")
+        db.kv_set("nfl_current_schedule", dict(
+            season=int(k[1]), season_type=k[2], week=int(k[3]),
+            game_ids=[e["id"] for e in kept], source=source,
+            retrieved_at=time.time()))
+    return kept
+
+
+def _map_nfl_odds(rows: List[Dict], provider_events: List[Dict],
+                  schedule: List[Dict], provider: str) -> List[Dict]:
+    external = {str(e["id"]): e for e in provider_events}
+    mapped = []
+    for row in rows:
+        raw_id = str(row["event_id"])
+        game_id = db.mapped_nfl_game(provider, raw_id)
+        if not game_id and raw_id in external:
+            game_id = NI.match_schedule_event(external[raw_id], schedule)
+            if game_id:
+                db.link_nfl_provider_game(provider, raw_id, game_id)
+        if not game_id or game_id not in {e["id"] for e in schedule}:
+            continue
+        mapped.append(dict(row, event_id=game_id, provider_event_id=raw_id))
+    return mapped
+
+
 def refresh(sports: Optional[List[str]] = None) -> Dict:
     """Manual odds refresh. Nothing in this app polls -- this runs only when the
     user presses Refresh Odds or an analysis needs fresher numbers."""
-    sports = sports or list(SPORTS)
+    sports = sports or list(settings.active_sports)
     out: Dict[str, Any] = {"sports": {}, "at": time.time()}
     for sport in sports:
         entry: Dict[str, Any] = {}
@@ -60,15 +150,44 @@ def refresh(sports: Optional[List[str]] = None) -> Dict:
         except Exception as e:  # noqa: BLE001
             entry["odds_error"] = str(e)
         R.set_family(sport, odemo)
+        events: List[Dict] = []
+        provider_events: List[Dict] = []
         try:
-            events, esrc, edemo = R.list_events(sport, prefer=osrc)
-            for e in events:
-                e.setdefault("sport", sport)
-                e["meta"] = dict(e.get("meta") or {}, is_demo=bool(edemo), source=esrc)
-                db.upsert_event(e)
+            if sport == "NFL" and not settings.demo_mode:
+                # The ESPN scoreboard carries season/week and venue. The odds
+                # provider's event IDs are aliases, never schedule authority.
+                from .providers.espn import EspnEvents
+                events = _ingest_nfl_schedule(EspnEvents().list_events("NFL"), "espn-events", False)
+                esrc, edemo = "espn-events", False
+                if osrc == "theoddsapi":
+                    try:
+                        provider_events, _pname, _pdemo = R.list_events("NFL", prefer=osrc)
+                    except Exception as alias_err:  # noqa: BLE001 - alias fetch is best-effort
+                        # The canonical schedule is already ingested; only the
+                        # alias mapping for *new* odds rows is lost, and rows
+                        # with a previously-mapped provider id still resolve.
+                        entry["odds_alias_error"] = f"{type(alias_err).__name__}: {alias_err}"
+                else:
+                    provider_events = [dict(e, id=e["meta"]["provider_game_id"])
+                                       for e in events]
+            else:
+                raw_events, esrc, edemo = R.list_events(sport, prefer=osrc)
+                events = _ingest_nfl_schedule(raw_events, esrc, edemo) if sport == "NFL" else raw_events
+                if sport != "NFL":
+                    for e in events:
+                        e.setdefault("sport", sport)
+                        e["meta"] = dict(e.get("meta") or {}, is_demo=bool(edemo), source=esrc)
+                        db.upsert_event(e)
             entry.update(events=len(events), events_source=esrc)
         except Exception as e:  # noqa: BLE001
             entry.update(events=0, events_error=str(e))
+        if sport == "NFL" and not settings.demo_mode:
+            provider = "theoddsapi" if osrc == "theoddsapi" else "espn"
+            rows = _map_nfl_odds(rows, provider_events, events, provider)
+            event_by_id = {e["id"]: e for e in events}
+            rows = [clean for eid in {r["event_id"] for r in rows}
+                    for clean in NM.valid_game_quotes(
+                        [r for r in rows if r["event_id"] == eid], event_by_id[eid])]
         known = {e["id"] for e in db.q("SELECT id FROM events WHERE sport=?", (sport,))}
         usable = [r for r in rows if r.get("price") is not None and r["event_id"] in known]
         dropped = len(rows) - len(usable)
@@ -145,7 +264,11 @@ def refresh_schedule(sport: str = "NFL") -> Dict:
     prefer = ((db.kv_get("last_refresh") or {}).get("sports", {})
               .get(sport, {}) or {}).get("odds_source")
     try:
-        events, source, is_demo = R.list_events(sport, prefer=prefer)
+        if sport == "NFL" and not settings.demo_mode:
+            from .providers.espn import EspnEvents
+            events, source, is_demo = EspnEvents().list_events("NFL"), "espn-events", False
+        else:
+            events, source, is_demo = R.list_events(sport, prefer=prefer)
     except Exception as e:  # noqa: BLE001 - a failed refresh must not break a turn
         log.warning("schedule refresh failed for %s: %s", sport, e)
         db.kv_set(_schedule_key(sport), dict(
@@ -163,6 +286,8 @@ def refresh_schedule(sport: str = "NFL") -> Dict:
                     changed=[], events=0)
 
     changed: List[str] = []
+    if sport == "NFL":
+        events = _ingest_nfl_schedule(events, source, is_demo)
     for e in events:
         e.setdefault("sport", sport)
         e["meta"] = dict(e.get("meta") or {}, is_demo=bool(is_demo), source=source)
@@ -383,7 +508,8 @@ def build_context(event: Dict, want_weather: bool = True) -> Dict:
         if sport in ("NFL", "CFB") and ctx["stats"]:
             ctx["projection"] = football.project_game(
                 sport, event["home_team"], event["away_team"], ctx["stats"],
-                weather=ctx.get("weather"), injuries=ctx["injuries"])
+                weather=ctx.get("weather"), injuries=ctx["injuries"],
+                neutral=_neutral_site(event))
         elif sport == "NBA" and ctx["stats"]:
             ctx["projection"] = nba.project_game(event["home_team"], event["away_team"],
                                                  ctx["stats"], injuries=ctx["injuries"])
@@ -594,10 +720,11 @@ def evaluate_market(event: Dict, ctx: Dict, market: str, selection: str,
                                raw_model_prob=float(mp["prob"]), market_prob=market_prob))
     if not candidates:
         return None
-    first_projection = candidates[0]["model_result"].get("projection") or {}
-    reliability = 1.0 - float(first_projection.get("uncertainty", 0.5))
-    picked = select_best_model_quote(candidates, reliability if sport == "NFL" else 1.0,
-                                     distinct_books if sport == "NFL" else 0)
+    # Price each offered line against the independent model. The market's
+    # no-vig probability is displayed for comparison, never fed into the
+    # quantity labelled model probability or the selected quote's EV.
+    picked = max(candidates, key=lambda candidate: ev_per_unit(
+        candidate["raw_model_prob"], candidate["quote"]["price"]))
     best_q, mp = picked["quote"], picked["model_result"]
 
     price = float(best_q["price"])
@@ -605,8 +732,8 @@ def evaluate_market(event: Dict, ctx: Dict, market: str, selection: str,
     raw_model_p = float(mp["prob"])
     market_fair = picked.get("market_prob")
     projection = mp.get("projection")
-    blend = picked.get("blend") if sport == "NFL" else None
-    model_p = blend["final_prob"] if blend else raw_model_p
+    blend = None
+    model_p = raw_model_p
     implied = american_to_prob(price)
     edge = edge_pct(model_p, price)
     best_ev = ev_per_unit(model_p, price)
@@ -663,6 +790,12 @@ def evaluate_market(event: Dict, ctx: Dict, market: str, selection: str,
     decision = ap.strategist(signals, conf.score, edge, conf.tier, stale, be, price, market,
                              books_quoting=len(quotes), sample_size_n=n,
                              unresolved_major_injury=unresolved_major)
+    if sport == "NFL":
+        # No held-out policy or forward shadow evidence yet supports betting
+        # designations. Keep every quantitative estimate visible, but make the
+        # default designation honest until that gate passes.
+        decision = dict(state="PASS", why="Research-only model: NFL pick thresholds are not validated",
+                        trigger="Await chronological policy validation and shadow tracking")
     units = recommend_units(conf.score, edge, market, dq, agreement) \
         if decision["state"] in ("OFFICIAL PICK", "LEAN") else 0.0
 
@@ -701,6 +834,7 @@ def evaluate_market(event: Dict, ctx: Dict, market: str, selection: str,
         model_version=settings.model_version, confidence_version=settings.confidence_version,
         created_at=time.time(), stale=stale,
         selected_quote_at=best_q.get("captured_at"),
+        provider_quote_updated_at=best_q.get("provider_updated_at"),
         selected_odds_age_s=(time.time() - best_q["captured_at"]
                              if best_q.get("captured_at") else None),
         is_demo=bool(ctx.get("stats_demo")) or any(
@@ -736,17 +870,40 @@ def analyze_event(event_id: str, persist: bool = True,
         except Exception:  # noqa: BLE001
             ev["meta"] = {}
 
-    rows = db.latest_odds(event_id=event_id)
-    if not rows:
-        return dict(event=ev, error="No stored odds for this event. Press Refresh Odds.",
-                    recommendations=[], projection=None, sources=[], warnings=[],
-                    injuries=[], news=[], stats={}, weather=None,
-                    data_quality=0.0, data_quality_tier="poor",
-                    odds_age_s=None, model_version=settings.model_version,
-                    analyzed_at=time.time())
+    if ev["sport"] == "NFL":
+        kickoff = NI.kickoff_utc(ev.get("start_time"))
+        if kickoff and kickoff.timestamp() <= time.time():
+            # Never build a new forecast with postgame team form or context.
+            # The only displayable projection is one frozen before kickoff.
+            latest = db.q1(
+                "SELECT * FROM nfl_game_predictions WHERE game_id=? "
+                "AND created_at<? ORDER BY created_at DESC LIMIT 1",
+                (event_id, kickoff.timestamp()),
+            )
+            frozen = db.q1("SELECT payload FROM nfl_game_snapshots WHERE id=?",
+                           (latest["snapshot_id"],)) if latest else None
+            snapshot = json.loads(frozen["payload"]) if frozen else {}
+            return dict(
+                event=ev, projection=snapshot.get("projection"),
+                weather=snapshot.get("weather"), injuries=snapshot.get("injuries") or [],
+                news=snapshot.get("news") or [], sources=snapshot.get("sources") or [],
+                warnings=["GAME STARTED — only a pre-kickoff frozen projection is shown."
+                          if snapshot else
+                          "GAME STARTED — no pre-kickoff projection is available."],
+                data_quality=None, data_quality_tier="frozen" if snapshot else "unavailable",
+                stats=snapshot.get("team_form") or {}, recommendations=[], odds_age_s=None,
+                model_version=snapshot.get("model_version") if snapshot else settings.model_version,
+                snapshot_id=latest["snapshot_id"] if snapshot else None,
+                projection_created_at=latest["created_at"] if snapshot else None,
+                analyzed_at=time.time(),
+            )
+
+    rows = db.latest_odds(event_id=event_id, max_age_s=settings.stale_odds_s)
 
     sport = ev["sport"]
     ctx = golf_context() if sport == "PGA" else build_context(ev)
+    if not rows:
+        ctx["warnings"].append("MARKET DATA UNAVAILABLE — no current verified game-market quotes.")
     if sport == "PGA":
         ctx = dict(ctx, sport="PGA", event=ev, injuries=[], players={},
                    stats={}, projection=None)
@@ -767,6 +924,32 @@ def analyze_event(event_id: str, persist: bool = True,
 
     recs.sort(key=lambda r: (-_state_rank(r["state"]), -r.get("rank_score", 0),
                              -r["confidence"], -r["edge_pct"]))
+    snapshot_id = None
+    if sport == "NFL" and ctx.get("projection"):
+        snapshot = dict(
+            schema_version=1, game=dict(id=ev["id"], home_team=ev.get("home_team"),
+                                        away_team=ev.get("away_team"), kickoff_utc=ev.get("start_time"),
+                                        venue=ev.get("venue"), status=ev.get("status"), meta=ev.get("meta")),
+            team_form={t: (ctx.get("stats") or {}).get(t) for t in
+                       (ev.get("home_team"), ev.get("away_team"))},
+            market=rows, injuries=ctx.get("injuries"), weather=ctx.get("weather"),
+            news=ctx.get("news"), sources=ctx.get("sources"),
+            missing_data={k: not bool(v) for k, v in (ctx.get("quality_parts") or {}).items()},
+            model_version=settings.model_version,
+            feature_version=ctx["projection"].get("feature_version"),
+            projection=ctx["projection"],
+            features_retrieved_at=ctx.get("retrieved_at"),
+            created_at=time.time(),
+        )
+        snapshot_id = hashlib.sha256(json.dumps(snapshot, sort_keys=True,
+                                    default=str).encode()).hexdigest()[:24]
+        if persist:
+            db.save_nfl_snapshot(snapshot_id, ev["id"], snapshot,
+                                 settings.model_version, snapshot["feature_version"] or "unknown")
+            db.save_nfl_game_prediction(uuid.uuid4().hex, ev["id"], snapshot_id,
+                                        ctx["projection"], settings.model_version)
+        for r in recs:
+            r["snapshot_id"] = snapshot_id
     if persist:
         for r in recs:
             if r["state"] in ("OFFICIAL PICK", "LEAN", "WATCHLIST", "WAIT", "WAIT FOR PRICE"):
@@ -780,7 +963,8 @@ def analyze_event(event_id: str, persist: bool = True,
                stats={k: v for k, v in (ctx.get("stats") or {}).items()
                       if k in (ev.get("home_team"), ev.get("away_team"))},
                recommendations=recs, odds_age_s=odds_age_s(event_id),
-               model_version=settings.model_version, analyzed_at=time.time())
+               model_version=settings.model_version, snapshot_id=snapshot_id,
+               analyzed_at=time.time())
     if sport == "PGA":
         out["golf"] = dict(tournament=ctx.get("tournament"), rounds_left=ctx.get("rounds_left"),
                            probs=ctx.get("probs", {}), field=ctx.get("field", {}))
@@ -802,7 +986,7 @@ def _state_rank(state: str) -> int:
 
 def _persist(r: Dict) -> None:
     db.save_prediction(dict(
-        id=r["id"], event_id=r["event_id"], sport=r["sport"], market=r["market"],
+        id=uuid.uuid4().hex, event_id=r["event_id"], sport=r["sport"], market=r["market"],
         selection=r["selection"], side=r.get("side"), line=r.get("line"), book=r["book"],
         price=r["price"], model_prob=r["model_prob"], implied_prob=r["implied_prob"],
         fair_price=r["fair_price"], edge_pct=r["edge_pct"], ev_per_unit=r["ev_per_unit"],
@@ -818,7 +1002,7 @@ def _persist(r: Dict) -> None:
                            source_coverage=[dict(kind=s.get("kind"), publisher=s.get("publisher"),
                                                  retrieved_at=s.get("retrieved_at"))
                                             for s in r.get("sources", [])]),
-        created_at=r["created_at"],
+        created_at=r["created_at"], snapshot_id=r.get("snapshot_id"),
         trigger_note=r.get("trigger_note")))
 
 
@@ -844,44 +1028,146 @@ def slate(sport: Optional[str] = None, limit_events: int = 40) -> List[Dict]:
         params.append(sport)
     sql += " ORDER BY start_time ASC"
     evs = db.q(sql, params)
+    current_week_ids = set((db.kv_get("nfl_current_schedule") or {}).get("game_ids") or [])
     out = []
     for e in evs:
         e = dict(e)
+        if e.get("sport") == "NFL" and not settings.demo_mode:
+            if not current_week_ids or e["id"] not in current_week_ids:
+                continue
         if str(e.get("status") or "").lower() in {
                 "status_final", "final", "completed", "post", "closed", "cancelled"}:
+            # A completed game still belongs to this week's board; its odds
+            # are historical and must not be advertised as current.
+            e["markets"] = []
+            e["odds_count"] = 0
+            out.append(e)
             continue
         if _event_demo(e) != R.family_is_demo(e.get("sport")):
             continue
-        rows = db.latest_odds(event_id=e["id"])
-        summary: Dict[str, Any] = {}
-        for r in rows:
-            if r["market"] in PRIMARY_MARKETS:
-                k = (r["market"], r["selection"])
-                cur = summary.get(k)
-                if not cur or american_to_prob(r["price"]) < american_to_prob(cur["price"]):
-                    summary[k] = dict(book=r["book"], price=r["price"], line=r.get("line"))
-        e["markets"] = [dict(market=k[0], selection=k[1], **v) for k, v in summary.items()]
+        kickoff = NI.kickoff_utc(e.get("start_time"))
+        if kickoff and kickoff.timestamp() <= time.time():
+            e["status"] = "UNVERIFIED PAST KICKOFF"
+            e["markets"] = []
+            e["odds_count"] = 0
+            out.append(e)
+            continue
+        rows = db.latest_odds(event_id=e["id"], max_age_s=settings.stale_odds_s)
+        e["markets"] = NM.board_rows(rows, e)
         e["odds_count"] = len(rows)
         out.append(e)
     return out[:limit_events]
 
 
+def weekly_board() -> List[Dict]:
+    """One current-week row per NFL game, with a frozen quantitative preview.
+
+    Team form is fetched once for the board. Injury, weather and news remain
+    contextual and cannot alter this model version's numeric projection.
+    A recent frozen prediction is reused so page loads do not create history.
+    """
+    games = slate("NFL", limit_events=40)
+    if not games:
+        return games
+    now_ts = time.time()
+    pending = []
+    for game in games:
+        kickoff = NI.kickoff_utc(game.get("start_time"))
+        latest = db.q1("SELECT * FROM nfl_game_predictions WHERE game_id=? "
+                       "AND model_version=? AND created_at<? ORDER BY created_at DESC LIMIT 1",
+                       (game["id"], settings.model_version,
+                        kickoff.timestamp() if kickoff else now_ts))
+        if latest and (latest["created_at"] >= now_ts - CTX_TTL or
+                       (kickoff and kickoff.timestamp() <= now_ts)):
+            frozen = db.q1("SELECT payload FROM nfl_game_snapshots WHERE id=?",
+                           (latest["snapshot_id"],))
+            frozen_projection = json.loads(frozen["payload"]).get("projection") if frozen else None
+            game["projection"] = frozen_projection or dict(
+                proj_home=latest["projected_home_points"],
+                proj_away=latest["projected_away_points"],
+                margin=latest["projected_margin"],
+                total=latest["projected_total"],
+                home_win_prob=latest["home_win_probability"],
+                uncertainty=latest["uncertainty"])
+            game["projection_created_at"] = latest["created_at"]
+            game["snapshot_id"] = latest["snapshot_id"]
+        elif kickoff and kickoff.timestamp() > now_ts:
+            pending.append(game)
+    if not pending:
+        return games
+    try:
+        raw_stats, stats_source, is_demo = R.team_stats("NFL")
+        stats, _weight = shrink_stats(raw_stats, "NFL")
+    except Exception as exc:  # noqa: BLE001
+        for game in pending:
+            game["projection_error"] = f"Team statistics unavailable: {type(exc).__name__}"
+        return games
+    for game in pending:
+        home, away = game.get("home_team"), game.get("away_team")
+        if not home or not away or home not in stats or away not in stats:
+            game["projection_error"] = "Team statistics unavailable for this matchup"
+            continue
+        try:
+            projection = football.project_game(
+                "NFL", home, away, stats,
+                neutral=_neutral_site(game))
+        except (KeyError, ValueError, TypeError) as exc:
+            game["projection_error"] = f"Projection unavailable: {type(exc).__name__}"
+            continue
+        retrieved_at = max((stats[t].get("retrieved_at") or 0 for t in (home, away)),
+                           default=0) or now_ts
+        snapshot = dict(
+            schema_version=1, kind="weekly_board", game=dict(
+                id=game["id"], home_team=home, away_team=away,
+                kickoff_utc=game.get("start_time"), venue=game.get("venue"),
+                status=game.get("status"), meta=game.get("meta")),
+            team_form={home: stats[home], away: stats[away]},
+            market=db.latest_odds(event_id=game["id"], max_age_s=settings.stale_odds_s),
+            injuries=None, weather=None, news=None,
+            sources=[dict(kind="stats", publisher=stats_source,
+                          retrieved_at=retrieved_at, is_demo=is_demo)],
+            missing_data={"injuries": True, "weather": True, "news": True,
+                          "market": not bool(game.get("markets"))},
+            model_version=settings.model_version,
+            feature_version=projection.get("feature_version"),
+            projection=projection,
+            features_retrieved_at=retrieved_at,
+            created_at=now_ts)
+        snapshot_id = hashlib.sha256(json.dumps(snapshot, sort_keys=True,
+                                     default=str).encode()).hexdigest()[:24]
+        db.save_nfl_snapshot(snapshot_id, game["id"], snapshot,
+                             settings.model_version, projection["feature_version"])
+        db.save_nfl_game_prediction(uuid.uuid4().hex, game["id"], snapshot_id,
+                                    projection, settings.model_version)
+        game["projection"] = projection
+        game["projection_created_at"] = now_ts
+        game["snapshot_id"] = snapshot_id
+    return games
+
+
 def analyze_slate(sports: Optional[List[str]] = None, max_events: int = 24,
                   markets: Optional[List[str]] = None) -> List[Dict]:
     """Analyse every event with stored odds and return a flat recommendation list."""
-    sports = sports or list(SPORTS)
+    sports = sports or list(settings.active_sports)
     recs: List[Dict] = []
     seen = 0
     for sport in sports:
-        for ev in db.q("SELECT id, meta, status FROM events WHERE sport=? ORDER BY start_time ASC", (sport,)):
+        current_ids = set((db.kv_get("nfl_current_schedule") or {}).get("game_ids") or []) \
+            if sport == "NFL" and not settings.demo_mode else None
+        for ev in db.q("SELECT id, meta, status, start_time FROM events WHERE sport=? ORDER BY start_time ASC", (sport,)):
+            if current_ids is not None and ev["id"] not in current_ids:
+                continue
             if str(ev.get("status") or "").lower() in {
                     "status_final", "final", "completed", "post", "closed", "cancelled"}:
                 continue
             if _event_demo(dict(ev)) != R.family_is_demo(sport):
                 continue
+            kickoff = NI.kickoff_utc(ev.get("start_time"))
+            if kickoff and kickoff.timestamp() <= time.time():
+                continue
             if seen >= max_events:
                 break
-            if not db.latest_odds(event_id=ev["id"]):
+            if not db.latest_odds(event_id=ev["id"], max_age_s=settings.stale_odds_s):
                 continue
             seen += 1
             try:
@@ -898,6 +1184,7 @@ def analyze_slate(sports: Optional[List[str]] = None, max_events: int = 24,
 
 def cached_slate_recs(max_age_s: float = 1800, **kw) -> List[Dict]:
     """Reuse the last stored analyses when they are fresh enough, else re-run."""
+    max_age_s = min(max_age_s, settings.stale_odds_s)
     rows = db.q("SELECT payload FROM analyses WHERE created_at > ? ORDER BY created_at DESC",
                 (time.time() - max_age_s,))
     if not rows:
@@ -913,6 +1200,13 @@ def cached_slate_recs(max_age_s: float = 1800, **kw) -> List[Dict]:
             if not prior or r["created_at"] > prior["created_at"]:
                 best[r["id"]] = r
     recs = list(best.values())
+    if not settings.demo_mode:
+        current_ids = set((db.kv_get("nfl_current_schedule") or {}).get("game_ids") or [])
+        recs = [r for r in recs if r.get("sport") != "NFL" or (
+            r.get("event_id") in current_ids and
+            NI.kickoff_utc(r.get("start_time")) is not None and
+            NI.kickoff_utc(r.get("start_time")).timestamp() > time.time() and
+            (r.get("selected_quote_at") or 0) >= time.time() - settings.stale_odds_s)]
     recs = [r for r in recs if bool(r.get("is_demo")) == R.family_is_demo(r.get("sport"))]
     if kw.get("sports"):
         allowed = set(kw["sports"])

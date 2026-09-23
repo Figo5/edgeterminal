@@ -58,7 +58,8 @@ def weather_adjustment(weather: Optional[Dict], sport: str) -> Tuple[float, List
     return adj, notes
 
 
-def injury_adjustment(injuries: List[Dict], team: str, sport: str) -> Tuple[float, float, List[str]]:
+def injury_adjustment(injuries: List[Dict], team: str, sport: str,
+                      apply_points: bool = True) -> Tuple[float, float, List[str]]:
     """Returns (points adjustment for this team, availability certainty, notes).
 
     Positional weights are coarse on purpose -- a precise injury-value model
@@ -80,8 +81,11 @@ def injury_adjustment(injuries: List[Dict], team: str, sport: str) -> Tuple[floa
         w = weights.get(pos, 0.5)
         loss = w * mult
         if loss > 0.05:
-            adj -= loss
-            notes.append(f"{inj.get('player')} ({pos or '?'}) {inj.get('status')} — ~{loss:.1f} pts")
+            if apply_points:
+                adj -= loss
+                notes.append(f"{inj.get('player')} ({pos or '?'}) {inj.get('status')} — ~{loss:.1f} pts")
+            else:
+                notes.append(f"{inj.get('player')} ({pos or '?'}) {inj.get('status')} — availability context")
         if st in ("questionable", "doubtful"):
             certainty -= 0.18 if w >= 1.0 else 0.07
     if sport == "CFB":
@@ -121,15 +125,22 @@ def project_game(sport: str, home: str, away: str, stats: Dict[str, Dict],
 
     notes: List[str] = []
     inj = injuries or []
-    h_inj, h_cert, h_notes = injury_adjustment(inj, home, sport)
-    a_inj, a_cert, a_notes = injury_adjustment(inj, away, sport)
+    # The NFL injury point weights are heuristic and have not passed a
+    # chronological backtest. Preserve the availability warning and certainty
+    # gate, but do not change the quantitative NFL score.
+    apply_context_points = sport != "NFL"
+    h_inj, h_cert, h_notes = injury_adjustment(inj, home, sport, apply_context_points)
+    a_inj, a_cert, a_notes = injury_adjustment(inj, away, sport, apply_context_points)
     ph += h_inj; pa += a_inj
     notes += [f"{home}: {n}" for n in h_notes] + [f"{away}: {n}" for n in a_notes]
 
-    ph += _rest_adj(home_rest) / 2
-    pa += _rest_adj(away_rest) / 2
+    if sport != "NFL":
+        ph += _rest_adj(home_rest) / 2
+        pa += _rest_adj(away_rest) / 2
 
-    wx_adj, wx_notes = weather_adjustment(weather, sport)
+    # Weather remains sourced context until an NFL effect is learned and
+    # validated on historical forecasts available before kickoff.
+    wx_adj, wx_notes = weather_adjustment(weather, sport) if sport != "NFL" else (0.0, [])
     if wx_adj:
         ph += wx_adj / 2; pa += wx_adj / 2
     notes += wx_notes

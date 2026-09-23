@@ -144,7 +144,7 @@ class TheOddsApi(OddsProvider):
                   topic="odds")
         return verdict
 
-    def fetch_odds(self, sport: str, with_props: bool = True) -> List[Dict]:
+    def fetch_odds(self, sport: str, with_props: bool = False) -> List[Dict]:
         rows: List[Dict] = []
         markets = "outrights" if sport == "PGA" else "h2h,spreads,totals"
         for key in self._sport_keys(sport):
@@ -206,7 +206,11 @@ class TheOddsApi(OddsProvider):
         rows = self._flatten_props(data or {}, event_id, retrieved_at=retrieved)
         # The payload must prove it is the game we asked for; otherwise nothing is
         # cached and the caller receives an explicit refusal.
-        verdict = I.validate_provider_event(data or {}, event, tolerance_s=6 * 3600.0) \
+        # Judge finished-ness at the same instant the rows were captured: a
+        # provider payload fetched for a game that is still upcoming must not be
+        # rejected because a test (or a slow clock path) validates later.
+        verdict = I.validate_provider_event(data or {}, event, now=retrieved,
+                                           tolerance_s=6 * 3600.0) \
             if event else dict(state=I.IDENTITY_OK, provider_id=event_id, reasons=[])
         if verdict["state"] != I.IDENTITY_OK:
             log.warning("prop payload rejected for %s: %s", event_id, verdict["reasons"])

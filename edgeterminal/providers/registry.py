@@ -1,11 +1,12 @@
 """Provider resolution with an explicit fallback hierarchy.
 
-    primary free source -> secondary free source -> cached -> demo -> unavailable
+    primary free source -> secondary free source -> reported unavailable
 
-Demo fixtures are only used when DEMO_MODE is on or nothing else is configured,
-and everything they return is tagged is_demo so the UI can label it. A provider
-failure is recorded as a structured status, never silently replaced by invented
-numbers.
+Demo fixtures are used only when DEMO_MODE is on (or the family was already on
+demo odds), and everything they return is tagged is_demo so the UI can label
+it. A live provider failure is recorded as a structured status and reported as
+unavailable -- it is never silently replaced by invented numbers or seeded as
+a fake "current" board.
 """
 from __future__ import annotations
 
@@ -97,7 +98,8 @@ def _odds_candidates(sport: Optional[str] = None) -> List[Tuple[str, Callable]]:
         out.append(("theoddsapi", TheOddsApi))
     if sport == "NFL" and settings.odds_provider in ("auto", "espn"):
         out.append(("espn-odds", EspnOdds))
-    out.append(("demo-odds", D.DemoOdds))
+    # Live provider failure is unavailable, not an invitation to seed a fake
+    # current board. Demo fixtures are available only under DEMO_MODE.
     return out
 
 
@@ -116,7 +118,6 @@ def list_events(sport: str, prefer: Optional[str] = None) -> Tuple[List[Dict], s
             from .theoddsapi import TheOddsApi
             cands.append(("theoddsapi-events", TheOddsApi))
         cands.append(("espn-events", EspnEvents))
-        cands.append(("demo-odds", D.DemoOdds))
     else:
         cands.append(("demo-odds", D.DemoOdds))
     return _chain("events", cands, lambda p: p.list_events(sport))

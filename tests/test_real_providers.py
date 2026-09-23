@@ -88,9 +88,9 @@ def test_live_family_never_falls_back_to_fixture_context(monkeypatch):
         registry.team_stats("NFL")
 
 
-def test_odds_provider_chain_prefers_real_espn_before_demo(monkeypatch):
+def test_live_odds_provider_chain_never_substitutes_demo(monkeypatch):
     monkeypatch.setattr(settings, "demo_mode", False)
     monkeypatch.setattr(settings, "odds_api_key", "")
     registry.set_family("NFL", False)
     names = [name for name, _factory in registry._odds_candidates("NFL")]
-    assert names == ["espn-odds", "demo-odds"]
+    assert names == ["espn-odds"]
