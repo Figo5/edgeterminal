@@ -14,7 +14,7 @@ import time
 from collections import defaultdict
 from pathlib import Path
 
-from . import db, nfl_prop_lab
+from . import db, nfl_prop_lab, nfl_prop_rules
 
 POSTGAME_DELAY_S = 4 * 3600
 REPORT_PATH = nfl_prop_lab.ROOT / "data/research/nfl_prop_calibration_2026w3.json"
@@ -63,19 +63,56 @@ def _documented_participation(row: dict) -> bool:
     return False
 
 
+def _source_bytes(file: str) -> bytes | None:
+    if file.startswith("db:nfl_research_grades:"):
+        _, _, game_id, revision = file.split(":", 3)
+        row = db.q1("SELECT payload FROM nfl_research_grades WHERE game_id=? AND revision=?",
+                    (game_id, int(revision)))
+        return row["payload"].encode() if row else None
+    path = Path(file)
+    return path.read_bytes() if path.is_file() else None
+
+
+def _source(record: object, now: float, label: str) -> dict:
+    if not isinstance(record, dict):
+        raise ValueError(f"{label} requires source provenance")
+    name, file = record.get("source"), record.get("file")
+    digest = record.get("sha256")
+    when = _number(record.get("retrieved_at"))
+    if not isinstance(name, str) or not name or not isinstance(file, str) or not file:
+        raise ValueError(f"{label} needs source and file")
+    if not isinstance(digest, str) or len(digest) != 64 or any(c not in "0123456789abcdef" for c in digest):
+        raise ValueError(f"{label} needs SHA-256")
+    if when > now:
+        raise ValueError(f"{label} is from the future")
+    body = _source_bytes(file)
+    if body is None or hashlib.sha256(body).hexdigest() != digest:
+        raise ValueError(f"{label} source file/hash mismatch")
+    return record
+
+
 def _validate_evidence(evidence: dict, frozen_games: set[str], now: float) -> dict:
     if not isinstance(evidence, dict) or evidence.get("game_id") not in frozen_games:
         raise ValueError("evidence game is not in prop freeze")
     status = str(evidence.get("game_status") or "").lower()
     if status not in {"final", "postponed", "suspended", "canceled"}:
         raise ValueError("unrecognized game status")
-    source = evidence.get("result_source")
-    if not isinstance(source, str) or not source.strip():
-        raise ValueError("grade evidence needs a source")
+    final_source = _source(evidence.get("final_game_source"), now, "final game")
+    stat_source = _source(evidence.get("player_stat_source"), now, "player stat")
+    score = evidence.get("final_score")
+    if status == "final":
+        if (not isinstance(score, dict) or set(score) != {"home", "away"} or
+                any(isinstance(v, bool) or not isinstance(v, int) or v < 0 for v in score.values())):
+            raise ValueError("final game needs official final score")
     retrieved = _number(evidence.get("result_retrieved_at"))
     kickoff = _number(evidence.get("actual_kickoff_utc"))
     if retrieved > now or (kickoff > now and status in {"final", "canceled"}):
         raise ValueError("grade evidence is from the future")
+    if retrieved < max(final_source["retrieved_at"], stat_source["retrieved_at"]):
+        raise ValueError("grade evidence predates its sources")
+    if status == "final" and (final_source["retrieved_at"] < kickoff or
+                              stat_source["retrieved_at"] < kickoff):
+        raise ValueError("final evidence predates kickoff")
     players = evidence.get("players")
     if not isinstance(players, list):
         raise ValueError("grade evidence needs a player list")
@@ -95,8 +132,22 @@ def _validate_evidence(evidence: dict, frozen_games: set[str], now: float) -> di
             if market not in nfl_prop_lab.MARKETS:
                 raise ValueError("unsupported official player stat")
             _number(value, nonnegative=market != "rushing_yards")
+        if player_status == "inactive" or (player_status == "active" and
+                any(float(value) == 0 for value in stats.values())):
+            participation = player.get("participation_evidence")
+            if not isinstance(participation, dict):
+                raise ValueError("zero/inactive player needs participation evidence")
+            _source(participation, now, "participation")
+            if participation["retrieved_at"] > retrieved:
+                raise ValueError("grade evidence predates participation source")
+            if not isinstance(participation.get("active_roster"), bool) or not isinstance(participation.get("snap_played"), bool):
+                raise ValueError("participation needs active roster and snap evidence")
+            if player_status == "inactive" and (participation["active_roster"] or participation["snap_played"]):
+                raise ValueError("inactive conflicts with participation")
         found[player["gsis_player_id"]] = player
-    return {"status": status, "kickoff": kickoff, "retrieved": retrieved, "players": found}
+    return {"status": status, "kickoff": kickoff, "retrieved": retrieved,
+            "players": found, "final_score": score,
+            "final_source": final_source, "stat_source": stat_source}
 
 
 def _settlement(side: str, actual: float, line: float) -> str:
@@ -115,7 +166,8 @@ def implied_probability(price: int) -> float:
     return -price / (-price + 100) if price < 0 else 100 / (price + 100)
 
 
-def _grade_row(quote: dict, evidence: dict, checked: dict, now: float) -> tuple[dict | None, str | None]:
+def _grade_row(quote: dict, evidence: dict, checked: dict, now: float,
+               rules_sha: str, rules: dict) -> tuple[dict | None, str | None]:
     status = checked["status"]
     player = checked["players"].get(quote["gsis_player_id"])
     if status == "canceled":
@@ -131,6 +183,17 @@ def _grade_row(quote: dict, evidence: dict, checked: dict, now: float) -> tuple[
                          nonnegative=quote["market"] != "rushing_yards")
         result = _settlement(quote["side"], actual, quote["line"])
         player_status = "active"
+    participation = player.get("participation_evidence") if player else None
+    if player_status == "active" and participation is None:
+        # Nonzero official offensive production proves participation.
+        participation = {"active_roster": True, "snap_played": True,
+                         "source": checked["stat_source"]["source"],
+                         "file": checked["stat_source"]["file"],
+                         "sha256": checked["stat_source"]["sha256"],
+                         "retrieved_at": checked["stat_source"]["retrieved_at"]}
+    book = quote["sportsbook"]
+    interpretation, scenario = nfl_prop_rules.interpret(book, result, player_status,
+                                                        participation, rules)
     signed = quote["projection"] - actual if actual is not None else None
     probability = quote["probability_over"] if quote["side"] == "over" else quote["probability_under"]
     grade = {"quote_id": quote["quote_id"], "canonical_game_id": quote["canonical_game_id"],
@@ -143,18 +206,31 @@ def _grade_row(quote: dict, evidence: dict, checked: dict, now: float) -> tuple[
              "implied_probability": implied_probability(quote["price"]),
              "model_probability": probability, "model_probability_over": quote["probability_over"],
              "result": result, "player_status": player_status, "game_status": status,
+             "final_score": checked["final_score"],
+             "research_statistical_result": result,
+             "sportsbook_settlement_interpretation": interpretation,
+             "settlement_scenario": scenario,
+             "settlement_basis": "conditional_research_only_not_actual_book_settlement",
+             "rules_sha256": rules_sha,
+             "rules_version": rules["version"],
+             "rule_snapshot": rules["books"].get(book),
+             "participation_evidence": participation,
              "sportsbook": quote["sportsbook"], "quote_observed_at": quote["observed_at"],
              "frozen_kickoff_utc": quote["kickoff_utc"],
              "actual_kickoff_utc": checked["kickoff"], "model_version": quote["model_version"],
-             "result_source": evidence["result_source"],
+             "result_source": checked["stat_source"]["source"],
              "result_retrieved_at": checked["retrieved"], "graded_at": now}
+    grade["final_game_source"] = checked["final_source"]
+    grade["player_stat_source"] = checked["stat_source"]
     return grade, None
 
 
-def grade_freeze(freeze_sha: str, evidence: list[dict], now: float | None = None) -> dict:
+def grade_freeze(freeze_sha: str, evidence: list[dict], now: float | None = None,
+                 rules_path: str | Path = nfl_prop_rules.DEFAULT_RULES) -> dict:
     """Append evidence and only changed grades; delay and missing data fail closed."""
     now = time.time() if now is None else now
     frozen = _freeze(freeze_sha)
+    rules_sha, rules = nfl_prop_rules.load_rules(rules_path)
     quotes = frozen["projections"]
     by_game: dict[str, list[dict]] = defaultdict(list)
     for quote in quotes:
@@ -169,11 +245,20 @@ def grade_freeze(freeze_sha: str, evidence: list[dict], now: float | None = None
               "pending_game": 0, "pending_missing_stat": 0}
     with db.tx() as c:
         for item, state in zip(evidence, checked):
+            refs = [state["final_source"], state["stat_source"]]
+            refs.extend(player["participation_evidence"] for player in state["players"].values()
+                        if "participation_evidence" in player)
+            for ref in refs:
+                raw = _source_bytes(ref["file"])
+                if raw is None or hashlib.sha256(raw).hexdigest() != ref["sha256"]:
+                    raise ValueError("grade source changed before archival")
+                c.execute("INSERT OR IGNORE INTO nfl_prop_grade_source_artifacts VALUES(?,?,?,?)",
+                          (ref["sha256"], ref["file"], now, raw))
             body = _canonical(item)
             evidence_sha = hashlib.sha256((freeze_sha + body).encode()).hexdigest()
             c.execute("INSERT OR IGNORE INTO nfl_prop_grade_evidence VALUES(?,?,?,?,?,?,?,?)",
                       (evidence_sha, freeze_sha, item["game_id"], state["status"],
-                       item["result_source"], state["retrieved"], now, body))
+                       state["stat_source"]["source"], state["retrieved"], now, body))
             if state["status"] in {"postponed", "suspended"}:
                 counts["pending_game"] += len(by_game[item["game_id"]])
                 continue
@@ -181,7 +266,7 @@ def grade_freeze(freeze_sha: str, evidence: list[dict], now: float | None = None
                 counts["pending_delay"] += len(by_game[item["game_id"]])
                 continue
             for quote in by_game[item["game_id"]]:
-                grade, reason = _grade_row(quote, item, state, now)
+                grade, reason = _grade_row(quote, item, state, now, rules_sha, rules)
                 if grade is None:
                     counts[reason] += 1
                     continue
@@ -190,7 +275,18 @@ def grade_freeze(freeze_sha: str, evidence: list[dict], now: float | None = None
                                 (freeze_sha, quote["quote_id"])).fetchone()
                 if old:
                     previous = json.loads(old["payload"])
-                    if (previous["actual_stat"], previous["result"], previous["player_status"]) == (grade["actual_stat"], grade["result"], grade["player_status"]):
+                    if (previous["actual_stat"], previous["result"], previous["player_status"]) != (
+                            grade["actual_stat"], grade["result"], grade["player_status"]):
+                        # A later official-stat change updates research truth, but the
+                        # actual bet's prior settlement and resettlement are unknown.
+                        grade["sportsbook_settlement_interpretation"] = "undetermined"
+                        grade["settlement_scenario"] = "stat_correction_resettlement_unverified"
+                    if (previous["actual_stat"], previous["result"], previous["player_status"],
+                        previous.get("sportsbook_settlement_interpretation"), previous.get("rules_sha256"),
+                        previous.get("final_score")) == (
+                        grade["actual_stat"], grade["result"], grade["player_status"],
+                        grade["sportsbook_settlement_interpretation"], grade["rules_sha256"],
+                        grade["final_score"]):
                         continue
                 revision = old["revision"] + 1 if old else 1
                 grade["revision"] = revision
@@ -211,9 +307,9 @@ def _latest(freeze_sha: str) -> list[dict]:
     return [json.loads(row["payload"]) for row in rows]
 
 
-def _record(rows: list[dict]) -> dict:
-    output = {result: sum(row["result"] == result for row in rows)
-              for result in ("won", "lost", "push", "void")}
+def _record(rows: list[dict], field: str = "result") -> dict:
+    output = {result: sum(row.get(field) == result for row in rows)
+              for result in ("won", "lost", "push", "void", "undetermined")}
     output["n"] = len(rows)
     return output
 
@@ -283,7 +379,9 @@ def forward_report(freeze_sha: str | None = None, calibration_path: str | Path |
                            "bias": sum(r["signed_error"] for r in player_rows) / len(player_rows) if player_rows else None,
                            "brier": cal["brier"], "brier_n": cal["n"],
                            "calibration": cal["reliability"],
-                           "quote_side_record": _record(quote_rows)}
+                           "quote_side_record": _record(quote_rows),
+                           "sportsbook_settlement_interpretation": _record(
+                               quote_rows, "sportsbook_settlement_interpretation")}
     # One diagnostic direction per complete frozen main-line pair. This is a
     # sign-of-difference analysis, never a pick or staking policy.
     over_rows = [r for r in grades if r["frozen_side"] == "over" and
@@ -298,6 +396,9 @@ def forward_report(freeze_sha: str | None = None, calibration_path: str | Path |
             diagnostics.append(companion)
     by_book = {book: _record([r for r in diagnostics if r["sportsbook"] == book])
                for book in sorted({r["sportsbook"] for r in diagnostics})}
+    settlement_by_book = {book: _record([r for r in diagnostics if r["sportsbook"] == book],
+                                        "sportsbook_settlement_interpretation")
+                          for book in sorted({r["sportsbook"] for r in diagnostics})}
     by_bucket = {bucket: _record([r for r in diagnostics if _bucket(r) == bucket])
                  for bucket in ("0-0.25σ", "0.25-0.5σ", "0.5-1σ", "1σ+")}
     by_market_direction = {market: _record([r for r in diagnostics if r["market"] == market])
@@ -327,6 +428,7 @@ def forward_report(freeze_sha: str | None = None, calibration_path: str | Path |
                             "kickoff_utc": over["kickoff_utc"],
                             "actual_stat": grade["actual_stat"] if grade else None,
                             "over_result": grade["result"] if grade else "pending",
+                            "sportsbook_settlement_interpretation": grade.get("sportsbook_settlement_interpretation") if grade else None,
                             "result_source": grade["result_source"] if grade else None})
     retrospective = None
     path = Path(calibration_path) if calibration_path else REPORT_PATH
@@ -350,9 +452,10 @@ def forward_report(freeze_sha: str | None = None, calibration_path: str | Path |
                                   "two_sided_market_groups": len(comparisons),
                                   "market_comparisons": comparisons,
                                   "model_direction_by_sportsbook": by_book,
+                                  "conditional_settlement_by_sportsbook": settlement_by_book,
                                   "model_direction_by_market": by_market_direction,
                                   "model_direction_by_difference_bucket": by_bucket,
-                                  "method_note": "Direction is the sign of projection minus line, for research diagnostics only; not picks or profit."}}
+                                  "method_note": "Statistical outcomes and conditional book interpretations are separate. Direction is the sign of projection minus line for research diagnostics only; not picks or profit. Unknown jurisdiction, bet slip, and special terms prevent confirmation of actual sportsbook settlement."}}
 
 
 def local_evidence(freeze_sha: str, stats_path: str | Path | None = None) -> list[dict]:
@@ -407,12 +510,27 @@ def local_evidence(freeze_sha: str, stats_path: str | Path | None = None) -> lis
             for market, label in nfl_prop_lab.LABEL.items():
                 if row.get(label) not in (None, ""):
                     values[market] = _number(row[label], nonnegative=market != "rushing_yards")
-            player_rows.append({"gsis_player_id": gsis,
-                                "status": "active" if _documented_participation(row) else "unknown",
-                                "stats": values})
+            active = _documented_participation(row)
+            item = {"gsis_player_id": gsis,
+                    "status": "active" if active else "unknown", "stats": values}
+            if active:
+                item["participation_evidence"] = {
+                    "source": source_meta["source_url"], "file": str(stats_path),
+                    "sha256": source_sha, "retrieved_at": stats_retrieved,
+                    "active_roster": True, "snap_played": True}
+            player_rows.append(item)
+        game_source = {"source": grade["result_source"],
+                       "retrieved_at": grade["source_retrieved_at"],
+                       "file": f"db:nfl_research_grades:{game_id}:{grade['revision']}",
+                       "sha256": hashlib.sha256(grade["payload"].encode()).hexdigest()}
+        stat_source = {"source": source_meta["source_url"],
+                       "retrieved_at": stats_retrieved,
+                       "file": str(stats_path), "sha256": source_sha}
         evidence.append({"game_id": canonical, "game_status": "final",
                          "actual_kickoff_utc": actual_kickoff.timestamp(),
-                         "result_source": f"{source_meta['source_url']} sha256:{source_sha}; completed game research grade",
+                         "final_score": {"home": grade["home_score"], "away": grade["away_score"]},
+                         "final_game_source": game_source,
+                         "player_stat_source": stat_source,
                          "result_retrieved_at": max(grade["source_retrieved_at"], stats_retrieved),
                          "players": player_rows})
     return evidence

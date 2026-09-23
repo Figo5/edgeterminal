@@ -1,0 +1,55 @@
+{
+  "version": "2026-09-23.research.1",
+  "scope": "Ordinary NFL pregame player props; quote jurisdiction, bet slip, and promotions are unknown",
+  "books": {
+    "fanduel": {
+      "jurisdiction": "Puerto Rico house rules; current quote jurisdiction unknown",
+      "source_urls": ["https://www.fanduel.com/fanduel-sportsbook-house-rules-pr"],
+      "inactive": "void_if_no_snap", "active_zero": "action_if_snap", "leaves_early": "action_if_snap",
+      "postponed": "pending_then_conditional_60h", "canceled": "void_conditional",
+      "suspended": "pending_then_conditional_24h", "stat_correction": "uncertain_resettlement",
+      "push": "refund_conditional", "participation_requirement": "snap"
+    },
+    "draftkings": {
+      "jurisdiction": "Arizona general rules; football-specific and quote jurisdiction unverified",
+      "source_urls": ["https://sportsbook.draftkings.com/help/general-betting-rules/general-rules"],
+      "inactive": "void_if_no_participation", "active_zero": "action_if_participated", "leaves_early": "action_if_participated",
+      "postponed": "pending_then_conditional_two_calendar_days", "canceled": "void_conditional",
+      "suspended": "pending_then_conditional_48h", "stat_correction": "uncertain_resettlement",
+      "push": "refund_conditional", "participation_requirement": "snap"
+    },
+    "betmgm": {
+      "jurisdiction": "Current complete NFL house rules not verified; BetDefense varies by state and bet slip",
+      "source_urls": ["https://sports.betmgm.com/en/blog/betdefense-1st-quarter-football-injury-protection-bm03/"],
+      "inactive": "uncertain", "active_zero": "uncertain", "leaves_early": "conditional_betdefense",
+      "postponed": "uncertain", "canceled": "uncertain", "suspended": "uncertain",
+      "stat_correction": "uncertain", "push": "uncertain", "participation_requirement": "unknown"
+    },
+    "caesars": {
+      "jurisdiction": "Historical Maryland retail terms only; online quote jurisdiction unverified",
+      "source_urls": ["https://www.caesars.com/content/dam/uba/caesarssportsbook/caesarssportsbook_marylandretailrulespart1.pdf"],
+      "inactive": "historical_retail_void", "active_zero": "historical_retail_action_if_suited",
+      "leaves_early": "historical_retail_action_if_suited", "postponed": "historical_retail_void",
+      "canceled": "historical_retail_void", "suspended": "historical_retail_55min",
+      "stat_correction": "uncertain", "push": "historical_retail_refund", "participation_requirement": "unknown"
+    },
+    "espnbet": {
+      "jurisdiction": "Brand ended 2025-12-01; historical Massachusetts 2025 rules only; current feed label unresolved",
+      "source_urls": ["https://massgaming.com/wp-content/uploads/Penn-Sports-Interactive-House-Rules-5.23.25.pdf", "https://support.espn.com/hc/en-us/articles/19990992084116-What-is-ESPN-BET"],
+      "inactive": "historical_ma_void_if_no_snap", "active_zero": "historical_ma_action_if_snap",
+      "leaves_early": "historical_ma_action_if_snap", "postponed": "historical_ma_conditional",
+      "canceled": "historical_ma_void", "suspended": "historical_ma_conditional",
+      "stat_correction": "historical_ma_no_regrade", "push": "historical_ma_refund",
+      "participation_requirement": "unknown"
+    },
+    "bovada": {
+      "jurisdiction": "Bovada ordinary Football Props; Prop Builder product has conflicting participation requirement",
+      "source_urls": ["https://www.bovada.lv/help/common-faq/football-betting-rules", "https://www.bovada.lv/help/sports-faq/prop-builder-faq"],
+      "inactive": "void_if_not_active_roster", "active_zero": "conditional_product_type",
+      "leaves_early": "action_if_active_roster", "postponed": "pending_then_conditional_48h",
+      "canceled": "void_conditional", "suspended": "pending_then_conditional_50min",
+      "stat_correction": "uncertain_resettlement", "push": "refund_conditional",
+      "participation_requirement": "active_roster"
+    }
+  }
+}

@@ -4,6 +4,7 @@ import csv
 import gzip
 import json
 import sqlite3
+from pathlib import Path
 
 import pytest
 
@@ -48,12 +49,18 @@ def frozen(tmp_path, monkeypatch):
 
 
 def _evidence(value=10.0, status="final", players=None):
+    source={"source":"fixture-official","file":str(Path(__file__)),
+            "sha256":hashlib.sha256(Path(__file__).read_bytes()).hexdigest(),
+            "retrieved_at":20000.0}
+    inactive={**source,"active_roster":False,"snap_played":False}
+    active={**source,"active_roster":True,"snap_played":True}
     return dict(game_id=GAME, game_status=status, actual_kickoff_utc=100.0,
-                result_source="fixture-official", result_retrieved_at=20000.0,
+                final_score={"home":21,"away":17} if status=="final" else None,
+                final_game_source=source,player_stat_source=source,result_retrieved_at=20000.0,
                 players=players if players is not None else [
                     {"gsis_player_id":"gsis-a","status":"active","stats":{"receiving_yards":value}},
-                    {"gsis_player_id":"gsis-b","status":"inactive","stats":{}},
-                    {"gsis_player_id":"gsis-c","status":"active","stats":{"receptions":0.0}}])
+                    {"gsis_player_id":"gsis-b","status":"inactive","stats":{},"participation_evidence":inactive},
+                    {"gsis_player_id":"gsis-c","status":"active","stats":{"receptions":0.0},"participation_evidence":active}])
 
 
 def test_final_push_zero_inactive_missing_and_correction(frozen):
@@ -65,12 +72,15 @@ def test_final_push_zero_inactive_missing_and_correction(frozen):
     assert rows[0]["actual_stat"]==10.0 and rows[0]["absolute_error"]==2.0
     assert rows[0]["signed_error"]==2.0 and rows[0]["frozen_price"]==-110
     assert rows[4]["actual_stat"]==0.0
+    assert db.q1("SELECT COUNT(*) n FROM nfl_prop_grade_source_artifacts")["n"]==1
     assert grade_freeze(frozen,[_evidence()],now=21000.0)["new_revisions"]==0
     corrected=grade_freeze(frozen,[_evidence(13.0)],now=22000.0)
     assert corrected["new_revisions"]==2
     original=json.loads(db.q1("SELECT payload FROM nfl_prop_grade_revisions WHERE quote_id=1 AND revision=1")["payload"])
     revision=json.loads(db.q1("SELECT payload FROM nfl_prop_grade_revisions WHERE quote_id=1 AND revision=2")["payload"])
     assert original["result"]=="push" and revision["result"]=="won"
+    assert revision["sportsbook_settlement_interpretation"]=="undetermined"
+    assert revision["settlement_scenario"]=="stat_correction_resettlement_unverified"
     with pytest.raises(sqlite3.IntegrityError):
         db.ex("DELETE FROM nfl_prop_grade_revisions")
     assert hashlib.sha256(db.q1("SELECT payload FROM nfl_prop_research_freezes WHERE freeze_sha=?",(frozen,))["payload"].encode()).hexdigest()==frozen
@@ -88,6 +98,11 @@ def test_final_push_zero_inactive_missing_and_correction(frozen):
 def test_wait_delay_postponement_cancellation_and_no_fabricated_zero(frozen):
     early=_evidence()
     early["result_retrieved_at"]=100.0
+    early["final_game_source"]["retrieved_at"]=100.0
+    early["player_stat_source"]["retrieved_at"]=100.0
+    for player in early["players"]:
+        if "participation_evidence" in player:
+            player["participation_evidence"]["retrieved_at"]=100.0
     assert grade_freeze(frozen,[early],now=100.0)["new_revisions"]==0
     assert db.q1("SELECT COUNT(*) n FROM nfl_prop_grade_revisions")["n"]==0
     assert grade_freeze(frozen,[_evidence(status="postponed")],now=20000.0)["new_revisions"]==0
@@ -98,6 +113,58 @@ def test_wait_delay_postponement_cancellation_and_no_fabricated_zero(frozen):
     canceled=grade_freeze(frozen,[_evidence(status="canceled")],now=20000.0)
     assert canceled["new_revisions"]==8
     assert {json.loads(x["payload"])["result"] for x in db.q("SELECT payload FROM nfl_prop_grade_revisions")}=={"void"}
+
+
+def test_missing_or_changed_provenance_fails_closed(frozen):
+    evidence=_evidence()
+    evidence["player_stat_source"]["sha256"]="0"*64
+    with pytest.raises(ValueError,match="hash mismatch"):
+        grade_freeze(frozen,[evidence],now=20000)
+    evidence=_evidence()
+    evidence["players"][2].pop("participation_evidence")
+    with pytest.raises(ValueError,match="participation evidence"):
+        grade_freeze(frozen,[evidence],now=20000)
+    assert db.q1("SELECT COUNT(*) n FROM nfl_prop_grade_revisions")["n"]==0
+
+
+def test_book_interpretation_and_registry_revision(frozen,tmp_path):
+    assert grade_freeze(frozen,[_evidence()],now=20000)["new_revisions"]==6
+    grade=json.loads(db.q1("SELECT payload FROM nfl_prop_grade_revisions WHERE quote_id=5")["payload"])
+    assert grade["research_statistical_result"]=="lost"
+    assert grade["sportsbook_settlement_interpretation"]=="lost"
+    assert grade["final_game_source"]["sha256"]
+    from edgeterminal.nfl_prop_rules import DEFAULT_RULES
+    registry=json.loads(DEFAULT_RULES.read_text())
+    registry["version"]="fixture-rules-revision"
+    altered=tmp_path/"revised-rules.json"
+    altered.write_text(json.dumps(registry))
+    assert grade_freeze(frozen,[_evidence()],now=21000,rules_path=altered)["new_revisions"]==6
+    original=json.loads(db.q1("SELECT payload FROM nfl_prop_grade_revisions WHERE quote_id=5 AND revision=1")["payload"])
+    revised=json.loads(db.q1("SELECT payload FROM nfl_prop_grade_revisions WHERE quote_id=5 AND revision=2")["payload"])
+    assert original["rules_sha256"]!=revised["rules_sha256"]
+    assert original["research_statistical_result"]==revised["research_statistical_result"]
+
+
+def test_rule_coverage_and_product_ambiguity():
+    from edgeterminal import nfl_prop_rules
+    _, rules=nfl_prop_rules.load_rules()
+    assert set(rules["books"])=={"fanduel","draftkings","betmgm","caesars","espnbet","bovada"}
+    assert all(set(nfl_prop_rules.SCENARIOS) <= set(rule) for rule in rules["books"].values())
+    assert nfl_prop_rules.interpret("fanduel","lost","active",
+                                     {"active_roster":True,"snap_played":False},rules)[0]=="undetermined"
+    assert nfl_prop_rules.interpret("bovada","lost","active",
+                                     {"active_roster":True,"snap_played":False},rules)[0]=="undetermined"
+    assert nfl_prop_rules.interpret("espnbet","lost","active",
+                                     {"active_roster":True,"snap_played":True},rules)[0]=="undetermined"
+
+
+def test_final_score_correction_appends_revision(frozen):
+    assert grade_freeze(frozen,[_evidence()],now=20000)["new_revisions"]==6
+    updated=_evidence()
+    updated["final_score"]={"home":24,"away":17}
+    assert grade_freeze(frozen,[updated],now=21000)["new_revisions"]==6
+    history=db.q("SELECT payload FROM nfl_prop_grade_revisions WHERE quote_id=1 ORDER BY revision")
+    assert [json.loads(row["payload"])["final_score"]["home"] for row in history]==[21,24]
 
 
 def test_local_final_grade_and_cached_stats_leave_absent_players_pending(frozen, tmp_path, monkeypatch):

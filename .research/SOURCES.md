@@ -1,0 +1,10 @@
+# Primary sources fetched 2026-09-23
+
+- FanDuel Puerto Rico house rules, American Football: https://www.fanduel.com/fanduel-sportsbook-house-rules-pr — player props void only without a snap; 60-hour rescheduling limit; official league stats. Jurisdiction-specific.
+- DraftKings general house rules (Arizona rendering): https://sportsbook.draftkings.com/help/general-betting-rules/general-rules — nonparticipants void absent an all-in label; cancellation void; delayed start two calendar days; interrupted game 48-hour condition. Arizona-specific and bet-slip text can prevail.
+- BetMGM BetDefense: https://sports.betmgm.com/en/blog/betdefense-1st-quarter-football-injury-protection-bm03/ — eligible over bets with first-quarter injury can be refunded; only select jurisdictions and bet slips. No accessible complete football house rules verified.
+- Caesars Horseshoe Baltimore retail rules: https://www.caesars.com/content/dam/uba/caesarssportsbook/caesarssportsbook_marylandretailrulespart1.pdf — suited-up participation; 55 minutes plus official result; postponed game void. Historical Maryland retail, not a verified online rule.
+- ESPN BET Massachusetts house rules effective 2025-05-23: https://massgaming.com/wp-content/uploads/Penn-Sports-Interactive-House-Rules-5.23.25.pdf — football FO.6.2 snap participation; FO.6.4 no later stat regrade. Historical Massachusetts only.
+- ESPN brand notice: https://support.espn.com/hc/en-us/articles/19990992084116-What-is-ESPN-BET — ESPN BET became theScore Bet on 2025-12-01. Current ESPN BET feed label requires identity clarification.
+- Bovada Football Betting Rules: https://www.bovada.lv/help/common-faq/football-betting-rules — game-day active roster required; active nonparticipants have action; injuries after kickoff stand; NFL postponed games played within 48 hours stand; 50 minutes for game action.
+- Bovada Prop Builder FAQ: https://www.bovada.lv/help/sports-faq/prop-builder-faq — single football props in Prop Builder void if no official NFL Game Book participation, regardless of active status. Product-specific exception.

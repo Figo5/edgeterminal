@@ -112,6 +112,14 @@ BEGIN SELECT RAISE(ABORT, 'prop grade evidence is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS nfl_prop_grade_evidence_no_delete BEFORE DELETE ON nfl_prop_grade_evidence
 BEGIN SELECT RAISE(ABORT, 'prop grade evidence cannot be deleted'); END;
 
+CREATE TABLE IF NOT EXISTS nfl_prop_grade_source_artifacts (
+  sha256 TEXT PRIMARY KEY, source_file TEXT NOT NULL, captured_at REAL NOT NULL,
+  payload BLOB NOT NULL);
+CREATE TRIGGER IF NOT EXISTS nfl_prop_grade_source_no_update BEFORE UPDATE ON nfl_prop_grade_source_artifacts
+BEGIN SELECT RAISE(ABORT, 'prop grade source artifacts are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_prop_grade_source_no_delete BEFORE DELETE ON nfl_prop_grade_source_artifacts
+BEGIN SELECT RAISE(ABORT, 'prop grade source artifacts cannot be deleted'); END;
+
 CREATE TABLE IF NOT EXISTS nfl_prop_grade_revisions (
   freeze_sha TEXT NOT NULL, quote_id INTEGER NOT NULL, revision INTEGER NOT NULL,
   evidence_sha TEXT NOT NULL, graded_at REAL NOT NULL, payload TEXT NOT NULL,
