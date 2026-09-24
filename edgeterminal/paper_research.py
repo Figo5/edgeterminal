@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
-from . import db
+from . import db, nfl_prop_rules
 from .config import ROOT
 from .providers.normalize import normalize_team
 
@@ -187,15 +187,36 @@ def _balances() -> tuple[float, float, list[dict], dict[str, dict]]:
     return current, current - reserved, positions, settled
 
 
-def _clear_injury(player_name: str, game_id: str, quote_time: float, now: float,
-                  max_age: float = 24 * 3600) -> bool:
-    rows = db.q("SELECT payload,fetched_at FROM nfl_research_context_observations "
+def classify_availability(status: object) -> str:
+    value = str(status or "").strip().lower()
+    if value in {"active", "available", "healthy", "cleared"}:
+        return "available"
+    if value in {"questionable", "probable", "game time decision", "uncertain"}:
+        return "questionable_uncertain"
+    if value == "doubtful":
+        return "doubtful"
+    if value in {"out", "ruled out", "inactive", "ir", "pup", "suspended"}:
+        return "ruled_out"
+    return "unresolved"
+
+
+def _availability_evidence(player_name: str, game_id: str, quote_time: float,
+                           now: float, max_age: float) -> tuple[dict | None, str]:
+    rows = db.q("SELECT * FROM nfl_research_context_observations "
                 "WHERE game_id=? AND subject=? AND kind IN ('offensive_injury','qb_availability') "
                 "AND fetched_at<=? ORDER BY fetched_at DESC LIMIT 1", (game_id, player_name, now))
-    if not rows or rows[0]["fetched_at"] < quote_time - max_age or now - rows[0]["fetched_at"] > max_age:
-        return False
-    status = str(json.loads(rows[0]["payload"]).get("status") or "").lower()
-    return status in {"active", "available", "healthy", "cleared"}
+    if not rows:
+        return None, "availability_unresolved"
+    row = rows[0]
+    if row["fetched_at"] < quote_time - max_age or now - row["fetched_at"] > max_age:
+        return row, "stale_availability"
+    state = classify_availability(json.loads(row["payload"]).get("status"))
+    return row, "available" if state == "available" else f"availability_{state}"
+
+
+def _clear_injury(player_name: str, game_id: str, quote_time: float, now: float,
+                  max_age: float = 24 * 3600) -> bool:
+    return _availability_evidence(player_name, game_id, quote_time, now, max_age)[1] == "available"
 
 
 def _frozen_quotes(now: float) -> list[tuple[str, dict, dict]]:
@@ -207,6 +228,97 @@ def _frozen_quotes(now: float) -> list[tuple[str, dict, dict]]:
         for quote in payload.get("projections", []):
             out.append((freeze["freeze_sha"], payload["metadata"], quote))
     return out
+
+
+def _paired_quotes(now: float) -> list[tuple[str, dict, dict]]:
+    out = []
+    for row in db.q("SELECT * FROM paper_prop_quote_pairings WHERE created_at<=?", (now,)):
+        if hashlib.sha256(row["payload"].encode()).hexdigest() != row["pair_sha256"]:
+            raise ValueError("paper quote pairing hash mismatch")
+        source_freeze = db.q1("SELECT payload FROM nfl_prop_research_freezes WHERE freeze_sha=?",
+                              (row["freeze_sha"],))
+        if not source_freeze or hashlib.sha256(source_freeze["payload"].encode()).hexdigest() != row["freeze_sha"]:
+            raise ValueError("paper quote pairing source freeze hash mismatch")
+        payload = json.loads(row["payload"])
+        if payload["quote"]["quote_id"] != row["quote_id"] or payload["frozen_quote_id"] != row["frozen_quote_id"]:
+            raise ValueError("paper quote pairing identity mismatch")
+        out.append((row["freeze_sha"], payload["metadata"], payload["quote"]))
+    return out
+
+
+def pair_batch(batch_id: str, now: float | None = None) -> dict:
+    """Pair new immutable market observations to unchanged frozen point/sigma inputs."""
+    stamp = time.time() if now is None else now
+    policy = active_policy()
+    register_policy(policy, stamp)
+    batch = db.q1("SELECT * FROM nfl_prop_capture_batches WHERE batch_id=?", (batch_id,))
+    if not batch or batch["retrieved_at"] > stamp:
+        raise ValueError("prop batch is missing or not yet observed")
+    anchors: dict[tuple[str, str, str], list[tuple[str, dict, dict]]] = defaultdict(list)
+    for freeze_sha, metadata, quote in _frozen_quotes(stamp):
+        if quote["market"] in MARKETS - {"moneyline"}:
+            anchors[(quote["canonical_game_id"], quote["player_id"], quote["market"])].append(
+                (freeze_sha, metadata, quote))
+    counts: Counter[str] = Counter()
+    for source in db.q("SELECT * FROM nfl_prop_snapshots WHERE batch_id=? AND line_type='main' "
+                       "ORDER BY id", (batch_id,)):
+        if source["market"] not in MARKETS - {"moneyline"} or source["side"] not in {"over", "under"}:
+            continue
+        qid = source["id"]
+        existing = db.q1("SELECT pair_sha256 FROM paper_prop_quote_pairings WHERE quote_id=?", (qid,))
+        if existing:
+            counts["already_paired"] += 1
+            continue
+        candidates = anchors.get((source["canonical_game_id"], source["player_id"], source["market"]), [])
+        reason = None
+        if not candidates:
+            reason = "no_frozen_projection"
+        elif len({item[0] for item in candidates}) != 1:
+            reason = "multiple_frozen_projections"
+        elif source["retrieved_at"] < max(float(item[1].get("created_at") or 0) for item in candidates):
+            reason = "quote_predates_projection_freeze"
+        elif source["retrieved_at"] >= source["kickoff_utc"] or not source["provider_updated_at"] or \
+                source["provider_updated_at"] > source["retrieved_at"]:
+            reason = "quote_timestamp_unresolved"
+        else:
+            first = candidates[0][2]
+            signature = {(x[2]["projection"], x[2]["uncertainty_sigma"], x[2]["model_version"],
+                          x[2]["kickoff_utc"], x[2]["player_name"]) for x in candidates}
+            if len(signature) != 1 or source["kickoff_utc"] != first["kickoff_utc"] or \
+                    source["player_name"] != first["player_name"]:
+                reason = "frozen_projection_identity_conflict"
+            elif any(not _valid_sigma(x[2]["uncertainty_sigma"]) or
+                     abs(.5 * math.erfc((x[2]["line"] - x[2]["projection"]) /
+                                          (x[2]["uncertainty_sigma"] * math.sqrt(2))) -
+                         x[2]["probability_over"]) > 1e-4 for x in candidates):
+                reason = "frozen_uncertainty_not_supported"
+        if reason:
+            counts[reason] += 1
+            db.ex("INSERT OR IGNORE INTO paper_opportunity_skips VALUES(?,?,?,?)",
+                  (policy["version"], qid, reason, stamp))
+            continue
+        freeze_sha, original_metadata, frozen = min(candidates, key=lambda x: x[2]["quote_id"])
+        over = .5 * math.erfc((source["line"] - frozen["projection"]) /
+                              (frozen["uncertainty_sigma"] * math.sqrt(2)))
+        over = min(max(over, 1e-6), 1 - 1e-6)
+        quote = {**frozen, "quote_id": qid, "batch_id": batch_id,
+                 "sportsbook": source["sportsbook"], "line": source["line"],
+                 "side": source["side"], "price": source["price"],
+                 "observed_at": source["retrieved_at"],
+                 "provider_updated_at": source["provider_updated_at"],
+                 "probability_over": round(over, 6), "probability_under": round(1 - over, 6),
+                 "raw_difference": round(frozen["projection"] - source["line"], 4)}
+        frozen_signature = original_metadata.get("model_hash") or hashlib.sha256(
+            _json({"model_version": frozen["model_version"], "metadata": original_metadata}).encode()).hexdigest()
+        body = _json({"metadata": {**original_metadata, "source_batch_id": batch_id,
+                                    "model_signature": frozen_signature},
+                      "frozen_quote_id": frozen["quote_id"], "quote": quote})
+        digest = hashlib.sha256(body.encode()).hexdigest()
+        db.ex("INSERT INTO paper_prop_quote_pairings VALUES(?,?,?,?,?,?)",
+              (qid, freeze_sha, frozen["quote_id"], digest, body, stamp))
+        counts["paired"] += 1
+    return {"batch_id": batch_id, "paired": counts.pop("paired", 0),
+            "skipped": dict(counts)}
 
 
 def _game_moneylines(now: float) -> list[tuple[dict, dict, dict]]:
@@ -271,14 +383,17 @@ def opportunity_distribution(now: float | None = None) -> dict:
 def current_opportunities(now: float | None = None) -> list[dict]:
     stamp = time.time() if now is None else now
     rows = []
-    for freeze_sha, _, quote in _frozen_quotes(stamp):
+    for freeze_sha, _, quote in _frozen_quotes(stamp) + _paired_quotes(stamp):
+        source = db.q1("SELECT provider_updated_at FROM nfl_prop_snapshots WHERE id=?",
+                       (quote["quote_id"],))
+        observed = source["provider_updated_at"] if source else None
         if (quote.get("market") not in MARKETS or quote.get("line") is None or
                 quote.get("projection") is None or quote.get("price") is None or
                 not _valid_price(quote["price"]) or
                 not _valid_probability(quote.get("probability_over")) or
                 not _valid_probability(quote.get("probability_under")) or
-                not quote["observed_at"] <= stamp < quote["kickoff_utc"] or
-                stamp - quote["observed_at"] > 15 * 60):
+                observed is None or not observed <= stamp < quote["kickoff_utc"] or
+                stamp - observed > 15 * 60):
             continue
         rows.append({"freeze_sha": freeze_sha, "quote_id": quote["quote_id"],
                      "game_id": quote["canonical_game_id"], "player": quote["player_name"],
@@ -289,7 +404,7 @@ def current_opportunities(now: float | None = None) -> list[dict]:
                      "model_probability": quote["probability_over"] if quote["side"] == "over"
                      else quote["probability_under"],
                      "market_implied_probability": implied_probability(quote["price"]),
-                     "quote_observed_at": quote["observed_at"], "kickoff_utc": quote["kickoff_utc"]})
+                     "quote_observed_at": observed, "kickoff_utc": quote["kickoff_utc"]})
     return rows
 
 
@@ -299,7 +414,12 @@ def _slate_day(kickoff: float, policy: dict) -> str:
 
 def _ordered_frozen_quotes(now: float) -> list[tuple[str, dict, dict]]:
     # Freshest qualifying book wins within a player/market. A stable ID breaks ties.
-    return sorted(_frozen_quotes(now), key=lambda item: (-item[2]["observed_at"], item[2]["quote_id"]))
+    candidates = _frozen_quotes(now) + _paired_quotes(now)
+    observed = {row["id"]: row["provider_updated_at"] for row in
+                db.q("SELECT id,provider_updated_at FROM nfl_prop_snapshots WHERE provider_updated_at IS NOT NULL")}
+    return sorted(candidates, key=lambda item: (-observed.get(item[2]["quote_id"],
+                                                            item[2]["observed_at"]),
+                                                item[2]["quote_id"]))
 
 
 def _prop_position_limit(policy: dict, quote: dict, stake: float) -> str | None:
@@ -345,6 +465,8 @@ def evaluate(policy: dict, now: float | None = None) -> dict:
                        (source["provider"], source["provider_player_id"])) if source else None)
         player = (db.q1("SELECT player_name FROM nfl_prop_players WHERE player_id=?",
                         (source["player_id"],)) if source else None)
+        quote_observed_at = source["provider_updated_at"] if source else None
+        availability_row = None
         if (not source or source["batch_id"] != metadata.get("source_batch_id") or
                 any(source[field] != quote.get(alias) for field, alias in
                     (("canonical_game_id", "canonical_game_id"), ("player_id", "player_id"),
@@ -379,17 +501,21 @@ def evaluate(policy: dict, now: float | None = None) -> dict:
               not _valid_probability(quote.get("probability_under")) or
               not _valid_sigma(quote["uncertainty_sigma"])):
             reason = "invalid_price_or_probability"
+        elif quote_observed_at is None or quote_observed_at > quote["observed_at"]:
+            reason = "quote_timestamp_unresolved"
         elif stamp >= quote["kickoff_utc"] or stamp < quote["observed_at"]:
             reason = "not_prospective"
-        elif stamp - quote["observed_at"] > policy["quote_freshness_seconds"]:
+        elif stamp - quote_observed_at > policy["quote_freshness_seconds"]:
             reason = "stale_quote"
         elif not policy["minimum_price"] <= quote["price"] <= policy["maximum_price"]:
             reason = "price_outside_policy"
-        elif not _clear_injury(quote["player_name"], quote["canonical_game_id"],
-                               quote["observed_at"], stamp,
-                               policy.get("availability_max_age_seconds", 24 * 3600)):
-            reason = "injury_status_unresolved"
         else:
+            availability_row, availability_state = _availability_evidence(
+                quote["player_name"], quote["canonical_game_id"], quote_observed_at, stamp,
+                policy.get("availability_max_age_seconds", 24 * 3600))
+            if availability_state != "available":
+                reason = availability_state
+        if reason is None:
             probability = quote["probability_over"] if quote["side"] == "over" else quote["probability_under"]
             market_probability = implied_probability(quote["price"])
             difference = quote["projection"] - quote["line"]
@@ -408,18 +534,25 @@ def evaluate(policy: dict, now: float | None = None) -> dict:
             db.ex("INSERT OR IGNORE INTO paper_opportunity_skips VALUES(?,?,?,?)",
                   (policy["version"], qid, reason, stamp))
             continue
-        signature = metadata.get("model_hash") or hashlib.sha256(
+        signature = metadata.get("model_hash") or metadata.get("model_signature") or hashlib.sha256(
             _json({"model_version": quote["model_version"], "metadata": metadata}).encode()).hexdigest()
         pid = hashlib.sha256(f"{policy['version']}:{freeze_sha}:{qid}".encode()).hexdigest()
         db.ex("INSERT OR IGNORE INTO paper_positions(id,account_id,policy_version,freeze_sha,quote_id,"
               "game_id,player_id,player_name,market,side,line,odds,sportsbook,model_projection,"
               "model_probability,market_probability,quote_observed_at,created_at,kickoff_utc,"
-              "model_version,model_hash,stake,policy_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+              "model_version,model_hash,stake,policy_hash,time_to_kickoff_seconds,quote_age_seconds,"
+              "availability_observed_at,availability_age_seconds,availability_observation_id,"
+              "availability_source_url,probability_difference,projection_line_difference) "
+              "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
               (pid, ACCOUNT, policy["version"], freeze_sha, qid, quote["canonical_game_id"],
                quote["player_id"], quote["player_name"], quote["market"], quote["side"],
                quote["line"], quote["price"], quote["sportsbook"], quote["projection"],
-               probability, market_probability, quote["observed_at"], stamp,
-               quote["kickoff_utc"], quote["model_version"], signature, stake, policy_hash(policy)))
+               probability, market_probability, quote_observed_at, stamp,
+               quote["kickoff_utc"], quote["model_version"], signature, stake, policy_hash(policy),
+               quote["kickoff_utc"] - stamp, stamp - quote_observed_at,
+               availability_row["fetched_at"], stamp - availability_row["fetched_at"],
+               availability_row["observation_sha"], availability_row["source_url"],
+               probability - market_probability, difference))
         counts["created"] += 1
     if "moneyline" in policy["eligible_markets"]:
         counts.update(_evaluate_game_moneylines(policy, stamp))
@@ -489,6 +622,40 @@ def _evaluate_game_moneylines(policy: dict, now: float) -> Counter[str]:
     return counts
 
 
+def _graded_quote_id(position: dict) -> tuple[int, bool]:
+    pairing = db.q1("SELECT * FROM paper_prop_quote_pairings WHERE quote_id=?", (position["quote_id"],))
+    if not pairing:
+        return position["quote_id"], False
+    if pairing["freeze_sha"] != position["freeze_sha"] or \
+            hashlib.sha256(pairing["payload"].encode()).hexdigest() != pairing["pair_sha256"]:
+        raise ValueError("paper position quote pairing provenance mismatch")
+    payload = json.loads(pairing["payload"])
+    if payload["quote"]["quote_id"] != position["quote_id"] or \
+            payload["frozen_quote_id"] != pairing["frozen_quote_id"]:
+        raise ValueError("paper position quote pairing identity mismatch")
+    return pairing["frozen_quote_id"], True
+
+
+def _paired_prop_result(position: dict, grade: dict) -> tuple[str, str | None, str | None, str | None]:
+    if (grade.get("canonical_game_id") != position["game_id"] or
+            grade.get("player_id") != position["player_id"] or
+            grade.get("market") != position["market"]):
+        raise ValueError("frozen prop grade does not match PAPER position identity")
+    status = grade.get("player_status")
+    actual = grade.get("actual_stat")
+    if grade.get("research_statistical_result") == "void" and status in {"inactive", "not_applicable"}:
+        statistical = "void"
+    elif status == "active" and isinstance(actual, (int, float)) and not isinstance(actual, bool) and math.isfinite(actual):
+        statistical = "push" if actual == position["line"] else (
+            "won" if (actual > position["line"]) == (position["side"] == "over") else "lost")
+    else:
+        return "pending", None, None, None
+    rules_sha, rules = nfl_prop_rules.load_rules()
+    interpretation, _ = nfl_prop_rules.interpret(position["sportsbook"], statistical, status,
+                                                grade.get("participation_evidence"), rules)
+    return RESULTS.get(interpretation, "pending"), statistical, rules_sha, _json(rules["books"][position["sportsbook"]])
+
+
 def settle(now: float | None = None) -> int:
     """Append one paper revision per new sourced prop-grade revision."""
     stamp = time.time() if now is None else now
@@ -497,35 +664,48 @@ def settle(now: float | None = None) -> int:
         if position["source_kind"] == "frozen_game_research":
             grades = db.q("SELECT * FROM nfl_research_grades WHERE freeze_sha=? AND game_id=? "
                           "ORDER BY revision", (position["freeze_sha"], position["game_id"]))
+            graded_quote_id, paired = None, False
         else:
+            graded_quote_id, paired = _graded_quote_id(position)
             grades = db.q("SELECT * FROM nfl_prop_grade_revisions WHERE freeze_sha=? AND quote_id=? "
-                          "ORDER BY revision", (position["freeze_sha"], position["quote_id"]))
+                          "ORDER BY revision", (position["freeze_sha"], graded_quote_id))
         for grade in grades:
             previous = db.q1("SELECT MAX(grade_revision) AS last_grade,MAX(revision) AS last_revision "
                              "FROM paper_settlement_revisions WHERE position_id=?", (position["id"],))
             if previous["last_grade"] is not None and grade["revision"] <= previous["last_grade"]:
                 continue
             body = json.loads(grade["payload"])
+            statistical, rules_sha, rule_snapshot = None, None, None
             if position["source_kind"] == "frozen_game_research":
                 home, away = grade["home_score"], grade["away_score"]
                 result = ("pending" if home == away else "win" if
                           (home > away) == (position["side"] == "home") else "loss")
                 evidence_sha = hashlib.sha256(grade["payload"].encode()).hexdigest()
             else:
-                matching = (body.get("sportsbook") == position["sportsbook"] and
-                            body.get("frozen_line") == position["line"] and
-                            body.get("frozen_side") == position["side"] and
-                            body.get("frozen_price") == position["odds"])
-                result = RESULTS.get(body.get("sportsbook_settlement_interpretation")) if matching else None
+                if paired:
+                    result, statistical, rules_sha, rule_snapshot = _paired_prop_result(position, body)
+                else:
+                    matching = (body.get("sportsbook") == position["sportsbook"] and
+                                body.get("frozen_line") == position["line"] and
+                                body.get("frozen_side") == position["side"] and
+                                body.get("frozen_price") == position["odds"])
+                    result = RESULTS.get(body.get("sportsbook_settlement_interpretation")) if matching else None
+                    statistical = body.get("research_statistical_result")
+                    rules_sha = body.get("rules_sha256")
+                    rule_snapshot = _json(body["rule_snapshot"]) if body.get("rule_snapshot") else None
                 evidence_sha = grade["evidence_sha"]
             result = result or "pending"
             stake = position["stake"]
             pnl = (stake * (position["odds"] / 100 if position["odds"] > 0 else 100 / -position["odds"]) if result == "win"
                    else -stake if result == "loss" else 0.0)
             digest = hashlib.sha256(grade["payload"].encode()).hexdigest()
-            db.ex("INSERT INTO paper_settlement_revisions VALUES(?,?,?,?,?,?,?,?)",
+            db.ex("INSERT INTO paper_settlement_revisions(position_id,revision,grade_revision,result,"
+                  "profit_loss,source_evidence_sha,source_grade_sha,recorded_at,"
+                  "source_frozen_quote_id,research_statistical_result,rules_sha256,rule_snapshot_json) "
+                  "VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                   (position["id"], (previous["last_revision"] or 0) + 1, grade["revision"],
-                   result, pnl, evidence_sha, digest, stamp))
+                   result, pnl, evidence_sha, digest, stamp,
+                   graded_quote_id, statistical, rules_sha, rule_snapshot))
             added += 1
     return added
 
@@ -536,13 +716,45 @@ def needs_settlement() -> bool:
             latest = db.q1("SELECT MAX(revision) AS n FROM nfl_research_grades WHERE freeze_sha=? "
                            "AND game_id=?", (position["freeze_sha"], position["game_id"]))
         else:
+            graded_quote_id, _ = _graded_quote_id(position)
             latest = db.q1("SELECT MAX(revision) AS n FROM nfl_prop_grade_revisions WHERE freeze_sha=? "
-                           "AND quote_id=?", (position["freeze_sha"], position["quote_id"]))
+                           "AND quote_id=?", (position["freeze_sha"], graded_quote_id))
         used = db.q1("SELECT MAX(grade_revision) AS n FROM paper_settlement_revisions WHERE position_id=?",
                      (position["id"],))
         if (latest["n"] or 0) > (used["n"] or 0):
             return True
     return False
+
+
+def availability_health(now: float | None = None) -> dict:
+    stamp = time.time() if now is None else now
+    policy = active_policy()
+    players = {(q["canonical_game_id"], q["player_name"]) for _, _, q in _frozen_quotes(stamp)
+               if 0 < q["kickoff_utc"] - stamp <= 24 * 3600}
+    states: Counter[str] = Counter()
+    latest = None
+    for game_id, player_name in players:
+        row, state = _availability_evidence(player_name, game_id, stamp, stamp,
+                                            policy["availability_max_age_seconds"])
+        states[state] += 1
+        if row:
+            latest = max(latest or row["fetched_at"], row["fetched_at"])
+    return {"players_in_frozen_upcoming_games": len(players),
+            "last_observed_at": latest, "status_counts": dict(states),
+            "maximum_age_seconds": policy["availability_max_age_seconds"]}
+
+
+def _later_quote_history(position: dict) -> dict:
+    if position["source_kind"] != "frozen_prop_research":
+        return {"count": 0, "latest": None}
+    rows = db.q("SELECT id,line,price,sportsbook,provider_updated_at,retrieved_at "
+                "FROM nfl_prop_snapshots WHERE canonical_game_id=? AND player_id=? AND market=? "
+                "AND side=? AND sportsbook=? AND line_type='main' AND retrieved_at>? "
+                "AND retrieved_at<? AND provider_updated_at<? ORDER BY provider_updated_at DESC,id DESC",
+                (position["game_id"], position["player_id"], position["market"],
+                 position["side"], position["sportsbook"], position["created_at"],
+                 position["kickoff_utc"], position["kickoff_utc"]))
+    return {"count": len(rows), "latest": rows[0] if rows else None}
 
 
 def dashboard(now: float | None = None) -> dict:
@@ -561,6 +773,10 @@ def dashboard(now: float | None = None) -> dict:
             row["n"] += 1
             row["profit_loss"] += settled[p["id"]]["profit_loss"]
         return dict(out)
+    def decorate(p: dict) -> dict:
+        return {**p, "label": "PAPER / EXPERIMENTAL — NOT A REAL BETTING RECOMMENDATION",
+                "later_same_market_observations": _later_quote_history(p)}
+    policy = active_policy()
     return {"label": "PAPER / EXPERIMENTAL / NOT A REAL BETTING RECOMMENDATION",
             "starting_bankroll": account["starting_bankroll"] if account else example_policy()["starting_bankroll"],
             "current_bankroll": round(current, 2), "available_bankroll": round(available, 2),
@@ -571,13 +787,20 @@ def dashboard(now: float | None = None) -> dict:
             "roi": round(profit / wagered, 6) if wagered else None,
             "by_market": group("market"), "by_model_version": group("model_version"),
             "by_policy_version": group("policy_version"),
-            "open": open_positions[-20:],
+            "open": [decorate(p) for p in open_positions[-20:]],
             "current_opportunities": current_opportunities(stamp),
-            "recent": [{**p, "settlement": settled.get(p["id"])} for p in positions[-20:][::-1]],
-            "settled": [{**p, "settlement": settled[p["id"]]} for p in resolved[-20:][::-1]],
+            "recent": [{**decorate(p), "settlement": settled.get(p["id"])}
+                       for p in positions[-20:][::-1]],
+            "settled": [{**decorate(p), "settlement": settled[p["id"]]}
+                        for p in resolved[-20:][::-1]],
             "opportunity_distribution": opportunity_distribution(stamp),
+            "availability": availability_health(stamp),
             "skip_reasons": dict(Counter(r["reason"] for r in db.q(
-                "SELECT reason FROM paper_opportunity_skips")))}
+                "SELECT reason FROM paper_opportunity_skips WHERE policy_version=?",
+                (policy["version"],)))),
+            "skip_reasons_24h": dict(Counter(r["reason"] for r in db.q(
+                "SELECT reason FROM paper_opportunity_skips WHERE policy_version=? AND observed_at>=?",
+                (policy["version"], stamp - 86400))))}
 
 
 def main() -> None:

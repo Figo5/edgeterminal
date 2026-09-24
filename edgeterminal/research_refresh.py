@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 
 from . import db, engine, nfl_forward_grading, nfl_forward_weekly
-from . import nfl_market_capture, nfl_prop_result_ingest, nfl_props, paper_research
+from . import nfl_market_capture, nfl_prop_capture_ops, nfl_prop_result_ingest, paper_research
 from .config import ROOT, settings
 from .integrity import parse_time
 from .nfl_context_observations import capture_snapshot
@@ -96,6 +96,36 @@ def _context(events: list[dict], now: float) -> dict:
             "qb_start_source": "unavailable; no timestamp-safe announced starter feed"}
 
 
+def _availability_interval(now: float, events: list[dict]) -> int:
+    nearest = min((e["kickoff_utc"] - now for e in events if e["kickoff_utc"] > now),
+                  default=float("inf"))
+    if nearest <= 15 * 60:
+        return 5 * 60
+    if nearest <= 60 * 60:
+        return 15 * 60
+    if nearest <= 6 * 3600:
+        return 60 * 60
+    return 6 * 3600
+
+
+def _availability(events: list[dict], now: float) -> dict:
+    due = [e for e in events if 0 < e["kickoff_utc"] - now <= 24 * 3600]
+    if not due:
+        return {"games": 0, "observations": 0}
+    injuries, source, is_demo = registry.injuries("NFL")
+    if is_demo or source == "unavailable":
+        raise ValueError("timestamped live ESPN availability source unavailable")
+    count = 0
+    for game in due:
+        teams = {game["home_team"], game["away_team"]}
+        snapshot = {"game": {"id": game["id"], "kickoff_utc": game["start_time"]},
+                    "injuries": [i for i in injuries if i.get("team") in teams],
+                    "weather": {}}
+        count += len(capture_snapshot(snapshot, now=now))
+    return {"games": len(due), "observations": count, "source": source,
+            "absence_from_injury_feed": "unresolved, never assumed available"}
+
+
 def _week_due(events: list[dict], now: float) -> tuple[int, int] | None:
     weeks: dict[tuple[int, int], float] = {}
     for event in events:
@@ -110,15 +140,6 @@ def _week_due(events: list[dict], now: float) -> tuple[int, int] | None:
         return None
     _, season, week = min(eligible)
     return season, week
-
-
-def _prop_capture_due(season: int, week: int, events: list[dict], now: float) -> bool:
-    first = min(e["kickoff_utc"] for e in events if e["id"].startswith(f"nfl-{season}-reg-{week:02d}-"))
-    prefix = f"nfl-{season}-reg-{week:02d}-%"
-    existing = db.q1("SELECT 1 FROM nfl_prop_snapshots WHERE canonical_game_id LIKE ? LIMIT 1", (prefix,))
-    return (0 < first - now <= 24 * 3600 and not existing and
-            bool(settings.sportsgameodds_api_key) and
-            _last_attempt(f"prop_capture_{season}_{week:02d}") is None)
 
 
 def _latest_prop_freeze() -> str | None:
@@ -165,7 +186,11 @@ def status(now: float | None = None) -> dict:
             "data_freshness": {"last_prop_quote_at": (db.q1(
                 "SELECT MAX(retrieved_at) AS t FROM nfl_prop_snapshots") or {}).get("t"),
                 "last_game_quote_at": (db.q1(
-                    "SELECT MAX(fetched_at) AS t FROM odds_snapshots WHERE sport='NFL' AND is_demo=0") or {}).get("t")},
+                    "SELECT MAX(fetched_at) AS t FROM odds_snapshots WHERE sport='NFL' AND is_demo=0") or {}).get("t"),
+                "last_availability_at": (db.q1(
+                    "SELECT MAX(fetched_at) AS t FROM nfl_research_context_observations "
+                    "WHERE kind IN ('offensive_injury','qb_availability')") or {}).get("t")},
+            "sportsgameodds": nfl_prop_capture_ops.health(stamp, events),
             "provider_health": steps,
             "errors": [{"step": row["name"], "detail": row["detail"],
                         "attempted_at": row["attempted_at"]} for row in steps if not row["success"]],
@@ -216,13 +241,25 @@ def _run_locked(now: float) -> dict:
                                   steps[weekly_name]["result"].get("market_capture"))
         if not freeze_captured_market and _due(market_name, now, 6 * 3600):
             attempt(market_name, lambda: nfl_market_capture.capture_week(season, number, now=now))
-        if _prop_capture_due(season, number, events, now):
-            attempt(f"prop_capture_{season}_{number:02d}",
-                    lambda: nfl_props.capture_week(season, number, retrieved_at=now))
+    capture_succeeded = False
+    for (season, number), game_ids in nfl_prop_capture_ops.plan(events, now)["due"].items():
+        name = f"prop_near_game_{season}_{number:02d}"
+        attempt(name, lambda s=season, w=number, ids=game_ids:
+                nfl_prop_capture_ops.capture(s, w, ids, now))
+        if steps[name]["ok"]:
+            capture_succeeded = True
+            batch_id = steps[name]["result"]["batch_id"]
+            attempt(f"prop_pair_{season}_{number:02d}",
+                    lambda bid=batch_id: paper_research.pair_batch(bid, now=now))
     if any(0 < e["kickoff_utc"] - now <= nfl_market_capture.WINDOW_S for e in events):
         attempt("near_kickoff_market", lambda: _market(now))
     if any(0 < e["kickoff_utc"] - now <= 6 * 3600 for e in events) and _due("context", now, CONTEXT_INTERVAL):
         attempt("context", lambda: _context(events, now))
+    availability_due = (any(0 < e["kickoff_utc"] - now <= 24 * 3600 for e in events) and
+                        (capture_succeeded or _due("availability", now,
+                                                   _availability_interval(now, events))))
+    if availability_due:
+        attempt("availability", lambda: _availability(events, now))
     if any(e["kickoff_utc"] <= now - GAME_DELAY for e in events) and _due("game_grading", now, RESULT_INTERVAL):
         attempt("game_grading", lambda: _game_grading(now))
     freeze_sha = _latest_prop_freeze()
@@ -232,9 +269,9 @@ def _run_locked(now: float) -> dict:
         attempt("paper_settlement", paper_research.settle)
     policy = paper_research.active_policy()
     registered = db.q1("SELECT 1 FROM paper_policies WHERE version=?", (policy["version"],))
-    if not registered or (policy["enabled"] and (
-            paper_research.current_opportunities(now) or
-            any(0 < e["kickoff_utc"] - now <= policy["quote_freshness_seconds"] for e in events))):
+    if (not availability_due or steps["availability"]["ok"]) and (not registered or (policy["enabled"] and (
+            capture_succeeded or paper_research.current_opportunities(now) or
+            any(0 < e["kickoff_utc"] - now <= policy["quote_freshness_seconds"] for e in events)))):
         attempt("paper_policy", lambda: paper_research.evaluate(policy, now=now))
     cadence = interval(now, events)
     complete = time.time()

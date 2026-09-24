@@ -62,9 +62,10 @@ def test_prospective_position_idempotent_and_correction(research_db):
                   ("sportsgameodds", "a", "sgo:a", "A", 50))
         c.execute("INSERT INTO nfl_prop_snapshots(id,batch_id,canonical_game_id,provider_event_id,"
                   "player_id,provider_player_id,player_name,team,opponent,market,line,side,price,"
-                  "sportsbook,retrieved_at,kickoff_utc,provider,source) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                  "sportsbook,retrieved_at,kickoff_utc,provider,source,provider_updated_at) "
+                  "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                   (7, "batch", game, "event-1", "sgo:a", "a", "A", "ATL", "GB", "receptions",
-                   2.5, "over", -110, "fanduel", 50, 100, "sportsgameodds", "fixture"))
+                   2.5, "over", -110, "fanduel", 50, 100, "sportsgameodds", "fixture", 50))
         c.execute("INSERT INTO nfl_prop_research_freezes VALUES(?,?,?,?)", (freeze_sha, "batch", 60, payload))
     record({"game_id": game, "kind": "offensive_injury", "subject": "A",
             "payload": {"status": "available"}, "source_url": "fixture:roster",
@@ -187,11 +188,12 @@ def _fixture_prop_freeze(specs):
             away, home = game.split("-")[-2:]
             c.execute("INSERT INTO nfl_prop_snapshots(id,batch_id,canonical_game_id,provider_event_id,"
                       "player_id,provider_player_id,player_name,team,opponent,market,line,side,price,"
-                      "sportsbook,retrieved_at,kickoff_utc,provider,source,line_type) "
-                      "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                      "sportsbook,retrieved_at,kickoff_utc,provider,source,line_type,provider_updated_at) "
+                      "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                       (quote_id, "fixture-batch", game, "event-" + game, "sgo:" + player,
                        player, player, away.upper(), home.upper(), market, line, "over", price,
-                       book, observed, kickoff, "sportsgameodds", "fixture", spec.get("line_type", "main")))
+                       book, observed, kickoff, "sportsgameodds", "fixture",
+                       spec.get("line_type", "main"), observed))
             projections.append(dict(quote_id=quote_id, canonical_game_id=game,
                                     player_id="sgo:" + player, player_name=player,
                                     market=market, side="over", line=line, price=price,
@@ -235,12 +237,18 @@ def test_experimental_policy_freshest_quote_and_immutable_hash(research_db):
     assert result["skipped"]["sportsbook_unsupported"] == 1
     assert result["skipped"]["alternate_line_ineligible"] == 1
     assert result["skipped"]["stale_quote"] == 1
-    assert result["skipped"]["injury_status_unresolved"] == 1
+    assert result["skipped"]["availability_questionable_uncertain"] == 1
     position = db.q1("SELECT * FROM paper_positions")
     assert position["quote_id"] == 2 and position["sportsbook"] == "draftkings"
     assert position["policy_hash"] == paper_research.policy_hash(policy)
     assert position["model_hash"] == "model-fixture-sha"
     assert position["stake"] == 10
+    assert position["time_to_kickoff_seconds"] == 30
+    assert position["quote_age_seconds"] == 15
+    assert position["availability_observed_at"] == 65
+    assert position["availability_age_seconds"] == 5
+    assert position["probability_difference"] == pytest.approx(.9 - 110/210)
+    assert position["projection_line_difference"] == 2
     assert paper_research.evaluate(policy, now=71)["positions_created"] == 0
     assert db.q1("SELECT COUNT(*) n FROM paper_positions")["n"] == 1
     assert db.q1("SELECT reason FROM paper_opportunity_skips WHERE quote_id=1")["reason"] == (

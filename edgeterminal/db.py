@@ -73,6 +73,50 @@ BEGIN SELECT RAISE(ABORT, 'raw prop responses are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS nfl_prop_raw_no_delete BEFORE DELETE ON nfl_prop_raw_responses
 BEGIN SELECT RAISE(ABORT, 'raw prop responses cannot be deleted'); END;
 
+CREATE TABLE IF NOT EXISTS nfl_prop_api_request_attempts (
+  batch_id TEXT NOT NULL, page_number INTEGER NOT NULL,
+  attempted_at REAL NOT NULL, request_params TEXT NOT NULL,
+  PRIMARY KEY(batch_id,page_number));
+CREATE TRIGGER IF NOT EXISTS nfl_prop_api_attempt_no_update BEFORE UPDATE ON nfl_prop_api_request_attempts
+BEGIN SELECT RAISE(ABORT, 'prop API request attempts are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_prop_api_attempt_no_delete BEFORE DELETE ON nfl_prop_api_request_attempts
+BEGIN SELECT RAISE(ABORT, 'prop API request attempts cannot be deleted'); END;
+CREATE TABLE IF NOT EXISTS nfl_prop_api_request_results (
+  batch_id TEXT NOT NULL, page_number INTEGER NOT NULL,
+  completed_at REAL NOT NULL, http_status INTEGER,
+  response_sha256 TEXT, quota_json TEXT NOT NULL, error TEXT,
+  PRIMARY KEY(batch_id,page_number),
+  FOREIGN KEY(batch_id,page_number) REFERENCES nfl_prop_api_request_attempts(batch_id,page_number));
+CREATE TRIGGER IF NOT EXISTS nfl_prop_api_result_no_update BEFORE UPDATE ON nfl_prop_api_request_results
+BEGIN SELECT RAISE(ABORT, 'prop API request results are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_prop_api_result_no_delete BEFORE DELETE ON nfl_prop_api_request_results
+BEGIN SELECT RAISE(ABORT, 'prop API request results cannot be deleted'); END;
+
+CREATE TABLE IF NOT EXISTS nfl_prop_capture_attempts (
+  attempt_id TEXT PRIMARY KEY, batch_id TEXT NOT NULL UNIQUE,
+  season INTEGER NOT NULL, week INTEGER NOT NULL,
+  target_game_ids TEXT NOT NULL, attempted_at REAL NOT NULL,
+  completed_at REAL NOT NULL, success INTEGER NOT NULL,
+  requests_made INTEGER NOT NULL, responses_archived INTEGER NOT NULL,
+  events_returned INTEGER, quotes_stored INTEGER,
+  quota_json TEXT NOT NULL, provider_notices TEXT NOT NULL,
+  omitted_odds_count INTEGER, error TEXT);
+CREATE TRIGGER IF NOT EXISTS nfl_prop_capture_attempt_no_update BEFORE UPDATE ON nfl_prop_capture_attempts
+BEGIN SELECT RAISE(ABORT, 'prop capture attempts are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_prop_capture_attempt_no_delete BEFORE DELETE ON nfl_prop_capture_attempts
+BEGIN SELECT RAISE(ABORT, 'prop capture attempts cannot be deleted'); END;
+
+CREATE TABLE IF NOT EXISTS paper_prop_quote_pairings (
+  quote_id INTEGER PRIMARY KEY, freeze_sha TEXT NOT NULL,
+  frozen_quote_id INTEGER NOT NULL, pair_sha256 TEXT NOT NULL,
+  payload TEXT NOT NULL, created_at REAL NOT NULL,
+  FOREIGN KEY(freeze_sha) REFERENCES nfl_prop_research_freezes(freeze_sha),
+  FOREIGN KEY(quote_id) REFERENCES nfl_prop_snapshots(id));
+CREATE TRIGGER IF NOT EXISTS paper_prop_pairing_no_update BEFORE UPDATE ON paper_prop_quote_pairings
+BEGIN SELECT RAISE(ABORT, 'paper prop pairings are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS paper_prop_pairing_no_delete BEFORE DELETE ON paper_prop_quote_pairings
+BEGIN SELECT RAISE(ABORT, 'paper prop pairings cannot be deleted'); END;
+
 CREATE TABLE IF NOT EXISTS nfl_prop_snapshots (
   id INTEGER PRIMARY KEY AUTOINCREMENT, batch_id TEXT NOT NULL,
   canonical_game_id TEXT NOT NULL, provider_event_id TEXT NOT NULL,
@@ -168,6 +212,10 @@ CREATE TABLE IF NOT EXISTS paper_positions (
   quote_observed_at REAL NOT NULL, created_at REAL NOT NULL, kickoff_utc REAL NOT NULL,
   model_version TEXT NOT NULL, model_hash TEXT NOT NULL, stake REAL NOT NULL CHECK(stake>0),
   policy_hash TEXT,
+  time_to_kickoff_seconds REAL, quote_age_seconds REAL,
+  availability_observed_at REAL, availability_age_seconds REAL,
+  availability_observation_id TEXT, availability_source_url TEXT,
+  probability_difference REAL, projection_line_difference REAL,
   source_kind TEXT NOT NULL DEFAULT 'frozen_prop_research',
   FOREIGN KEY(policy_version) REFERENCES paper_policies(version));
 CREATE INDEX IF NOT EXISTS ix_paper_game ON paper_positions(game_id,created_at);
@@ -182,6 +230,8 @@ CREATE TABLE IF NOT EXISTS paper_settlement_revisions (
   result TEXT NOT NULL CHECK(result IN ('win','loss','push','void','pending')),
   profit_loss REAL NOT NULL, source_evidence_sha TEXT NOT NULL,
   source_grade_sha TEXT NOT NULL, recorded_at REAL NOT NULL,
+  source_frozen_quote_id INTEGER, research_statistical_result TEXT,
+  rules_sha256 TEXT, rule_snapshot_json TEXT,
   PRIMARY KEY(position_id,revision));
 CREATE TRIGGER IF NOT EXISTS paper_settlement_no_update BEFORE UPDATE ON paper_settlement_revisions
 BEGIN SELECT RAISE(ABORT, 'paper settlements are immutable'); END;
@@ -488,7 +538,15 @@ def conn() -> sqlite3.Connection:
             _ensure_columns(_conn, "nfl_prop_snapshots", {"source": "TEXT NOT NULL DEFAULT 'https://api.sportsgameodds.com/v2/events'",
                                                          "line_type": "TEXT NOT NULL DEFAULT 'main'",
                                                          "offer_index": "INTEGER NOT NULL DEFAULT 0"})
-            _ensure_columns(_conn, "paper_positions", {"policy_hash": "TEXT"})
+            _ensure_columns(_conn, "paper_positions", {
+                "policy_hash": "TEXT", "time_to_kickoff_seconds": "REAL",
+                "quote_age_seconds": "REAL", "availability_observed_at": "REAL",
+                "availability_age_seconds": "REAL", "probability_difference": "REAL",
+                "projection_line_difference": "REAL",
+                "availability_observation_id": "TEXT", "availability_source_url": "TEXT"})
+            _ensure_columns(_conn, "paper_settlement_revisions", {
+                "source_frozen_quote_id": "INTEGER", "research_statistical_result": "TEXT",
+                "rules_sha256": "TEXT", "rule_snapshot_json": "TEXT"})
             _conn.commit()
         return _conn
 

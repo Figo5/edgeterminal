@@ -29,7 +29,8 @@ def test_idle_refresh_is_idempotent_and_does_not_call_paid_provider(isolated, mo
         return {"ok": True, "events": 0}
     monkeypatch.setattr(research_refresh.engine, "refresh_schedule", schedule)
     monkeypatch.setattr(research_refresh, "_events", lambda _now: [])
-    monkeypatch.setattr(research_refresh.nfl_props, "capture_week",
+    monkeypatch.setattr(research_refresh, "_availability", lambda *_args: {"games": 0, "observations": 0})
+    monkeypatch.setattr(research_refresh.nfl_prop_capture_ops, "capture",
                         lambda *_args, **_kwargs: pytest.fail("paid provider called"))
     first = research_refresh.run(now=1000)
     second = research_refresh.run(now=1001)
@@ -42,25 +43,25 @@ def test_idle_refresh_is_idempotent_and_does_not_call_paid_provider(isolated, mo
     assert research_refresh.status(now=1001)["last_successful_research_refresh"] is not None
 
 
-def test_prop_capture_at_most_once_per_week_after_failed_attempt(isolated, monkeypatch):
+def test_prop_capture_waits_for_frozen_projection(isolated, monkeypatch):
     event = {"id": "nfl-2026-reg-04-atl-gb", "kickoff_utc": 100000.0,
              "start_time": "1970-01-02T03:46:40Z", "meta": {}}
     monkeypatch.setattr(research_refresh, "_events", lambda _now: [event])
+    monkeypatch.setattr(research_refresh, "_availability", lambda *_args: {"games": 1, "observations": 0})
     monkeypatch.setattr(research_refresh.engine, "refresh_schedule", lambda _sport: {"ok": True})
     monkeypatch.setattr(settings, "sportsgameodds_api_key", "fixture-key")
     calls = []
     def fail_capture(*_args, **_kwargs):
         calls.append(1)
-        raise TimeoutError("fixture provider timeout")
-    monkeypatch.setattr(research_refresh.nfl_props, "capture_week", fail_capture)
+        raise AssertionError("provider called without frozen projection")
+    monkeypatch.setattr(research_refresh.nfl_prop_capture_ops, "capture", fail_capture)
     monkeypatch.setattr(research_refresh.nfl_forward_weekly, "run", lambda **_kwargs: {"freeze": "fixture"})
     monkeypatch.setattr(research_refresh.nfl_market_capture, "capture_week",
                         lambda *_args, **_kwargs: {"target_games": 1, "rows_stored": 2})
     first = research_refresh.run(now=20000)
     second = research_refresh.run(now=20001)
-    assert not first["success"] and second["success"]
-    assert len(calls) == 1
-    assert first["steps"]["prop_capture_2026_04"]["ok"] is False
+    assert first["success"] and second["success"]
+    assert calls == []
     assert research_refresh.interval(99900, [event]) == 300
 
 

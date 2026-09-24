@@ -127,7 +127,7 @@ class SportsGameOddsProps:
         self.getter = getter
 
     def fetch(self, starts_after: float, starts_before: float,
-              batch_id: str | None = None) -> dict:
+              batch_id: str | None = None, include_alt_lines: bool = True) -> dict:
         if not self.api_key:
             raise ProviderError(PROVIDER, "SPORTSGAMEODDS_API_KEY is not configured")
         if starts_after >= starts_before:
@@ -142,25 +142,32 @@ class SportsGameOddsProps:
             params = {"leagueID": "NFL", "startsAfter": _utc(starts_after),
                       "startsBefore": _utc(starts_before), "started": "false",
                       "cancelled": "false", "oddsAvailable": "true",
-                      "includeAltLines": "true", "limit": 100}
+                      "includeAltLines": "true" if include_alt_lines else "false", "limit": 100}
             if cursor:
                 params["cursor"] = cursor
-            if self.getter is None:
-                status, body, headers = get_raw_meta(
-                    URL, params=params, headers={"x-api-key": self.api_key},
-                    provider=PROVIDER, timeout=30)
-                source_kind = "http_body"
-            else:
-                supplied = self.getter(URL, params=params, headers={"x-api-key": self.api_key},
-                                       provider=PROVIDER, retries=0)
-                if isinstance(supplied, tuple) and len(supplied) == 3:
-                    status, body, headers = supplied
+            db.ex("INSERT INTO nfl_prop_api_request_attempts VALUES(?,?,?,?)",
+                  (batch_id, page_number, time.time(), json.dumps(params, sort_keys=True)))
+            try:
+                if self.getter is None:
+                    status, body, headers = get_raw_meta(
+                        URL, params=params, headers={"x-api-key": self.api_key},
+                        provider=PROVIDER, timeout=30)
                     source_kind = "http_body"
                 else:
-                    status = 200
-                    body = json.dumps(supplied, separators=(",", ":")).encode()
-                    headers = {}
-                    source_kind = "fixture_serialized"
+                    supplied = self.getter(URL, params=params, headers={"x-api-key": self.api_key},
+                                           provider=PROVIDER, retries=0)
+                    if isinstance(supplied, tuple) and len(supplied) == 3:
+                        status, body, headers = supplied
+                        source_kind = "http_body"
+                    else:
+                        status = 200
+                        body = json.dumps(supplied, separators=(",", ":")).encode()
+                        headers = {}
+                        source_kind = "fixture_serialized"
+            except Exception as exc:
+                db.ex("INSERT INTO nfl_prop_api_request_results VALUES(?,?,?,?,?,?,?)",
+                      (batch_id, page_number, time.time(), None, None, "{}", type(exc).__name__))
+                raise
             selected_headers = _rate_headers(headers)
             selected_headers["capture_body_kind"] = source_kind
             with db.tx() as c:
@@ -168,6 +175,10 @@ class SportsGameOddsProps:
                           (batch_id, page_number, time.time(), status,
                            json.dumps(params, sort_keys=True), json.dumps(selected_headers, sort_keys=True),
                            hashlib.sha256(body).hexdigest(), body))
+                c.execute("INSERT INTO nfl_prop_api_request_results VALUES(?,?,?,?,?,?,?)",
+                          (batch_id, page_number, time.time(), status,
+                           hashlib.sha256(body).hexdigest(),
+                           json.dumps(selected_headers, sort_keys=True), None))
             rate_metadata.append(selected_headers)
             if status != 200:
                 raise ProviderError(PROVIDER, f"HTTP {status} from api.sportsgameodds.com/v2/events")
@@ -358,20 +369,30 @@ def _quotes(event: dict, game: dict, batch_id: str, retrieved_at: float) -> tupl
 
 
 def capture_week(season: int, week: int, provider: SportsGameOddsProps | None = None,
-                 retrieved_at: float | None = None, batch_id: str | None = None) -> dict:
+                 retrieved_at: float | None = None, batch_id: str | None = None,
+                 target_game_ids: set[str] | None = None) -> dict:
     stamp = time.time() if retrieved_at is None else retrieved_at
     schedule = _schedule(season, week)
     if not schedule:
         raise ValueError("no canonical, live NFL schedule for requested week")
-    kickoffs = [nfl_identity.kickoff_utc(g["start_time"]).timestamp() for g in schedule]
+    targets = ([g for g in schedule if g["id"] in target_game_ids]
+               if target_game_ids is not None else schedule)
+    if not targets or (target_game_ids is not None and {g["id"] for g in targets} != target_game_ids):
+        raise ValueError("requested prop games are not in the canonical live schedule")
+    kickoffs = [nfl_identity.kickoff_utc(g["start_time"]).timestamp() for g in targets]
     if stamp >= min(kickoffs):
-        raise ValueError("week has already started; explicit prop capture requires pre-week kickoff")
+        raise ValueError("target game already started; prop capture requires pre-kickoff games")
     batch_id = batch_id or str(uuid.uuid4())
     if db.q1("SELECT 1 FROM nfl_prop_capture_batches WHERE batch_id=?", (batch_id,)):
         raise ValueError("capture batch has already been sealed")
-    payload = (provider or SportsGameOddsProps()).fetch(min(kickoffs) - 4 * 3600,
-                                                        max(kickoffs) + 4 * 3600,
-                                                        batch_id=batch_id)
+    padding = 30 * 60 if target_game_ids is not None else 4 * 3600
+    client = provider or SportsGameOddsProps()
+    if target_game_ids is not None and isinstance(client, SportsGameOddsProps):
+        payload = client.fetch(min(kickoffs) - padding, max(kickoffs) + padding,
+                               batch_id=batch_id, include_alt_lines=False)
+    else:
+        payload = client.fetch(min(kickoffs) - padding, max(kickoffs) + padding,
+                               batch_id=batch_id)
     if not isinstance(payload, dict) or payload.get("success") is not True or not isinstance(payload.get("data"), list):
         raise ValueError("malformed SportsGameOdds response")
     raw = json.dumps({key: value for key, value in payload.items() if not key.startswith("_")},
@@ -447,12 +468,18 @@ def capture_week(season: int, week: int, provider: SportsGameOddsProps | None = 
         c.execute("INSERT INTO nfl_prop_capture_batches VALUES(?,?,?,?,?,?,?,?,?)",
                   (batch_id, PROVIDER, stamp, hashlib.sha256(raw.encode()).hexdigest(),
                    raw, len(seen), len(mapped), len(rows),
-                   json.dumps({"season": season, "week": week, "events": event_audits},
+                   json.dumps({"season": season, "week": week,
+                               "target_game_ids": sorted(target_game_ids) if target_game_ids is not None else None,
+                               "rate_headers": payload.get("_rate_headers", []),
+                               "provider_notices": payload.get("_notices", []),
+                               "events": event_audits},
                               sort_keys=True)))
         c.executemany("INSERT INTO nfl_prop_snapshots(" + ",".join(QUOTE_COLUMNS) + ") VALUES(" +
                       ",".join("?" for _ in QUOTE_COLUMNS) + ")",
                       [tuple(row[col] for col in QUOTE_COLUMNS) for row in rows])
-    return {"batch_id": batch_id, "provider": PROVIDER, "events_seen": len(seen),
+    return {"batch_id": batch_id, "provider": PROVIDER,
+            "target_game_ids": sorted(target_game_ids) if target_game_ids is not None else None,
+            "events_seen": len(seen),
             "events_mapped": len(mapped), "event_mapping_rate": len(mapped) / len(seen) if seen else None,
             "quotes_stored": len(rows), "markets": sorted({r["market"] for r in rows}),
             "bookmakers": sorted({r["sportsbook"] for r in rows}),
