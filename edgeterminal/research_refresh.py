@@ -9,7 +9,7 @@ import uuid
 from pathlib import Path
 
 from . import db, engine, nfl_forward_grading, nfl_forward_weekly
-from . import nfl_market_capture, nfl_prop_capture_ops, nfl_prop_result_ingest, paper_research
+from . import nfl_market_capture, nfl_prop_capture_ops, nfl_prop_result_ingest, paper_research, research_scheduler
 from .config import ROOT, settings
 from .integrity import parse_time
 from .nfl_context_observations import capture_snapshot
@@ -178,6 +178,18 @@ def status(now: float | None = None) -> dict:
                     "ORDER BY finished_at DESC LIMIT 1")
     steps = db.q("SELECT name,success,detail,attempted_at FROM research_refresh_steps "
                  "WHERE id IN (SELECT MAX(id) FROM research_refresh_steps GROUP BY name) ORDER BY name")
+    scheduler = research_scheduler.status()
+    tick = db.q1("SELECT started_at,finished_at,success FROM research_refresh_ticks "
+                 "ORDER BY started_at DESC LIMIT 1")
+    prop_health = nfl_prop_capture_ops.health(stamp, events)
+    tick_gap = stamp - tick["started_at"] if tick else None
+    warnings = list(prop_health["warnings"])
+    if prop_health["upcoming_capture_windows"] and tick_gap is None:
+        warnings.append("worker_tick_history_not_yet_available")
+    elif prop_health["upcoming_capture_windows"] and tick_gap > 12 * 60:
+        warnings.append("worker_tick_gap; Mac sleep, offline state, or stopped worker is possible")
+    if not scheduler["loaded"]:
+        warnings.append("research_launchagent_not_loaded")
     return {"readiness": "RESEARCH_ONLY", "designation": "PASS",
             "last_successful_research_refresh": success["finished_at"] if success else None,
             "last_attempt": latest["finished_at"] if latest else None,
@@ -190,11 +202,14 @@ def status(now: float | None = None) -> dict:
                 "last_availability_at": (db.q1(
                     "SELECT MAX(fetched_at) AS t FROM nfl_research_context_observations "
                     "WHERE kind IN ('offensive_injury','qb_availability')") or {}).get("t")},
-            "sportsgameodds": nfl_prop_capture_ops.health(stamp, events),
+            "sportsgameodds": prop_health,
             "provider_health": steps,
             "errors": [{"step": row["name"], "detail": row["detail"],
                         "attempted_at": row["attempted_at"]} for row in steps if not row["success"]],
-            "scheduler": "launchd LaunchAgent; service status via python -m edgeterminal.research_scheduler status"}
+            "scheduler": scheduler,
+            "worker_tick": tick,
+            "worker_tick_gap_seconds": tick_gap,
+            "operations_warnings": warnings}
 
 
 def run(now: float | None = None) -> dict:
@@ -285,6 +300,8 @@ def _run_locked(now: float) -> dict:
                json.dumps(output, sort_keys=True, default=str)))
     else:
         output["status"] = "no_work_due"
+    db.ex("INSERT INTO research_refresh_ticks VALUES(?,?,?,?)",
+          (run_id, now, complete, int(successful)))
     return output
 
 

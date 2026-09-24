@@ -38,6 +38,7 @@ def test_idle_refresh_is_idempotent_and_does_not_call_paid_provider(isolated, mo
     assert calls["schedule"] == 1
     assert second["status"] == "no_work_due"
     assert db.q1("SELECT COUNT(*) n FROM research_refresh_runs")["n"] == 1
+    assert db.q1("SELECT COUNT(*) n FROM research_refresh_ticks")["n"] == 2
     assert db.q1("SELECT COUNT(*) n FROM paper_accounts")["n"] == 1
     assert db.q1("SELECT COUNT(*) n FROM paper_positions")["n"] == 0
     assert research_refresh.status(now=1001)["last_successful_research_refresh"] is not None
@@ -72,6 +73,21 @@ def test_concurrent_read_endpoints_share_sqlite_safely(isolated):
                                    range(80)))
     assert all(status["designation"] == "PASS" and row["n"] == 0
                for status, row in outputs)
+
+
+def test_worker_gap_warning_requires_a_recorded_tick(isolated, monkeypatch):
+    monkeypatch.setattr(research_refresh, "_events", lambda _now: [])
+    monkeypatch.setattr(research_refresh.research_scheduler, "status",
+                        lambda: {"loaded": True, "installed": True})
+    monkeypatch.setattr(research_refresh.nfl_prop_capture_ops, "health",
+                        lambda *_args, **_kwargs: {"warnings": [],
+                            "upcoming_capture_windows": [{"game_id": "fixture"}]})
+    first = research_refresh.status(now=1000)
+    assert first["operations_warnings"] == ["worker_tick_history_not_yet_available"]
+    db.ex("INSERT INTO research_refresh_ticks VALUES(?,?,?,?)", ("tick", 1000, 1001, 1))
+    assert research_refresh.status(now=1300)["operations_warnings"] == []
+    late = research_refresh.status(now=1800)
+    assert any("sleep" in warning for warning in late["operations_warnings"])
 
 
 def test_launchagent_runs_background_worker_without_terminal():

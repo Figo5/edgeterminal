@@ -5,6 +5,8 @@ import json
 import re
 import time
 import uuid
+from datetime import datetime
+from zoneinfo import ZoneInfo
 
 from . import db, nfl_props
 from .config import settings
@@ -104,7 +106,7 @@ def plan(events: list[dict], now: float, *, key_configured: bool | None = None) 
         wait = frequency
         if last and not last["success"]:
             wait = max(wait, FAILURE_BACKOFF)
-        candidate = last["attempted_at"] + wait if last else now
+        candidate = last["attempted_at"] + wait if last else kickoff - 24 * 3600
         next_at = min(next_at, candidate) if next_at is not None else candidate
         if now >= candidate:
             due.setdefault((int(parts[1]), int(parts[3])), []).append(event)
@@ -166,15 +168,60 @@ def health(now: float | None = None, events: list[dict] | None = None) -> dict:
     rows = _attempts(stamp)
     latest = rows[0] if rows else None
     last_success = next((r for r in rows if r["success"]), None)
-    schedule = plan(events or [], stamp)
+    events = events or []
+    schedule = plan(events, stamp)
+    local_day = datetime.fromtimestamp(stamp, ZoneInfo("America/New_York"))
+    today_start = local_day.replace(hour=0, minute=0, second=0, microsecond=0).timestamp()
+    last_by_game = _latest_per_game(rows)
+    frozen = _frozen_games(stamp)
+    windows = []
+    missed_final = []
+    for event in events:
+        game_id = event.get("id")
+        if game_id not in frozen:
+            continue
+        kickoff = event["kickoff_utc"]
+        remaining = kickoff - stamp
+        if -24 * 3600 <= remaining <= 0:
+            near = [r for r in rows if game_id in json.loads(r["target_game_ids"])
+                    and kickoff - 15 * 60 <= r["attempted_at"] < kickoff and r["success"]]
+            if not near:
+                missed_final.append(game_id)
+        frequency = cadence(remaining)
+        if frequency is None or str(event.get("status") or "").upper() in INACTIVE:
+            continue
+        last = last_by_game.get(game_id)
+        wait = max(frequency, FAILURE_BACKOFF) if last and not last["success"] else frequency
+        expected = last["attempted_at"] + wait if last else kickoff - 24 * 3600
+        windows.append({"game_id": game_id, "kickoff_utc": kickoff,
+                        "cadence_seconds": frequency, "next_capture_due_at": expected,
+                        "last_attempt_at": last["attempted_at"] if last else None,
+                        "last_attempt_success": bool(last["success"]) if last else None,
+                        "overdue_seconds": max(0, stamp - expected)})
+    warnings = []
+    if any(w["overdue_seconds"] > 600 for w in windows) and not schedule["blocked_reason"]:
+        warnings.append("capture_window_overdue; no missing quote is fabricated")
+    if any(w["last_attempt_success"] and
+           stamp - w["last_attempt_at"] > w["cadence_seconds"] + 600 for w in windows):
+        warnings.append("last_capture_older_than_expected")
+    if missed_final:
+        warnings.append("final_pregame_capture_window_missed")
     return {"configured": schedule["key_configured"],
             "blocked_reason": schedule["blocked_reason"],
             "last_attempt_at": latest["attempted_at"] if latest else None,
             "last_success_at": last_success["completed_at"] if last_success else None,
             "last_error": latest["error"] if latest and not latest["success"] else None,
             "next_expected_at": schedule["next_at"],
+            "requests_today": db.q1("SELECT COUNT(*) n FROM nfl_prop_api_request_attempts "
+                                    "WHERE attempted_at>=? AND attempted_at<=?",
+                                    (today_start, stamp))["n"],
+            "requests_today_timezone": "America/New_York",
+            "requests_today_scope": "recorded_since_request_ledger_enabled",
             "requests_30d": schedule["requests_30d"],
             "objects_30d_lower_bound": schedule["objects_30d_lower_bound"],
             "last_response_quota": json.loads(latest["quota_json"]) if latest else [],
             "last_provider_notices": json.loads(latest["provider_notices"]) if latest else [],
-            "last_omitted_bookmaker_odds": latest["omitted_odds_count"] if latest else None}
+            "last_omitted_bookmaker_odds": latest["omitted_odds_count"] if latest else None,
+            "upcoming_capture_windows": windows,
+            "missed_final_window_games": sorted(missed_final),
+            "warnings": warnings}

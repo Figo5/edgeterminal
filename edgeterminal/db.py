@@ -251,6 +251,14 @@ CREATE TRIGGER IF NOT EXISTS research_refresh_no_update BEFORE UPDATE ON researc
 BEGIN SELECT RAISE(ABORT, 'research refresh history is immutable'); END;
 CREATE TRIGGER IF NOT EXISTS research_refresh_no_delete BEFORE DELETE ON research_refresh_runs
 BEGIN SELECT RAISE(ABORT, 'research refresh history cannot be deleted'); END;
+CREATE TABLE IF NOT EXISTS research_refresh_ticks (
+  run_id TEXT PRIMARY KEY, started_at REAL NOT NULL,
+  finished_at REAL NOT NULL, success INTEGER NOT NULL);
+CREATE INDEX IF NOT EXISTS ix_refresh_tick_time ON research_refresh_ticks(started_at);
+CREATE TRIGGER IF NOT EXISTS research_refresh_tick_no_update BEFORE UPDATE ON research_refresh_ticks
+BEGIN SELECT RAISE(ABORT, 'research refresh ticks are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS research_refresh_tick_no_delete BEFORE DELETE ON research_refresh_ticks
+BEGIN SELECT RAISE(ABORT, 'research refresh ticks cannot be deleted'); END;
 CREATE TABLE IF NOT EXISTS research_refresh_steps (
   id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, name TEXT NOT NULL,
   attempted_at REAL NOT NULL, success INTEGER NOT NULL, detail TEXT NOT NULL);

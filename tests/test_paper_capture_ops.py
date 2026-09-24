@@ -10,7 +10,7 @@ from pathlib import Path
 
 import pytest
 
-from edgeterminal import db, nfl_prop_capture_ops, nfl_props, paper_research, research_refresh
+from edgeterminal import db, nfl_prop_capture_ops, nfl_props, paper_operations, paper_research, research_refresh
 from edgeterminal.config import settings
 from edgeterminal.nfl_context_observations import record
 
@@ -71,6 +71,7 @@ def _freeze_original(stamp: float):
     over = .5 * math.erfc((source["line"] - projection)/(sigma * math.sqrt(2)))
     quote = {"quote_id": source["id"], "canonical_game_id": GAME,
              "player_id": source["player_id"], "player_name": source["player_name"],
+             "gsis_player_id": "00-0000001",
              "market": source["market"], "side": source["side"], "line": source["line"],
              "price": source["price"], "sportsbook": source["sportsbook"],
              "observed_at": stamp, "kickoff_utc": KICKOFF,
@@ -125,6 +126,19 @@ def test_offline_capture_records_request_and_backs_off(lab):
     assert nfl_prop_capture_ops.plan([_event()], KICKOFF - 300)["due"] == {}
 
 
+def test_missed_capture_window_is_reported_without_creating_a_quote(lab):
+    _freeze_original(KICKOFF - 25*3600)
+    before = db.q1("SELECT COUNT(*) n FROM nfl_prop_snapshots")["n"]
+    health = nfl_prop_capture_ops.health(KICKOFF - 20*3600, [_event()])
+    assert health["requests_today"] == 0
+    assert health["upcoming_capture_windows"][0]["overdue_seconds"] == 4*3600
+    assert "capture_window_overdue; no missing quote is fabricated" in health["warnings"]
+    assert db.q1("SELECT COUNT(*) n FROM nfl_prop_snapshots")["n"] == before
+    after = nfl_prop_capture_ops.health(KICKOFF + 60, [_event()])
+    assert after["missed_final_window_games"] == [GAME]
+    assert "final_pregame_capture_window_missed" in after["warnings"]
+
+
 def test_scheduler_captures_pairs_evaluates_and_preserves_later_line(lab):
     initial = KICKOFF - 3600
     freeze_sha = _freeze_original(initial)
@@ -160,6 +174,10 @@ def test_scheduler_captures_pairs_evaluates_and_preserves_later_line(lab):
     assert position["policy_hash"] == paper_research.policy_hash(paper_research.active_policy())
     assert position["model_hash"] == "fixture-model-sha"
     assert position["probability_difference"] >= .25
+    audit = paper_operations.audit_positions(now=current[0])
+    assert audit["verified"] == 1 and audit["failed"] == 0
+    assert audit["positions"][0]["grade_quote_id"] != position["quote_id"]
+    assert audit["positions"][0]["settlement_status"] == "pending"
     capture_attempt = db.q1("SELECT * FROM nfl_prop_capture_attempts ORDER BY attempted_at DESC LIMIT 1")
     assert capture_attempt["requests_made"] == capture_attempt["responses_archived"] == 1
     assert json.loads(capture_attempt["quota_json"])[0]["x-ratelimit-remaining-objects"] == "2000"
