@@ -4,12 +4,13 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>EdgeTerminal</title>
-<link rel="stylesheet" href="/static/style.css?v=projection-20260924b">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>▨</text></svg>">
+<link rel="stylesheet" href="/static/style.css?v=neutral-20260924a">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23111111'/><text x='8' y='24' fill='%23f5f5f7' font-family='Arial' font-weight='700' font-size='23'>E</text></svg>">
 </head>
 <body>
 <header id="topbar">
-  <div class="brand"><span class="mark">▨</span> EDGE<span class="dim">TERMINAL</span><small>NFL projections</small></div>
+  <div class="brand">Edge<span>Terminal</span><span class="sr-only">NFL projections</span></div>
+  <nav id="sections" aria-label="Primary navigation"></nav>
   <div class="topright">
     <span class="meta" id="lastUpdated">Updated —</span>
     <button id="chatToggle" class="btn" type="button">Research chat</button>
@@ -17,14 +18,6 @@
 </header>
 
 <div id="shell">
-  <aside id="rail">
-    <nav id="sections"></nav>
-    <div class="railfoot">
-      <div id="modelVersion" class="meta"></div>
-      <div class="meta disclaimer">Research only · all games PASS. No bets are placed.</div>
-    </div>
-  </aside>
-
   <main id="main"><div class="loading">Loading slate…</div></main>
 
   <section id="chat">
@@ -43,7 +36,7 @@
 </div>
 
 <div id="toast" class="toast hidden"></div>
-<script src="/static/product_ui.js?v=projection-20260924b"></script>
-<script src="/static/app.js?v=projection-20260924b"></script>
+<script src="/static/product_ui.js?v=neutral-20260924a"></script>
+<script src="/static/app.js?v=neutral-20260924a"></script>
 </body>
 </html>
