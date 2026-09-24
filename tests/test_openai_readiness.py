@@ -98,6 +98,10 @@ def test_best_nfl_bet_cannot_lower_production_threshold(monkeypatch):
 
 
 def test_strongest_play_cannot_lower_production_threshold(monkeypatch):
+    # Exercise the legacy official-pick tool boundary directly. A resolved
+    # research-chat request now answers from stored presentation views first.
+    from edgeterminal.agents import research_chat
+    monkeypatch.setattr(research_chat, "answer", lambda message, ctx: None)
     captured, _ = _captured_openai_args(monkeypatch, "What's your strongest play?",
                                          {"min_confidence": 65, "limit": 1})
     assert captured["args"]["min_confidence"] == 80

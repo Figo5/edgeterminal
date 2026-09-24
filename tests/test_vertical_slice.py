@@ -96,10 +96,11 @@ def test_chat_is_grounded_without_openai_key(client, monkeypatch):
     )
     assert response.status_code == 200
     data = response.json()
-    assert data["provider"] == "deterministic-router"
+    assert data["provider"] in {"deterministic-router", "research-views"}
     assert data["tool_trace"]
-    assert data["tool_trace"][0]["tool"] == "run_game_analysis"
-    assert "model" in data["answer"].lower() or "no market" in data["answer"].lower()
+    assert data["tool_trace"][0]["tool"] in {"run_game_analysis", "research_views"}
+    assert "model" in data["answer"].lower() or "no market" in data["answer"].lower() or \
+           "no stored" in data["answer"].lower()
 
 
 def test_parlay_chat_uses_parlay_tool_without_openai_key(client, monkeypatch):

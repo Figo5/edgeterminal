@@ -362,6 +362,19 @@ def run_chat(user_message: str, history: Optional[List[Dict]] = None,
         log.error("context build failed: %s", type(e).__name__)
         ctx = None
 
+    # Model research questions have a read-only, fully grounded answer path.
+    # The official-pick tools below retain their original PASS semantics.
+    from . import research_chat
+    research = research_chat.answer(user_message, ctx)
+    if research is not None:
+        answer, additions = research
+        if ctx:
+            ctx.update(additions)
+        return dict(answer=answer, tool_trace=[dict(tool="research_views", ok=True,
+                    arguments={"event_id": ((ctx or {}).get("resolution") or {}).get("event_id")})],
+                    provider="research-views", model=None,
+                    schedule=(ctx or {}).get("schedule"), context=_state(ctx, validated=True))
+
     p = provider()
     trace: List[Dict] = []
     if p is None:

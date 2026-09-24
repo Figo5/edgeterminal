@@ -56,7 +56,7 @@ MARKETS = (
     ("player_anytime_td", r"\b(touchdown|td|anytime|score a td|scorer)s?\b"),
     ("moneyline", r"\bmoney\s?lines?\b|\bml\b|\bwho wins\b|\bto win\b"),
     ("spread", r"\bspreads?\b|\bagainst the spread\b|\bats\b|\bhandicap\b"),
-    ("total", r"\btotals?\b|\bover\/under\b|\bo\/u\b"),
+    ("total", r"\btotals?\b|\bover\s*(?:\/|or|\s)\s*under\b|\bo\/u\b"),
 )
 # Prop markets, and the provider category each belongs to. A request for
 # "receiving yards" is a request for the receiving category -- never the whole
@@ -324,6 +324,11 @@ def resolve_event(ctx: Dict) -> Dict:
                         reasons=reasons)
     if constraint:
         day_pool = [e for e in pool if _matches_day(e, constraint, now_local)]
+        if constraint["kind"] == "weekday" and day_pool:
+            # A weekday shorthand means the next such date, not both this
+            # week's and next week's Thursday when seven days fit the window.
+            nearest = min(e["kickoff_local"].date() for e in day_pool)
+            day_pool = [e for e in day_pool if e["kickoff_local"].date() == nearest]
         reasons.append(f"{constraint['label']} -> {len(day_pool)} game(s) in "
                        f"{settings.timezone}")
         if not day_pool:
@@ -545,6 +550,15 @@ def _clean_prior(prior: Optional[Dict]) -> Optional[Dict]:
         out["turn"] = max(0, int(prior.get("turn") or 0))
     except (TypeError, ValueError):
         out["turn"] = 0
+    threshold = prior.get("threshold")
+    if isinstance(threshold, (int, float)) and 0 <= threshold <= 1:
+        out["threshold"] = float(threshold)
+    size = prior.get("parlay_size")
+    if isinstance(size, int) and 2 <= size <= 5:
+        out["parlay_size"] = size
+    shown = prior.get("shown")
+    if isinstance(shown, (list, tuple)):
+        out["shown"] = [list(s) for s in shown[:100] if isinstance(s, (list, tuple)) and len(s) == 4]
     return out or None
 
 
@@ -569,6 +583,9 @@ def conversation_state(ctx: Dict, validated: bool = True) -> Dict:
         market=ctx.get("market") if validated else prior.get("market"),
         category=market_category(ctx.get("market") if validated else prior.get("market")),
         player=ctx.get("player") if validated else prior.get("player"),
+        threshold=ctx.get("threshold") if validated else prior.get("threshold"),
+        parlay_size=ctx.get("parlay_size") if validated else prior.get("parlay_size"),
+        shown=ctx.get("shown") if validated else prior.get("shown"),
         task=ctx.get("task"),
         # What the dashboard had selected on THIS turn, so the next turn can tell
         # a changed selection from the same value re-sent.
