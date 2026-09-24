@@ -39,8 +39,11 @@ a:hover{text-decoration-color:var(--text)}
 #sections button.on:after{content:"";height:2px;position:absolute;left:0;right:0;bottom:0;background:var(--text)}
 .topright{margin-left:auto;display:flex;align-items:center;gap:20px;white-space:nowrap}
 .meta{color:var(--muted);font-size:12px}
+.mobile-update{display:none;color:var(--muted);font-size:11px}
 .btn{border:1px solid var(--border);border-radius:var(--radius-small);background:transparent;padding:8px 12px;color:var(--secondary)}
 .btn:hover{background:var(--surface-raised);color:var(--text)}
+.btn:disabled{opacity:.55;cursor:default;background:transparent;color:var(--secondary)}
+.refresh-button{font-size:12px;padding:7px 10px;white-space:nowrap}
 .btn.primary{background:var(--text);color:var(--bg);border-color:var(--text);font-weight:600}
 .btn.primary:hover{background:var(--secondary)}
 .iconbtn{border:0;background:transparent;font-size:24px;color:var(--secondary);line-height:1}
@@ -197,8 +200,10 @@ a:hover{text-decoration-color:var(--text)}
   .brand{font-size:18px}
   #sections{order:3;width:100%;flex-basis:100%;height:44px;gap:22px;overflow:auto}
   #sections button{font-size:13px}
-  .topright{margin-left:auto}
+  .topright{margin-left:auto;gap:8px}
   .topright .btn{font-size:11px;padding:6px 8px}
+  .topright .refresh-button{padding:6px 7px}
+  .mobile-update{display:block;order:4;flex-basis:100%;padding:0 0 8px}
   #main{padding:24px 16px 48px}
   .page-head{align-items:flex-start}
   .page-head h1{font-size:31px}

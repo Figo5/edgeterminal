@@ -1,5 +1,5 @@
 "use strict";
-const state={section:"nfl",board:null,match:null,eventId:null,filter:"all",sort:"confidence",config:null,history:[],chatContext:null};
+const state={section:"nfl",board:null,match:null,eventId:null,filter:"all",sort:"confidence",config:null,history:[],chatContext:null,refreshing:false,lastSuccessfulRefresh:null};
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??"—").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
 const num=(v,d=1)=>v==null?"—":Number(v).toFixed(d);
@@ -81,7 +81,39 @@ async function show(section){
 }
 async function openMatchup(id){state.eventId=id;$("main").innerHTML='<div class="loading">Loading stored matchup projections…</div>';try{state.match=await api(`/api/product/nfl/${encodeURIComponent(id)}`);matchup();$("main").scrollTop=0}catch(e){fail(e)}}
 function rerender(){const top=$("main").scrollTop;matchup();$("main").scrollTop=top}
+let refreshNoticeTimer;
+function refreshNotice(message){const toast=$("toast");toast.textContent=message;toast.classList.remove("hidden");clearTimeout(refreshNoticeTimer);refreshNoticeTimer=setTimeout(()=>toast.classList.add("hidden"),4000)}
+function updateStatus(message){$("lastUpdated").textContent=message;$("mobileUpdated").textContent=message}
+async function reloadStoredProduct(){
+ if(state.section==="nfl"){
+  const gameId=state.eventId;
+  const [boardData,matchData]=await Promise.all([api("/api/product/nfl"),gameId?api(`/api/product/nfl/${encodeURIComponent(gameId)}`):Promise.resolve(null)]);
+  state.board=boardData;
+  if(gameId&&state.eventId===gameId){const top=$("main").scrollTop;state.match=matchData;matchup();$("main").scrollTop=top}else board();
+ }else if(state.section==="performance")performance(await api("/api/product/performance"));
+ else if(state.section==="paper")paper(await api("/api/research/paper"));
+ else if(state.section==="research"){
+  const [s,p,d,m,index]=await Promise.all([api("/api/research/refresh-status"),api("/api/providers"),api("/api/research/paper"),api("/api/model-report"),api("/api/product/research-index")]);
+  research(s,p,d,m);researchArtifacts(index);
+ }
+}
+async function refreshProduct(){
+ if(state.refreshing)return;
+ const button=$("refreshButton");
+ state.refreshing=true;button.disabled=true;button.setAttribute("aria-busy","true");button.textContent="↻ Refreshing…";updateStatus("Checking research data…");
+ try{
+  const result=await api("/api/research/refresh",{method:"POST"});
+  await reloadStoredProduct();
+  if(result.busy){updateStatus("Refresh already running · Showing stored data");refreshNotice("Refresh already running · Showing stored data")}
+  else{state.lastSuccessfulRefresh=Date.now()/1000;updateStatus("Updated just now");refreshNotice("Updated just now")}
+ }catch(_error){
+  try{await reloadStoredProduct()}catch(_reloadError){}
+  const last=state.lastSuccessfulRefresh?time(state.lastSuccessfulRefresh):"unavailable";
+  updateStatus(`Refresh failed · Last successful update: ${last}`);
+  refreshNotice(`Refresh failed · Last successful update: ${last}`);
+ }finally{state.refreshing=false;button.disabled=false;button.removeAttribute("aria-busy");button.textContent="↻ Refresh"}
+}
 function addMessage(role,message){const el=document.createElement("div");el.className=`msg ${role}`;el.innerHTML=`<div class="who">${role==="user"?"You":"EdgeTerminal"}</div><div class="bubble"><p>${esc(message).split("\n").join("<br>")}</p></div>`;$("chatLog").appendChild(el);$("chatLog").scrollTop=$("chatLog").scrollHeight}
 async function sendChat(message){if(!message.trim())return;addMessage("user",message);state.history.push({role:"user",content:message});try{const out=await api("/api/chat",{method:"POST",body:JSON.stringify({message,history:state.history.slice(-8),event_id:state.eventId,context:state.chatContext})});state.chatContext=out.context||state.chatContext;addMessage("bot",out.answer);state.history.push({role:"assistant",content:out.answer})}catch(e){addMessage("bot",`Unavailable: ${e.message}`)}}
-function bind(){document.addEventListener("click",e=>{const s=e.target.closest("[data-section]");if(s){show(s.dataset.section);return}const g=e.target.closest("[data-event]");if(g){openMatchup(g.dataset.event);return}if(e.target.closest("#backBtn")){show("nfl");return}const f=e.target.closest("[data-prop-filter]");if(f){state.filter=f.dataset.propFilter;rerender()}});document.addEventListener("change",e=>{if(e.target.id==="propSort"){state.sort=e.target.value;rerender()}});$("chatToggle").onclick=()=>$("chat").classList.add("open");$("chatClose").onclick=()=>$("chat").classList.remove("open");$("chatForm").onsubmit=e=>{e.preventDefault();const i=$("chatInput"),m=i.value;i.value="";sendChat(m)}}
-async function init(){bind();nav();try{state.config=await api("/api/config");$("llmBadge").textContent=state.config.llm_enabled?state.config.llm_model:"DETERMINISTIC";state.board=await api("/api/product/nfl");$("lastUpdated").textContent=`Updated ${time(state.board.latest_market_observed_at||state.board.as_of)}`;board()}catch(e){fail(e)}}init();
+function bind(){document.addEventListener("click",e=>{const s=e.target.closest("[data-section]");if(s){show(s.dataset.section);return}const g=e.target.closest("[data-event]");if(g){openMatchup(g.dataset.event);return}if(e.target.closest("#backBtn")){show("nfl");return}const f=e.target.closest("[data-prop-filter]");if(f){state.filter=f.dataset.propFilter;rerender()}});document.addEventListener("change",e=>{if(e.target.id==="propSort"){state.sort=e.target.value;rerender()}});$("refreshButton").onclick=refreshProduct;$("chatToggle").onclick=()=>$("chat").classList.add("open");$("chatClose").onclick=()=>$("chat").classList.remove("open");$("chatForm").onsubmit=e=>{e.preventDefault();const i=$("chatInput"),m=i.value;i.value="";sendChat(m)}}
+async function init(){bind();nav();try{state.config=await api("/api/config");$("llmBadge").textContent=state.config.llm_enabled?state.config.llm_model:"DETERMINISTIC";state.board=await api("/api/product/nfl");state.lastSuccessfulRefresh=state.board.latest_market_observed_at||null;updateStatus(`Updated ${time(state.board.latest_market_observed_at||state.board.as_of)}`);board();api("/api/research/refresh-status").then(x=>{state.lastSuccessfulRefresh=x.last_successful_research_refresh||state.lastSuccessfulRefresh}).catch(()=>{})}catch(e){fail(e)}}init();

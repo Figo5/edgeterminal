@@ -212,7 +212,7 @@ def status(now: float | None = None) -> dict:
             "operations_warnings": warnings}
 
 
-def run(now: float | None = None) -> dict:
+def run(now: float | None = None, *, record_tick: bool = True) -> dict:
     stamp = time.time() if now is None else now
     db.init()
     LOCK.parent.mkdir(parents=True, exist_ok=True)
@@ -221,10 +221,10 @@ def run(now: float | None = None) -> dict:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return {"status": "already_running", "steps": {}}
-        return _run_locked(stamp)
+        return _run_locked(stamp, record_tick=record_tick)
 
 
-def _run_locked(now: float) -> dict:
+def _run_locked(now: float, *, record_tick: bool = True) -> dict:
     run_id = uuid.uuid4().hex
     steps: dict[str, dict] = {}
     def attempt(name: str, action) -> None:
@@ -300,8 +300,10 @@ def _run_locked(now: float) -> dict:
                json.dumps(output, sort_keys=True, default=str)))
     else:
         output["status"] = "no_work_due"
-    db.ex("INSERT INTO research_refresh_ticks VALUES(?,?,?,?)",
-          (run_id, now, complete, int(successful)))
+    if record_tick:
+        # Manual checks must not make a sleeping LaunchAgent appear healthy.
+        db.ex("INSERT INTO research_refresh_ticks VALUES(?,?,?,?)",
+              (run_id, now, complete, int(successful)))
     return output
 
 

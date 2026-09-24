@@ -4,6 +4,7 @@ from __future__ import annotations
 import logging
 import json
 import time
+from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
@@ -126,6 +127,24 @@ def providers() -> Dict:
 def research_refresh_status() -> Dict:
     """Read stored worker state; this endpoint never ingests data."""
     return research_refresh.status()
+
+
+@app.post("/api/research/refresh")
+def research_refresh_now() -> Dict:
+    """Manual check through the same cadence and quota guarded worker as launchd."""
+    try:
+        result = research_refresh.run(record_tick=False)
+    except Exception as exc:  # noqa: BLE001 - never return provider details to product UI
+        log.error("manual research refresh failed: %s", type(exc).__name__)
+        raise HTTPException(503, "Research refresh failed; see Research for details") from None
+    if result.get("status") == "already_running":
+        return {"ok": True, "did_work": False, "busy": True, "steps": {},
+                "updated_at": datetime.now(timezone.utc).isoformat()}
+    if result.get("success") is False:
+        raise HTTPException(503, "Research refresh failed; see Research for details")
+    return {"ok": True, "did_work": bool(result.get("steps")), "busy": False,
+            "steps": {name: bool(step.get("ok")) for name, step in result.get("steps", {}).items()},
+            "updated_at": datetime.now(timezone.utc).isoformat()}
 
 
 @app.get("/api/research/paper")
