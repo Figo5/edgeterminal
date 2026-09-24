@@ -8,16 +8,21 @@ import math
 import statistics
 import time
 from collections import Counter, defaultdict
+from datetime import datetime
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
 from . import db
 from .config import ROOT
+from .providers.normalize import normalize_team
 
 POLICY_PATH = ROOT / "data/research/paper_policy_example.json"
+EXPERIMENTAL_POLICY_PATH = ROOT / "data/research/experimental_paper_v1.json"
 ACCOUNT = "paper-nfl"
 MARKETS = {"passing_yards", "rushing_yards", "rushing_attempts", "receptions",
            "receiving_yards", "moneyline"}
 RESULTS = {"won": "win", "lost": "loss", "push": "push", "void": "void"}
+SUPPORTED_PROP_BOOKS = {"fanduel", "draftkings", "betmgm", "caesars", "espnbet", "bovada"}
 
 
 def _json(value: object) -> str:
@@ -68,8 +73,24 @@ def _valid_sigma(value: object) -> bool:
         return False
 
 
+def _valid_stat(value: object) -> bool:
+    try:
+        return _number(value, "stat") >= 0
+    except ValueError:
+        return False
+
+
 def example_policy() -> dict:
     return json.loads(POLICY_PATH.read_text())
+
+
+def active_policy() -> dict:
+    """Versioned, enabled research policy loaded by the unattended worker."""
+    return json.loads(EXPERIMENTAL_POLICY_PATH.read_text())
+
+
+def policy_hash(policy: dict) -> str:
+    return hashlib.sha256(_json(policy).encode()).hexdigest()
 
 
 def validate_policy(policy: dict) -> dict:
@@ -100,6 +121,25 @@ def validate_policy(policy: dict) -> dict:
     if policy["enabled"] and (policy.get("min_model_line_difference") is None or
                               policy.get("min_probability_difference") is None):
         raise ValueError("enabled paper policy must explicitly set both filters")
+    books = policy.get("supported_sportsbooks")
+    if books is not None and (not isinstance(books, list) or not books or
+                             len(books) != len(set(books)) or not set(books) <= SUPPORTED_PROP_BOOKS):
+        raise ValueError("paper policy has unsupported sportsbooks")
+    for key in ("maximum_positions_per_player_market", "maximum_positions_per_slate"):
+        if key in policy and (isinstance(policy[key], bool) or
+                             _number(policy[key], key) <= 0 or
+                             int(policy[key]) != policy[key]):
+            raise ValueError(f"paper policy {key} must be a positive integer")
+    if "maximum_open_exposure_fraction" in policy and not 0 < _number(
+            policy["maximum_open_exposure_fraction"], "maximum_open_exposure_fraction") <= 1:
+        raise ValueError("invalid maximum open exposure fraction")
+    if "slate_timezone" in policy:
+        ZoneInfo(policy["slate_timezone"])
+    if "require_main_line" in policy and type(policy["require_main_line"]) is not bool:
+        raise ValueError("require_main_line must be boolean")
+    if "availability_max_age_seconds" in policy and _number(
+            policy["availability_max_age_seconds"], "availability_max_age_seconds") <= 0:
+        raise ValueError("availability_max_age_seconds must be positive")
     stake = policy.get("stake_policy")
     if not isinstance(stake, dict) or stake.get("type") != "flat_dollars" or _number(stake.get("amount"), "stake") <= 0:
         raise ValueError("paper policy needs positive flat_dollars stake")
@@ -109,7 +149,7 @@ def validate_policy(policy: dict) -> dict:
 def register_policy(policy: dict, now: float | None = None) -> str:
     validate_policy(policy)
     body = _json(policy)
-    digest = hashlib.sha256(body.encode()).hexdigest()
+    digest = policy_hash(policy)
     old = db.q1("SELECT sha256 FROM paper_policies WHERE version=?", (policy["version"],))
     if old:
         if old["sha256"] != digest:
@@ -147,11 +187,12 @@ def _balances() -> tuple[float, float, list[dict], dict[str, dict]]:
     return current, current - reserved, positions, settled
 
 
-def _clear_injury(player_name: str, game_id: str, quote_time: float, now: float) -> bool:
+def _clear_injury(player_name: str, game_id: str, quote_time: float, now: float,
+                  max_age: float = 24 * 3600) -> bool:
     rows = db.q("SELECT payload,fetched_at FROM nfl_research_context_observations "
                 "WHERE game_id=? AND subject=? AND kind IN ('offensive_injury','qb_availability') "
                 "AND fetched_at<=? ORDER BY fetched_at DESC LIMIT 1", (game_id, player_name, now))
-    if not rows or rows[0]["fetched_at"] < quote_time - 24 * 3600:
+    if not rows or rows[0]["fetched_at"] < quote_time - max_age or now - rows[0]["fetched_at"] > max_age:
         return False
     status = str(json.loads(rows[0]["payload"]).get("status") or "").lower()
     return status in {"active", "available", "healthy", "cleared"}
@@ -252,6 +293,37 @@ def current_opportunities(now: float | None = None) -> list[dict]:
     return rows
 
 
+def _slate_day(kickoff: float, policy: dict) -> str:
+    return datetime.fromtimestamp(kickoff, ZoneInfo(policy.get("slate_timezone", "America/New_York"))).date().isoformat()
+
+
+def _ordered_frozen_quotes(now: float) -> list[tuple[str, dict, dict]]:
+    # Freshest qualifying book wins within a player/market. A stable ID breaks ties.
+    return sorted(_frozen_quotes(now), key=lambda item: (-item[2]["observed_at"], item[2]["quote_id"]))
+
+
+def _prop_position_limit(policy: dict, quote: dict, stake: float) -> str | None:
+    current, available, positions, settled = _balances()
+    if sum(p["game_id"] == quote["canonical_game_id"] and
+           p["player_id"] == quote["player_id"] and p["market"] == quote["market"]
+           for p in positions if p["source_kind"] == "frozen_prop_research") >= policy.get(
+               "maximum_positions_per_player_market", 1):
+        return "competing_quote_player_market_already_selected"
+    if sum(p["game_id"] == quote["canonical_game_id"] for p in positions) >= policy["maximum_positions_per_game"]:
+        return "game_position_limit"
+    if sum(_slate_day(p["kickoff_utc"], policy) == _slate_day(quote["kickoff_utc"], policy)
+           for p in positions) >= policy.get("maximum_positions_per_slate", float("inf")):
+        return "slate_position_limit"
+    open_positions = [p for p in positions if settled.get(p["id"], {}).get("result", "pending") == "pending"]
+    if len(open_positions) >= policy["maximum_open_positions"]:
+        return "open_position_limit"
+    if (stake > available or stake > current * policy["maximum_stake_fraction"] or
+            sum(p["stake"] for p in open_positions) + stake >
+            current * policy.get("maximum_open_exposure_fraction", 1.0) + 1e-9):
+        return "bankroll_constraint"
+    return None
+
+
 def evaluate(policy: dict, now: float | None = None) -> dict:
     """Create immutable positions from exact, freshly frozen prop quote sides."""
     stamp = time.time() if now is None else now
@@ -261,26 +333,48 @@ def evaluate(policy: dict, now: float | None = None) -> dict:
     if not policy["enabled"]:
         return {"policy_version": policy["version"], "positions_created": 0,
                 "status": "disabled", "skipped": {"policy_disabled": 1}}
-    for freeze_sha, metadata, quote in _frozen_quotes(stamp):
+    for freeze_sha, metadata, quote in _ordered_frozen_quotes(stamp):
         qid = quote["quote_id"]
         reason = None
         if db.q1("SELECT 1 FROM paper_positions WHERE quote_id=?", (qid,)):
             continue
         source = db.q1("SELECT * FROM nfl_prop_snapshots WHERE id=?", (qid,))
+        mapped = (db.q1("SELECT game_id FROM nfl_provider_games WHERE provider=? AND provider_game_id=?",
+                        (source["provider"], source["provider_event_id"])) if source else None)
+        alias = (db.q1("SELECT player_id FROM nfl_prop_player_aliases WHERE provider=? AND provider_player_id=?",
+                       (source["provider"], source["provider_player_id"])) if source else None)
+        player = (db.q1("SELECT player_name FROM nfl_prop_players WHERE player_id=?",
+                        (source["player_id"],)) if source else None)
         if (not source or source["batch_id"] != metadata.get("source_batch_id") or
                 any(source[field] != quote.get(alias) for field, alias in
                     (("canonical_game_id", "canonical_game_id"), ("player_id", "player_id"),
+                     ("player_name", "player_name"),
                      ("market", "market"), ("line", "line"), ("side", "side"),
                      ("price", "price"), ("sportsbook", "sportsbook"),
                      ("retrieved_at", "observed_at"), ("kickoff_utc", "kickoff_utc")))):
             reason = "source_quote_mismatch"
+        elif (not mapped or mapped["game_id"] != quote["canonical_game_id"] or
+              not alias or alias["player_id"] != quote["player_id"] or
+              not player or player["player_name"] != quote["player_name"] or
+              not source["player_id"] or not source["provider_player_id"] or
+              not source["player_name"] or not source["team"] or not source["opponent"] or
+              source["team"] == source["opponent"] or
+              {normalize_team(source["team"]), normalize_team(source["opponent"])} !=
+              {normalize_team(code) for code in quote["canonical_game_id"].split("-")[-2:]}):
+            reason = "identity_unresolved"
         elif quote.get("market") not in policy["eligible_markets"]:
             reason = "market_ineligible"
+        elif policy.get("supported_sportsbooks") and quote["sportsbook"] not in policy["supported_sportsbooks"]:
+            reason = "sportsbook_unsupported"
+        elif policy.get("require_main_line") and source["line_type"] != "main":
+            reason = "alternate_line_ineligible"
         elif quote.get("line") is None or quote.get("price") is None:
             reason = "missing_line_or_price"
         elif quote.get("projection") is None or quote.get("uncertainty_sigma") is None:
             reason = "missing_projection"
-        elif (not _valid_price(quote["price"]) or
+        elif (quote.get("side") not in {"over", "under"} or
+              not _valid_stat(quote["line"]) or not _valid_stat(quote["projection"]) or
+              not _valid_price(quote["price"]) or
               not _valid_probability(quote.get("probability_over")) or
               not _valid_probability(quote.get("probability_under")) or
               not _valid_sigma(quote["uncertainty_sigma"])):
@@ -291,7 +385,9 @@ def evaluate(policy: dict, now: float | None = None) -> dict:
             reason = "stale_quote"
         elif not policy["minimum_price"] <= quote["price"] <= policy["maximum_price"]:
             reason = "price_outside_policy"
-        elif not _clear_injury(quote["player_name"], quote["canonical_game_id"], quote["observed_at"], stamp):
+        elif not _clear_injury(quote["player_name"], quote["canonical_game_id"],
+                               quote["observed_at"], stamp,
+                               policy.get("availability_max_age_seconds", 24 * 3600)):
             reason = "injury_status_unresolved"
         else:
             probability = quote["probability_over"] if quote["side"] == "over" else quote["probability_under"]
@@ -305,16 +401,8 @@ def evaluate(policy: dict, now: float | None = None) -> dict:
             db.ex("INSERT OR IGNORE INTO paper_opportunity_skips VALUES(?,?,?,?)",
                   (policy["version"], qid, reason, stamp))
             continue
-        current, available, positions, settled = _balances()
-        game_count = sum(p["game_id"] == quote["canonical_game_id"] for p in positions)
-        open_count = sum(settled.get(p["id"], {}).get("result", "pending") == "pending" for p in positions)
         stake = float(policy["stake_policy"]["amount"])
-        if game_count >= policy["maximum_positions_per_game"] or open_count >= policy["maximum_open_positions"]:
-            reason = "position_limit"
-        elif stake > available or stake > current * policy["maximum_stake_fraction"]:
-            reason = "bankroll_constraint"
-        else:
-            reason = None
+        reason = _prop_position_limit(policy, quote, stake)
         if reason:
             counts[reason] += 1
             db.ex("INSERT OR IGNORE INTO paper_opportunity_skips VALUES(?,?,?,?)",
@@ -326,12 +414,12 @@ def evaluate(policy: dict, now: float | None = None) -> dict:
         db.ex("INSERT OR IGNORE INTO paper_positions(id,account_id,policy_version,freeze_sha,quote_id,"
               "game_id,player_id,player_name,market,side,line,odds,sportsbook,model_projection,"
               "model_probability,market_probability,quote_observed_at,created_at,kickoff_utc,"
-              "model_version,model_hash,stake) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+              "model_version,model_hash,stake,policy_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
               (pid, ACCOUNT, policy["version"], freeze_sha, qid, quote["canonical_game_id"],
                quote["player_id"], quote["player_name"], quote["market"], quote["side"],
                quote["line"], quote["price"], quote["sportsbook"], quote["projection"],
                probability, market_probability, quote["observed_at"], stamp,
-               quote["kickoff_utc"], quote["model_version"], signature, stake))
+               quote["kickoff_utc"], quote["model_version"], signature, stake, policy_hash(policy)))
         counts["created"] += 1
     if "moneyline" in policy["eligible_markets"]:
         counts.update(_evaluate_game_moneylines(policy, stamp))
@@ -391,12 +479,12 @@ def _evaluate_game_moneylines(policy: dict, now: float) -> Counter[str]:
         db.ex("INSERT OR IGNORE INTO paper_positions(id,account_id,policy_version,freeze_sha,quote_id,"
               "game_id,player_id,player_name,market,side,line,odds,sportsbook,model_projection,"
               "model_probability,market_probability,quote_observed_at,created_at,kickoff_utc,"
-              "model_version,model_hash,stake,source_kind) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+              "model_version,model_hash,stake,source_kind,policy_hash) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
               (pid, ACCOUNT, policy["version"], freeze["freeze_sha"], qid, game["game_id"],
                "", "", "moneyline", side, None, int(quote["price"]), quote["book"],
                game["model"]["margin"], probability, implied_probability(quote["price"]),
                quote["fetched_at"], now, quote["kickoff_utc"], freeze["model_version"],
-               freeze["model_hash"], stake, "frozen_game_research"))
+               freeze["model_hash"], stake, "frozen_game_research", policy_hash(policy)))
         counts["created"] += 1
     return counts
 
@@ -473,7 +561,7 @@ def dashboard(now: float | None = None) -> dict:
             row["n"] += 1
             row["profit_loss"] += settled[p["id"]]["profit_loss"]
         return dict(out)
-    return {"label": "PAPER / RESEARCH — NOT REAL BETTING RECOMMENDATIONS",
+    return {"label": "PAPER / EXPERIMENTAL / NOT A REAL BETTING RECOMMENDATION",
             "starting_bankroll": account["starting_bankroll"] if account else example_policy()["starting_bankroll"],
             "current_bankroll": round(current, 2), "available_bankroll": round(available, 2),
             "open_positions": len(open_positions), "settled_positions": len(resolved),
@@ -495,7 +583,7 @@ def dashboard(now: float | None = None) -> dict:
 def main() -> None:
     parser = argparse.ArgumentParser(description="Research-only PAPER portfolio")
     parser.add_argument("action", choices=("status", "evaluate", "settle", "distribution"))
-    parser.add_argument("--policy", type=Path, default=POLICY_PATH)
+    parser.add_argument("--policy", type=Path, default=EXPERIMENTAL_POLICY_PATH)
     args = parser.parse_args()
     db.init()
     if args.action == "evaluate":

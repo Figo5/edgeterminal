@@ -55,6 +55,11 @@ def test_prospective_position_idempotent_and_correction(research_db):
     with db.tx() as c:
         c.execute("INSERT INTO nfl_prop_capture_batches VALUES(?,?,?,?,?,?,?,?,?)",
                   ("batch", "sportsgameodds", 50, "raw", "{}", 1, 1, 1, "{}"))
+        c.execute("INSERT INTO nfl_provider_games VALUES(?,?,?,?)",
+                  ("sportsgameodds", "event-1", game, 50))
+        c.execute("INSERT INTO nfl_prop_players VALUES(?,?,?)", ("sgo:a", "A", 50))
+        c.execute("INSERT INTO nfl_prop_player_aliases VALUES(?,?,?,?,?)",
+                  ("sportsgameodds", "a", "sgo:a", "A", 50))
         c.execute("INSERT INTO nfl_prop_snapshots(id,batch_id,canonical_game_id,provider_event_id,"
                   "player_id,provider_player_id,player_name,team,opponent,market,line,side,price,"
                   "sportsbook,retrieved_at,kickoff_utc,provider,source) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
@@ -69,6 +74,7 @@ def test_prospective_position_idempotent_and_correction(research_db):
     assert paper_research.evaluate(policy, now=71)["positions_created"] == 0
     pos = db.q1("SELECT * FROM paper_positions")
     assert pos["quote_id"] == 7 and pos["policy_version"] == "fixture-v1"
+    assert pos["policy_hash"] == paper_research.policy_hash(policy)
     with pytest.raises(sqlite3.IntegrityError):
         db.ex("UPDATE paper_positions SET stake=999 WHERE id=?", (pos["id"],))
     assert paper_research.dashboard()["open_positions"] == 1
@@ -149,3 +155,130 @@ def test_game_moneyline_uses_frozen_quote_and_append_only_grade(research_db, tmp
     assert paper_research.settle(now=301) == 1
     assert paper_research.dashboard()["current_bankroll"] == pytest.approx(990.0)
     assert db.q1("SELECT COUNT(*) n FROM paper_settlement_revisions")["n"] == 2
+
+
+def _fixture_prop_freeze(specs):
+    """Create only immutable fixture inputs; no network calls or actual Week 3 data."""
+    projections = []
+    games = {spec["game"] for spec in specs}
+    players = {spec["player"] for spec in specs}
+    with db.tx() as c:
+        c.execute("INSERT INTO nfl_prop_capture_batches VALUES(?,?,?,?,?,?,?,?,?)",
+                  ("fixture-batch", "sportsgameodds", 50, "fixture-raw", "{}",
+                   len(games), len(games), len(specs), "{}"))
+        for game in games:
+            c.execute("INSERT INTO nfl_provider_games VALUES(?,?,?,?)",
+                      ("sportsgameodds", "event-" + game, game, 50))
+        for player in players:
+            c.execute("INSERT INTO nfl_prop_players VALUES(?,?,?)",
+                      ("sgo:" + player, player, 50))
+            c.execute("INSERT INTO nfl_prop_player_aliases VALUES(?,?,?,?,?)",
+                      ("sportsgameodds", player, "sgo:" + player, player, 50))
+        for spec in specs:
+            quote_id = spec["id"]
+            game = spec["game"]
+            player = spec["player"]
+            observed = spec.get("observed", 50)
+            kickoff = spec.get("kickoff", 100)
+            book = spec.get("book", "fanduel")
+            market = spec.get("market", "receptions")
+            line = spec.get("line", 2.5)
+            price = spec.get("price", -110)
+            away, home = game.split("-")[-2:]
+            c.execute("INSERT INTO nfl_prop_snapshots(id,batch_id,canonical_game_id,provider_event_id,"
+                      "player_id,provider_player_id,player_name,team,opponent,market,line,side,price,"
+                      "sportsbook,retrieved_at,kickoff_utc,provider,source,line_type) "
+                      "VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                      (quote_id, "fixture-batch", game, "event-" + game, "sgo:" + player,
+                       player, player, away.upper(), home.upper(), market, line, "over", price,
+                       book, observed, kickoff, "sportsgameodds", "fixture", spec.get("line_type", "main")))
+            projections.append(dict(quote_id=quote_id, canonical_game_id=game,
+                                    player_id="sgo:" + player, player_name=player,
+                                    market=market, side="over", line=line, price=price,
+                                    sportsbook=book, observed_at=observed, kickoff_utc=kickoff,
+                                    model_version="fixture-model", projection=line + 2,
+                                    probability_over=.90, probability_under=.10,
+                                    uncertainty_sigma=2.0))
+        payload = json.dumps({"metadata": {"model_hash": "model-fixture-sha",
+                                           "source_batch_id": "fixture-batch"},
+                              "projections": projections}, sort_keys=True)
+        freeze_sha = hashlib.sha256(payload.encode()).hexdigest()
+        c.execute("INSERT INTO nfl_prop_research_freezes VALUES(?,?,?,?)",
+                  (freeze_sha, "fixture-batch", 60, payload))
+    for game, player, status in {(spec["game"], spec["player"], spec.get("status", "available"))
+                                 for spec in specs}:
+        record({"game_id": game, "kind": "offensive_injury", "subject": player,
+                "payload": {"status": status}, "source_url": "fixture:roster",
+                "fetched_at": 65, "kickoff_utc": 100}, now=70)
+    return freeze_sha
+
+
+def test_experimental_policy_freshest_quote_and_immutable_hash(research_db):
+    policy = paper_research.active_policy()
+    assert paper_research.validate_policy(policy) is policy
+    assert policy["version"] == "EXPERIMENTAL_PAPER_V1"
+    assert policy["eligible_markets"] == ["passing_yards", "rushing_yards", "rushing_attempts",
+                                           "receptions", "receiving_yards"]
+    assert policy["stake_policy"] == {"type": "flat_dollars", "amount": 10}
+    game = "nfl-2026-reg-03-atl-gb"
+    _fixture_prop_freeze([{"id": 1, "game": game, "player": "A", "observed": 50,
+                           "book": "fanduel"},
+                          {"id": 2, "game": game, "player": "A", "observed": 55,
+                           "book": "draftkings"},
+                          {"id": 3, "game": game, "player": "B", "book": "unlisted"},
+                          {"id": 4, "game": game, "player": "C", "line_type": "alternate"},
+                          {"id": 5, "game": game, "player": "D", "observed": -1000},
+                          {"id": 6, "game": game, "player": "E", "status": "questionable"}])
+    result = paper_research.evaluate(policy, now=70)
+    assert result["positions_created"] == 1
+    assert result["skipped"]["competing_quote_player_market_already_selected"] == 1
+    assert result["skipped"]["sportsbook_unsupported"] == 1
+    assert result["skipped"]["alternate_line_ineligible"] == 1
+    assert result["skipped"]["stale_quote"] == 1
+    assert result["skipped"]["injury_status_unresolved"] == 1
+    position = db.q1("SELECT * FROM paper_positions")
+    assert position["quote_id"] == 2 and position["sportsbook"] == "draftkings"
+    assert position["policy_hash"] == paper_research.policy_hash(policy)
+    assert position["model_hash"] == "model-fixture-sha"
+    assert position["stake"] == 10
+    assert paper_research.evaluate(policy, now=71)["positions_created"] == 0
+    assert db.q1("SELECT COUNT(*) n FROM paper_positions")["n"] == 1
+    assert db.q1("SELECT reason FROM paper_opportunity_skips WHERE quote_id=1")["reason"] == (
+        "competing_quote_player_market_already_selected")
+    with pytest.raises(ValueError, match="version"):
+        paper_research.register_policy(dict(policy, min_probability_difference=.19))
+
+
+def test_experimental_policy_game_slate_and_exposure_caps(research_db):
+    policy = paper_research.active_policy()
+    games = ["nfl-2026-reg-03-atl-gb", "nfl-2026-reg-03-ne-jax",
+             "nfl-2026-reg-03-bal-dal"]
+    specs = [{"id": i+1, "game": games[i//4], "player": f"Player{i}"} for i in range(12)]
+    _fixture_prop_freeze(specs)
+    result = paper_research.evaluate(policy, now=70)
+    assert result["positions_created"] == 9  # three per game, for three games
+    assert result["skipped"]["game_position_limit"] == 3
+    assert db.q1("SELECT SUM(stake) n FROM paper_positions")["n"] == 90
+    assert paper_research.dashboard(now=70)["available_bankroll"] == 910
+
+
+def test_experimental_policy_slate_cap_and_aggregate_exposure(research_db):
+    policy = paper_research.active_policy()
+    games = ["atl-gb", "ne-jax", "bal-dal", "lac-buf", "cin-pit", "min-tb",
+             "lar-den", "phi-chi", "sea-sf", "hou-ind", "mia-nyj", "car-cle"]
+    specs = [{"id": i+1, "game": f"nfl-2026-reg-03-{games[i]}",
+              "player": f"Player{i}"} for i in range(12)]
+    _fixture_prop_freeze(specs)
+    result = paper_research.evaluate(policy, now=70)
+    assert result["positions_created"] == 10
+    assert result["skipped"]["slate_position_limit"] == 2
+    assert db.q1("SELECT SUM(stake) n FROM paper_positions")["n"] == 100
+    assert paper_research._prop_position_limit(policy, {"canonical_game_id": "new-game",
+                                                  "player_id": "new-player", "market": "receptions",
+                                                  "kickoff_utc": 86400 + 100}, 10) == "open_position_limit"
+    # With wider count caps, the 10% aggregate exposure remains an independent gate.
+    widened = dict(policy, version="fixture-exposure", maximum_open_positions=20,
+                   maximum_positions_per_slate=20)
+    assert paper_research._prop_position_limit(widened, {"canonical_game_id": "new-game",
+                                                   "player_id": "new-player", "market": "receptions",
+                                                   "kickoff_utc": 86400 + 100}, 10) == "bankroll_constraint"

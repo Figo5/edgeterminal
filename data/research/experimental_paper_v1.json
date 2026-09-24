@@ -1,0 +1,23 @@
+{
+  "version": "EXPERIMENTAL_PAPER_V1",
+  "enabled": true,
+  "label": "PAPER / EXPERIMENTAL / NOT A REAL BETTING RECOMMENDATION",
+  "eligible_markets": ["passing_yards", "rushing_yards", "rushing_attempts", "receptions", "receiving_yards"],
+  "supported_sportsbooks": ["fanduel", "draftkings", "betmgm", "caesars", "espnbet", "bovada"],
+  "require_main_line": true,
+  "min_model_line_difference": 0.01,
+  "min_probability_difference": 0.25,
+  "minimum_price": -200,
+  "maximum_price": 200,
+  "quote_freshness_seconds": 900,
+  "availability_max_age_seconds": 21600,
+  "maximum_positions_per_player_market": 1,
+  "maximum_positions_per_game": 3,
+  "maximum_positions_per_slate": 10,
+  "slate_timezone": "America/New_York",
+  "maximum_open_positions": 10,
+  "stake_policy": {"type": "flat_dollars", "amount": 10},
+  "starting_bankroll": 1000,
+  "maximum_stake_fraction": 0.01,
+  "maximum_open_exposure_fraction": 0.10
+}

@@ -230,7 +230,7 @@ def _run_locked(now: float) -> dict:
         attempt("prop_grading", lambda: nfl_prop_result_ingest.sync(freeze_sha, now=now))
     if paper_research.needs_settlement():
         attempt("paper_settlement", paper_research.settle)
-    policy = paper_research.example_policy()
+    policy = paper_research.active_policy()
     registered = db.q1("SELECT 1 FROM paper_policies WHERE version=?", (policy["version"],))
     if not registered or (policy["enabled"] and (
             paper_research.current_opportunities(now) or

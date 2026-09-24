@@ -167,9 +167,12 @@ CREATE TABLE IF NOT EXISTS paper_positions (
   model_probability REAL NOT NULL, market_probability REAL NOT NULL,
   quote_observed_at REAL NOT NULL, created_at REAL NOT NULL, kickoff_utc REAL NOT NULL,
   model_version TEXT NOT NULL, model_hash TEXT NOT NULL, stake REAL NOT NULL CHECK(stake>0),
+  policy_hash TEXT,
   source_kind TEXT NOT NULL DEFAULT 'frozen_prop_research',
   FOREIGN KEY(policy_version) REFERENCES paper_policies(version));
 CREATE INDEX IF NOT EXISTS ix_paper_game ON paper_positions(game_id,created_at);
+CREATE UNIQUE INDEX IF NOT EXISTS ux_paper_prop_player_market
+ON paper_positions(game_id,player_id,market) WHERE source_kind='frozen_prop_research';
 CREATE TRIGGER IF NOT EXISTS paper_position_no_update BEFORE UPDATE ON paper_positions
 BEGIN SELECT RAISE(ABORT, 'paper positions are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS paper_position_no_delete BEFORE DELETE ON paper_positions
@@ -485,6 +488,7 @@ def conn() -> sqlite3.Connection:
             _ensure_columns(_conn, "nfl_prop_snapshots", {"source": "TEXT NOT NULL DEFAULT 'https://api.sportsgameodds.com/v2/events'",
                                                          "line_type": "TEXT NOT NULL DEFAULT 'main'",
                                                          "offer_index": "INTEGER NOT NULL DEFAULT 0"})
+            _ensure_columns(_conn, "paper_positions", {"policy_hash": "TEXT"})
             _conn.commit()
         return _conn
 
