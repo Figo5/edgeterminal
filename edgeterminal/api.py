@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import calibration, db, engine, logs, nfl_forward_grading, nfl_props, parlay, props, shadow
+from . import calibration, db, engine, logs, nfl_forward_grading, nfl_props, paper_research, research_refresh, parlay, props, shadow
 from .agents import llm
 from .config import ROOT, settings
 from .providers import registry as R
@@ -120,6 +120,18 @@ def providers() -> Dict:
                 search_provider=settings.search_provider,
                 odds_provider=settings.odds_provider,
                 odds_key_configured=bool(settings.odds_api_key))
+
+
+@app.get("/api/research/refresh-status")
+def research_refresh_status() -> Dict:
+    """Read stored worker state; this endpoint never ingests data."""
+    return research_refresh.status()
+
+
+@app.get("/api/research/paper")
+def paper_dashboard() -> Dict:
+    """Read the separate PAPER ledger; never issue product recommendations."""
+    return paper_research.dashboard()
 
 
 @app.post("/api/refresh")

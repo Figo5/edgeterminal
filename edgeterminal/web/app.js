@@ -1,7 +1,7 @@
 "use strict";
 
 // chatContext: this tab's conversation state, echoed back each turn (see sendChat).
-const state = { sport: "NFL", section: "games", dashboard: null, config: null, eventId: null, history: [], chatContext: null, window: "all" };
+const state = { sport: "NFL", section: "games", dashboard: null, config: null, researchStatus: null, eventId: null, history: [], chatContext: null, window: "all" };
 const $ = (id) => document.getElementById(id);
 const esc = (v) => String(v ?? "—").replace(/[&<>'"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
 const pct = (v) => v == null ? "—" : `${(Number(v) * 100).toFixed(1)}%`;
@@ -21,7 +21,7 @@ async function api(path, options={}) {
 function toast(message, bad=false) { const el=$("toast"); el.textContent=message; el.classList.remove("hidden"); el.style.borderColor=bad?"var(--bad)":"var(--line2)"; clearTimeout(toast.timer); toast.timer=setTimeout(()=>el.classList.add("hidden"),4500); }
 
 function renderNavigation() {
-  const sections=[["games","NFL Slate",state.dashboard?.upcoming?.length],["performance","Model record",null],["data","Data health",null]];
+  const sections=[["games","NFL Slate",state.dashboard?.upcoming?.length],["performance","Model record",null],["paper","PAPER",null],["data","Data health",null]];
   $("sections").innerHTML=sections.map(([id,label,count])=>`<button data-section="${id}" class="${id===state.section?"on":""}"><span>${label}</span>${count==null?"":`<span class="count">${count}</span>`}</button>`).join("");
 }
 function providerPanel() {
@@ -78,7 +78,23 @@ function gamesTable(rows) {
 }
 function dataHealth(d) {
   const oddsSource=d.last_refresh?.sports?.NFL?.odds_source||"unavailable";
-  return `<section class="panel"><div class="panelhead"><h2>Data health</h2></div><div class="panelbody"><p>Schedule: ESPN · ${(d.upcoming||[]).length} games</p><p>Market: ${esc(oddsSource)} · last refresh ${when(d.last_refresh?.at)}</p><p>Model: ${esc(state.config?.model_version)} · research only</p>${(d.providers||[]).map(p=>`<div class="srcrow"><b>${esc(p.kind)}</b><span>${esc(p.name)}</span><span>${p.ok?"available":"unavailable"}</span></div>`).join("")}</div></section>`;
+  const r=state.researchStatus||{}; const freshness=r.data_freshness||{};
+  return `<section class="panel"><div class="panelhead"><h2>Data health</h2></div><div class="panelbody"><p>Schedule: ESPN · ${(d.upcoming||[]).length} games</p><p>Market: ${esc(oddsSource)} · last refresh ${when(d.last_refresh?.at)}</p><p>Model: ${esc(state.config?.model_version)} · research only</p><p>Research worker: last success ${when(r.last_successful_research_refresh)} · next scheduled ${when(r.next_scheduled_refresh)}</p><p>Game quote ${when(freshness.last_game_quote_at)} · prop quote ${when(freshness.last_prop_quote_at)}</p>${(r.errors||[]).map(e=>`<div class="warnbox">${esc(e.step)}: ${esc(e.detail)}</div>`).join("")}${(r.provider_health||[]).map(p=>`<div class="srcrow"><b>${esc(p.name)}</b><span>${p.success?"last attempt succeeded":"last attempt failed"}</span><span>${when(p.attempted_at)}</span></div>`).join("")}${(d.providers||[]).map(p=>`<div class="srcrow"><b>${esc(p.kind)}</b><span>${esc(p.name)}</span><span>${p.ok?"available":"unavailable"}</span></div>`).join("")}</div></section>`;
+}
+async function paperPage() {
+  $("main").innerHTML='<div class="loading">Loading PAPER research ledger…</div>';
+  try {
+    const p=await api("/api/research/paper");
+    const money=v=>`$${Number(v||0).toFixed(2)}`;
+    const group=(name,rows)=>`<section class="panel"><div class="panelhead"><h2>${name}</h2></div><div class="panelbody table-scroll"><table><thead><tr><th>Version / market</th><th>N</th><th>Paper P/L</th></tr></thead><tbody>${Object.entries(rows||{}).map(([key,r])=>`<tr><td>${esc(key)}</td><td>${r.n}</td><td>${money(r.profit_loss)}</td></tr>`).join("")||'<tr><td colspan="3">No settled mock positions.</td></tr>'}</tbody></table></div></section>`;
+    const positionRows=(rows)=>`<div class="table-scroll"><table><thead><tr><th>Created</th><th>Game / player</th><th>Market</th><th>Side / line</th><th>Book / odds</th><th>Stake</th><th>Model</th><th>Policy</th><th>Result</th></tr></thead><tbody>${(rows||[]).map(x=>`<tr><td>${when(x.created_at)}</td><td>${esc(x.game_id)}<div class="meta">${esc(x.player_name)}</div></td><td>${esc(x.market)}</td><td>${esc(x.side)} ${num(x.line)}</td><td>${esc(x.sportsbook)} ${odds(x.odds)}</td><td>${money(x.stake)}</td><td>${esc(x.model_version)}<div class="meta">${num(x.model_projection)} · ${pct(x.model_probability)}</div></td><td>${esc(x.policy_version)}</td><td>${esc(x.settlement?.result||"pending")}<div class="meta">${x.settlement?money(x.settlement.profit_loss):""}</div></td></tr>`).join("")||'<tr><td colspan="9">No mock positions.</td></tr>'}</tbody></table></div>`;
+    $("main").innerHTML=`<div class="board-head"><div><h1>PAPER / RESEARCH</h1><p>NOT REAL BETTING RECOMMENDATIONS</p></div><span class="badge">Separate mock ledger</span></div><div class="board-note">The live NFL product remains PASS. Archived research gaps are descriptive; they are not picks or a validated betting threshold.</div>
+      <div class="record-grid"><div class="record-metric"><small>STARTING</small><strong>${money(p.starting_bankroll)}</strong></div><div class="record-metric"><small>CURRENT</small><strong>${money(p.current_bankroll)}</strong></div><div class="record-metric"><small>AVAILABLE</small><strong>${money(p.available_bankroll)}</strong></div><div class="record-metric"><small>OPEN / SETTLED</small><strong>${p.open_positions} / ${p.settled_positions}</strong></div><div class="record-metric"><small>W-L-P/V</small><strong>${p.record.win}-${p.record.loss}-${p.record.push}/${p.record.void}</strong></div><div class="record-metric"><small>UNITS / P&L / ROI</small><strong>${num(p.units,2)} / ${money(p.profit_loss)} / ${pct(p.roi)}</strong></div></div>
+      <section class="panel"><div class="panelhead"><h2>Current research opportunities</h2><span class="sub">fresh pregame observations · no recommendation</span></div><div class="panelbody table-scroll"><table><thead><tr><th>Player / game</th><th>Market</th><th>Side / line</th><th>Book / price</th><th>Projection</th><th>Raw difference</th><th>Model / implied</th><th>Observed</th></tr></thead><tbody>${(p.current_opportunities||[]).map(x=>`<tr><td>${esc(x.player)}<div class="meta">${esc(x.game_id)}</div></td><td>${esc(x.market)}</td><td>${esc(x.side)} ${num(x.line)}</td><td>${esc(x.sportsbook)} ${odds(x.price)}</td><td>${num(x.projection)}</td><td>${num(x.model_line_difference)}</td><td>${pct(x.model_probability)} / ${pct(x.market_implied_probability)}</td><td>${when(x.quote_observed_at)}</td></tr>`).join("")||'<tr><td colspan="8">No fresh paired projections and quotes.</td></tr>'}</tbody></table></div></section>
+      <section class="panel"><div class="panelhead"><h2>Open paper positions</h2></div><div class="panelbody">${positionRows(p.open)}</div></section><section class="panel"><div class="panelhead"><h2>Recent mock picks and settlements</h2></div><div class="panelbody">${positionRows(p.recent)}</div></section>
+      ${group("Results by market",p.by_market)}${group("Results by model version",p.by_model_version)}${group("Results by policy version",p.by_policy_version)}
+      <section class="panel"><div class="panelhead"><h2>Archived model vs line distribution</h2><span class="sub">includes stale observations</span></div><div class="panelbody table-scroll"><table><thead><tr><th>Market</th><th>N</th><th>Min</th><th>Median</th><th>Max</th><th>Positive</th><th>Negative</th></tr></thead><tbody>${Object.entries(p.opportunity_distribution?.markets||{}).map(([market,x])=>`<tr><td>${esc(market)}</td><td>${x.n}</td><td>${num(x.min)}</td><td>${num(x.median)}</td><td>${num(x.max)}</td><td>${x.positive}</td><td>${x.negative}</td></tr>`).join("")}</tbody></table></div></section>`;
+  } catch(e) { $("main").innerHTML=`<div class="warnbox">${esc(e.message)}</div>`; }
 }
 async function performancePage() {
   $("main").innerHTML='<div class="loading">Loading model record…</div>';
@@ -111,6 +127,7 @@ function renderDashboard() {
   $("staleBadge").classList.toggle("hidden", !(d.odds_age_s > (state.config?.stale_odds_s||900)));
   $("lastUpdated").textContent=`last updated ${when(d.last_refresh?.at)}`;
   if(state.section==="performance") { performancePage(); return; }
+  if(state.section==="paper") { paperPage(); return; }
   $("main").innerHTML=state.section==="data"?dataHealth(d):gamesTable(d.upcoming);
 }
 
@@ -157,7 +174,7 @@ function addMessage(role,text,trace=[]) { const el=document.createElement("div")
 // This lives in `state`, so two tabs are two conversations.
 async function sendChat(message) { if(!message.trim())return; addMessage("user",message); state.history.push({role:"user",content:message}); const thinking=addMessage("bot","Analyzing from stored application data…"); thinking.querySelector(".bubble").classList.add("thinking"); try { const out=await api("/api/chat",{method:"POST",body:JSON.stringify({message,history:state.history.slice(-8),event_id:state.eventId,context:state.chatContext||null})}); thinking.remove(); if(out.context) state.chatContext=out.context; addMessage("bot",out.answer,out.tool_trace||[]); state.history.push({role:"assistant",content:out.answer}); } catch(e){thinking.remove();addMessage("bot",`Unavailable: ${e.message}`);} }
 async function refreshOdds() { const b=$("refreshBtn"); b.disabled=true;b.textContent="Refreshing…"; try { const out=await api("/api/refresh",{method:"POST",body:JSON.stringify({sports:["NFL"]})}); const r=out.sports?.NFL||{}; await loadDashboard(true); toast(`NFL: stored ${r.odds_rows||0} odds rows via ${r.odds_source||"provider"}${r.odds_error?` · ${r.odds_error}`:""}`,!!r.odds_error); } catch(e){toast(`Data refresh failed: ${e.message}`,true);} finally{b.disabled=false;b.textContent="Refresh data";} }
-async function loadDashboard(force=false) { $("main").innerHTML='<div class="loading">Loading NFL slate…</div>'; state.dashboard=await api(`/api/dashboard?sport=NFL${force?"&refresh_analysis=true":""}`); renderDashboard(); }
+async function loadDashboard(force=false) { $("main").innerHTML='<div class="loading">Loading NFL slate…</div>'; const [dashboard,researchStatus]=await Promise.all([api(`/api/dashboard?sport=NFL${force?"&refresh_analysis=true":""}`),api("/api/research/refresh-status")]); state.dashboard=dashboard; state.researchStatus=researchStatus; renderDashboard(); }
 function bind() {
   document.addEventListener("click",e=>{ if(e.target.closest("#backBtn")){state.eventId=null;renderDashboard();return} const window=e.target.closest("[data-window]"); if(window){state.window=window.dataset.window;renderDashboard();return} const sec=e.target.closest("[data-section]"); if(sec){state.section=sec.dataset.section;state.eventId=null;renderDashboard();return} const ev=e.target.closest("[data-event]"); if(ev){openEvent(ev.dataset.event);return} });
   $("refreshBtn").onclick=refreshOdds; $("providerHealth").onclick=()=>$("providerPanel").classList.toggle("hidden"); $("chatToggle").onclick=()=>$("chat").classList.add("open"); $("chatClose").onclick=()=>$("chat").classList.remove("open");

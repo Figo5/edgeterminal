@@ -1,0 +1,15 @@
+{
+  "version": "PAPER_EXAMPLE_DISABLED_V1",
+  "enabled": false,
+  "eligible_markets": ["moneyline", "passing_yards", "rushing_yards", "rushing_attempts", "receptions", "receiving_yards"],
+  "min_model_line_difference": null,
+  "min_probability_difference": null,
+  "minimum_price": -200,
+  "maximum_price": 200,
+  "quote_freshness_seconds": 900,
+  "maximum_positions_per_game": 2,
+  "maximum_open_positions": 12,
+  "stake_policy": {"type": "flat_dollars", "amount": 10},
+  "starting_bankroll": 1000,
+  "maximum_stake_fraction": 0.02
+}

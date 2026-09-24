@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import sqlite3
+import threading
 import time
 from contextlib import contextmanager
 from typing import Any, Dict, Iterable, List, Optional
@@ -142,6 +143,69 @@ CREATE TRIGGER IF NOT EXISTS nfl_prop_grade_revision_no_update BEFORE UPDATE ON 
 BEGIN SELECT RAISE(ABORT, 'prop grade revisions are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS nfl_prop_grade_revision_no_delete BEFORE DELETE ON nfl_prop_grade_revisions
 BEGIN SELECT RAISE(ABORT, 'prop grade revisions cannot be deleted'); END;
+
+CREATE TABLE IF NOT EXISTS paper_policies (
+  version TEXT PRIMARY KEY, sha256 TEXT NOT NULL, payload TEXT NOT NULL,
+  registered_at REAL NOT NULL);
+CREATE TRIGGER IF NOT EXISTS paper_policy_no_update BEFORE UPDATE ON paper_policies
+BEGIN SELECT RAISE(ABORT, 'paper policies are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS paper_policy_no_delete BEFORE DELETE ON paper_policies
+BEGIN SELECT RAISE(ABORT, 'paper policies cannot be deleted'); END;
+CREATE TABLE IF NOT EXISTS paper_accounts (
+  id TEXT PRIMARY KEY, starting_bankroll REAL NOT NULL CHECK(starting_bankroll>0),
+  created_at REAL NOT NULL);
+CREATE TRIGGER IF NOT EXISTS paper_account_no_update BEFORE UPDATE ON paper_accounts
+BEGIN SELECT RAISE(ABORT, 'paper accounts are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS paper_account_no_delete BEFORE DELETE ON paper_accounts
+BEGIN SELECT RAISE(ABORT, 'paper accounts cannot be deleted'); END;
+CREATE TABLE IF NOT EXISTS paper_positions (
+  id TEXT PRIMARY KEY, account_id TEXT NOT NULL, policy_version TEXT NOT NULL,
+  freeze_sha TEXT NOT NULL, quote_id INTEGER NOT NULL UNIQUE,
+  game_id TEXT NOT NULL, player_id TEXT NOT NULL, player_name TEXT NOT NULL,
+  market TEXT NOT NULL, side TEXT NOT NULL, line REAL, odds INTEGER NOT NULL,
+  sportsbook TEXT NOT NULL, model_projection REAL NOT NULL,
+  model_probability REAL NOT NULL, market_probability REAL NOT NULL,
+  quote_observed_at REAL NOT NULL, created_at REAL NOT NULL, kickoff_utc REAL NOT NULL,
+  model_version TEXT NOT NULL, model_hash TEXT NOT NULL, stake REAL NOT NULL CHECK(stake>0),
+  source_kind TEXT NOT NULL DEFAULT 'frozen_prop_research',
+  FOREIGN KEY(policy_version) REFERENCES paper_policies(version));
+CREATE INDEX IF NOT EXISTS ix_paper_game ON paper_positions(game_id,created_at);
+CREATE TRIGGER IF NOT EXISTS paper_position_no_update BEFORE UPDATE ON paper_positions
+BEGIN SELECT RAISE(ABORT, 'paper positions are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS paper_position_no_delete BEFORE DELETE ON paper_positions
+BEGIN SELECT RAISE(ABORT, 'paper positions cannot be deleted'); END;
+CREATE TABLE IF NOT EXISTS paper_settlement_revisions (
+  position_id TEXT NOT NULL, revision INTEGER NOT NULL, grade_revision INTEGER NOT NULL,
+  result TEXT NOT NULL CHECK(result IN ('win','loss','push','void','pending')),
+  profit_loss REAL NOT NULL, source_evidence_sha TEXT NOT NULL,
+  source_grade_sha TEXT NOT NULL, recorded_at REAL NOT NULL,
+  PRIMARY KEY(position_id,revision));
+CREATE TRIGGER IF NOT EXISTS paper_settlement_no_update BEFORE UPDATE ON paper_settlement_revisions
+BEGIN SELECT RAISE(ABORT, 'paper settlements are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS paper_settlement_no_delete BEFORE DELETE ON paper_settlement_revisions
+BEGIN SELECT RAISE(ABORT, 'paper settlements cannot be deleted'); END;
+CREATE TABLE IF NOT EXISTS paper_opportunity_skips (
+  policy_version TEXT NOT NULL, quote_id INTEGER NOT NULL, reason TEXT NOT NULL,
+  observed_at REAL NOT NULL, PRIMARY KEY(policy_version,quote_id,reason));
+CREATE TRIGGER IF NOT EXISTS paper_skip_no_update BEFORE UPDATE ON paper_opportunity_skips
+BEGIN SELECT RAISE(ABORT, 'paper skips are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS paper_skip_no_delete BEFORE DELETE ON paper_opportunity_skips
+BEGIN SELECT RAISE(ABORT, 'paper skips cannot be deleted'); END;
+CREATE TABLE IF NOT EXISTS research_refresh_runs (
+  run_id TEXT PRIMARY KEY, started_at REAL NOT NULL, finished_at REAL NOT NULL,
+  success INTEGER NOT NULL, next_due_at REAL NOT NULL, payload TEXT NOT NULL);
+CREATE TRIGGER IF NOT EXISTS research_refresh_no_update BEFORE UPDATE ON research_refresh_runs
+BEGIN SELECT RAISE(ABORT, 'research refresh history is immutable'); END;
+CREATE TRIGGER IF NOT EXISTS research_refresh_no_delete BEFORE DELETE ON research_refresh_runs
+BEGIN SELECT RAISE(ABORT, 'research refresh history cannot be deleted'); END;
+CREATE TABLE IF NOT EXISTS research_refresh_steps (
+  id INTEGER PRIMARY KEY AUTOINCREMENT, run_id TEXT NOT NULL, name TEXT NOT NULL,
+  attempted_at REAL NOT NULL, success INTEGER NOT NULL, detail TEXT NOT NULL);
+CREATE INDEX IF NOT EXISTS ix_refresh_step ON research_refresh_steps(name,attempted_at);
+CREATE TRIGGER IF NOT EXISTS research_refresh_step_no_update BEFORE UPDATE ON research_refresh_steps
+BEGIN SELECT RAISE(ABORT, 'research refresh steps are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS research_refresh_step_no_delete BEFORE DELETE ON research_refresh_steps
+BEGIN SELECT RAISE(ABORT, 'research refresh steps cannot be deleted'); END;
 
 CREATE TABLE IF NOT EXISTS nfl_game_snapshots (
   id TEXT PRIMARY KEY, game_id TEXT NOT NULL, payload TEXT NOT NULL,
@@ -403,24 +467,26 @@ def _connect() -> sqlite3.Connection:
 
 
 _conn: Optional[sqlite3.Connection] = None
+_connection_lock = threading.RLock()
 
 
 def conn() -> sqlite3.Connection:
     global _conn
-    if _conn is None:
-        _conn = _connect()
-        _conn.executescript(SCHEMA)
-        _ensure_columns(_conn, "odds_snapshots", {
-            "source_url": "TEXT", "provider_updated_at": "REAL",
-            "provider": "TEXT", "fetched_at": "REAL", "kickoff_utc": "REAL",
-            "quote_phase": "TEXT"})
-        _ensure_columns(_conn, "predictions", {"snapshot_id": "TEXT"})
-        _ensure_columns(_conn, "nfl_prop_capture_batches", {"audit_json": "TEXT"})
-        _ensure_columns(_conn, "nfl_prop_snapshots", {"source": "TEXT NOT NULL DEFAULT 'https://api.sportsgameodds.com/v2/events'",
-                                                     "line_type": "TEXT NOT NULL DEFAULT 'main'",
-                                                     "offer_index": "INTEGER NOT NULL DEFAULT 0"})
-        _conn.commit()
-    return _conn
+    with _connection_lock:
+        if _conn is None:
+            _conn = _connect()
+            _conn.executescript(SCHEMA)
+            _ensure_columns(_conn, "odds_snapshots", {
+                "source_url": "TEXT", "provider_updated_at": "REAL",
+                "provider": "TEXT", "fetched_at": "REAL", "kickoff_utc": "REAL",
+                "quote_phase": "TEXT"})
+            _ensure_columns(_conn, "predictions", {"snapshot_id": "TEXT"})
+            _ensure_columns(_conn, "nfl_prop_capture_batches", {"audit_json": "TEXT"})
+            _ensure_columns(_conn, "nfl_prop_snapshots", {"source": "TEXT NOT NULL DEFAULT 'https://api.sportsgameodds.com/v2/events'",
+                                                         "line_type": "TEXT NOT NULL DEFAULT 'main'",
+                                                         "offer_index": "INTEGER NOT NULL DEFAULT 0"})
+            _conn.commit()
+        return _conn
 
 
 def _ensure_columns(c: sqlite3.Connection, table: str, columns: Dict[str, str]) -> None:
@@ -432,18 +498,20 @@ def _ensure_columns(c: sqlite3.Connection, table: str, columns: Dict[str, str]) 
 
 @contextmanager
 def tx():
-    c = conn()
-    try:
-        yield c
-        c.commit()
-    except Exception:
-        c.rollback()
-        raise
+    with _connection_lock:
+        c = conn()
+        try:
+            yield c
+            c.commit()
+        except Exception:
+            c.rollback()
+            raise
 
 
 def q(sql: str, params: Iterable = ()) -> List[Dict[str, Any]]:
-    cur = conn().execute(sql, tuple(params))
-    return [dict(r) for r in cur.fetchall()]
+    with _connection_lock:
+        cur = conn().execute(sql, tuple(params))
+        return [dict(r) for r in cur.fetchall()]
 
 
 def q1(sql: str, params: Iterable = ()) -> Optional[Dict[str, Any]]:
