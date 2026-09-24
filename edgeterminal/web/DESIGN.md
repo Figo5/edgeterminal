@@ -1,55 +1,23 @@
-# EdgeTerminal NFL interface
+# NFL projection surface
 
-## Context
+This page uses the existing EdgeTerminal dark palette and type scale. The visible order is: weekly matchup, projected score, observed market price, model probability, and player props. Research operations live behind the Research navigation item.
 
-- Artifact: local NFL research terminal for scanning a full weekly slate and
-  opening one matchup at a time.
-- Direction: restrained sportsbook research ledger. A dark canvas supports
-  score and price comparison without implying a live trading feed.
-- Dials: DESIGN_VARIANCE=3, MOTION_INTENSITY=1, VISUAL_DENSITY=4.
-- Signature move: each game aligns projected score, model numbers and observed
-  market prices in three calm horizontal bands. Status stays visible.
+## Components
 
-## Typography
+- Game cards use a two-column desktop grid and one mobile column. Scores carry the strongest visual weight; market and model lines are separated by rules.
+- Matchup pages place the projected score first, then moneyline, spread, total, and the full qualified prop board. PAPER uses a small badge only when an immutable position exists.
+- Confidence means the stored model probability for the displayed outcome. It is not a recommendation score.
+- Stale prices remain visible only as *last observed* pregame quotes with timestamps. ESPN fallback is named explicitly.
+- Mobile uses vertical cards and wraps prop facts; it does not require horizontal scrolling for the primary board.
 
-- Body: platform system sans for legibility in a local utility.
-- Numbers and timestamps: platform monospace with tabular figures.
-- Base: 14px / 1.5. Main heading: 27px / 1.2. Game scores: 23px.
+## Tokens
 
-## Color
+Existing `style.css` variables remain authoritative: `--bg`, `--panel`, `--panel2`, `--line`, `--text`, `--dim`, `--accent`, and `--accent2`. Product components use 5–6 px radii, 10–14 px gaps, and the existing system sans/monospace pairing.
 
-| Role | OKLCH target | Current CSS token |
-| --- | --- | --- |
-| bg | `oklch(0.16 0.02 255)` | `--bg` |
-| surface | `oklch(0.20 0.025 255)` | `--panel` |
-| fg | `oklch(0.88 0.02 255)` | `--text` |
-| muted | `oklch(0.62 0.02 255)` | `--dim` |
-| border | `oklch(0.29 0.025 255)` | `--line2` |
-| accent | `oklch(0.77 0.15 80)` | `--accent` |
-| accent-fg | `oklch(0.20 0.03 80)` | primary-button text |
-| success | `oklch(0.72 0.15 155)` | `--good` |
-| warning | `oklch(0.73 0.13 65)` | `--warn` |
-| error | `oklch(0.67 0.18 20)` | `--bad` |
+## Boundaries
 
-## Spacing and shape
-
-- Base unit: 4px. Board padding is 16px, grid gap 12px, page inset 24px.
-- Radius: 4px for controls and panels.
-- Elevation: borders and surface lightness only; no card shadows.
-
-## Iconography and motion
-
-- The existing square brand mark is the only decorative symbol. Text labels
-  identify every action and state.
-- Hover and focus change borders. Reduced-motion preferences suppress the
-  inherited chat loading animation.
+The browser only calls read-only product and research endpoints on page load. The background scheduler owns ingestion. PASS, RESEARCH_ONLY, research freezes, model parameters, and PAPER policy are not presentation state.
 
 ## Verification
 
-- Automated source and API tests plus `node --check` run on 2026-09-23.
-- Wide (1440×900) and narrow (375×812) browser render review completed on
-  2026-09-23. Both keep the board within the viewport; the detailed market
-  table scrolls horizontally inside its panel on narrow screens. Captures are
-  stored in `reports/nfl_model_v1/screenshots/`.
-- The pre-existing stylesheet contains older small type and hex colors outside
-  this board system; these are legacy detail and chat styles, not new tokens.
+On 2026-09-24, browser review covered 1440 × 900 and 375 × 812 viewports. The NFL board, ATL–GB matchup, qualified prop rows, Paper Portfolio, Performance, and Research rendered. The 375 px board and prop view had no document overflow. Captures are in `reports/ui/`.

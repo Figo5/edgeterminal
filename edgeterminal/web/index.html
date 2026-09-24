@@ -4,18 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>EdgeTerminal</title>
-<link rel="stylesheet" href="/static/style.css?v=nfl-board-20260923h">
+<link rel="stylesheet" href="/static/style.css?v=projection-20260924b">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>▨</text></svg>">
 </head>
 <body>
 <header id="topbar">
-  <div class="brand"><span class="mark">▨</span> EDGE<span class="dim">TERMINAL</span><small>NFL Research Terminal</small></div>
+  <div class="brand"><span class="mark">▨</span> EDGE<span class="dim">TERMINAL</span><small>NFL projections</small></div>
   <div class="topright">
-    <span id="demoBadge" class="badge demo hidden">DEMO DATA</span>
-    <span id="staleBadge" class="badge stale hidden">ODDS STALE</span>
-    <span class="meta" id="lastUpdated">last updated —</span>
-    <button id="providerHealth" class="health" title="Provider status">DATA <span id="providerDots">—</span></button>
-    <button id="refreshBtn" class="btn primary" type="button">Refresh data</button>
+    <span class="meta" id="lastUpdated">Updated —</span>
     <button id="chatToggle" class="btn" type="button">Research chat</button>
   </div>
 </header>
@@ -23,10 +19,9 @@
 <div id="shell">
   <aside id="rail">
     <nav id="sections"></nav>
-    <div id="providerPanel" class="provider-pop hidden"><div id="providerList" class="providers"></div></div>
     <div class="railfoot">
       <div id="modelVersion" class="meta"></div>
-      <div class="meta disclaimer">Research tool. No bets are placed. Probabilistic estimates only.</div>
+      <div class="meta disclaimer">Research only · all games PASS. No bets are placed.</div>
     </div>
   </aside>
 
@@ -48,6 +43,7 @@
 </div>
 
 <div id="toast" class="toast hidden"></div>
-<script src="/static/app.js?v=nfl-board-20260923h"></script>
+<script src="/static/product_ui.js?v=projection-20260924b"></script>
+<script src="/static/app.js?v=projection-20260924b"></script>
 </body>
 </html>

@@ -118,8 +118,23 @@ def test_frontend_script_exists_and_wires_required_flows(client):
     response = client.get("/static/app.js")
     assert response.status_code == 200
     script = response.text
-    for endpoint in ("/api/dashboard", "/api/refresh", "/api/event/", "/api/chat", "/api/model-report"):
+    for endpoint in ("/api/product/nfl", "/api/product/performance",
+                     "/api/research/paper", "/api/chat", "/api/model-report"):
         assert endpoint in script
-    for control in ("refreshBtn", "chatForm", "providerHealth"):
+    for control in ("backBtn", "chatForm", "propSort"):
         assert control in script
+    assert '"/api/refresh"' not in script
     assert "sportTabs" not in script
+
+
+def test_read_only_product_routes_expose_research_artifacts(client):
+    board = client.get("/api/product/nfl")
+    assert board.status_code == 200
+    assert board.json()["readiness"] == "RESEARCH_ONLY"
+    index = client.get("/api/product/research-index")
+    assert index.status_code == 200
+    assert index.json()["week3_game_freeze"]["matches_record"] is True
+    document = client.get("/api/product/research-document/settlement-rules")
+    assert document.status_code == 200
+    assert "sportsbook" in document.text.lower()
+    assert client.get("/api/product/research-document/../../etc/passwd").status_code in (404, 422)

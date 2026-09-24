@@ -12,7 +12,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import calibration, db, engine, logs, nfl_forward_grading, nfl_props, paper_research, research_refresh, parlay, props, shadow
+from . import calibration, db, engine, logs, nfl_forward_grading, nfl_props, paper_research, product_views, research_refresh, parlay, props, shadow
 from .agents import llm
 from .config import ROOT, settings
 from .providers import registry as R
@@ -132,6 +132,42 @@ def research_refresh_status() -> Dict:
 def paper_dashboard() -> Dict:
     """Read the separate PAPER ledger; never issue product recommendations."""
     return paper_research.dashboard()
+
+
+@app.get("/api/product/nfl")
+def product_nfl_board() -> Dict:
+    """Read stored weekly projections and labeled pregame observations only."""
+    return product_views.weekly_board()
+
+
+@app.get("/api/product/nfl/{game_id}")
+def product_nfl_matchup(game_id: str) -> Dict:
+    """Read-only matchup and paired prop projections; no ingestion or picks."""
+    try:
+        return product_views.matchup(game_id)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@app.get("/api/product/performance")
+def product_performance() -> Dict:
+    return product_views.performance()
+
+
+@app.get("/api/product/research-index")
+def product_research_index() -> Dict:
+    return product_views.research_index()
+
+
+@app.get("/api/product/research-document/{slug}")
+def product_research_document(slug: str):
+    relative = product_views.RESEARCH_DOCUMENTS.get(slug)
+    if not relative:
+        raise HTTPException(404, "unknown research document")
+    path = ROOT / relative
+    if not path.is_file():
+        raise HTTPException(404, "research document unavailable")
+    return FileResponse(path, media_type="text/plain; charset=utf-8")
 
 
 @app.post("/api/refresh")
