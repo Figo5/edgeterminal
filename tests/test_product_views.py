@@ -101,3 +101,20 @@ def test_product_performance_keeps_forward_summary_separate(tmp_path, monkeypatc
     assert "market_comparisons" not in result["prospective_2026"]["player_props"]
     assert result["retrospective_research"]["available"]
     assert result["prospective_2026"]["paper"]["open_positions"] == 3
+
+
+def test_matchup_context_is_from_stored_pregame_snapshot(monkeypatch):
+    game_id = _game()["id"]
+    monkeypatch.setattr(product_views, "weekly_board", lambda: {
+        "games": [{"id": game_id, "kickoff_utc": "2026-09-25T00:15Z"}],
+        "as_of": 1790200000.0})
+    monkeypatch.setattr(product_views, "player_props", lambda g: {"rows": [], "count": 0})
+    payload = json.dumps({"weather": {"conditions": "Overcast", "retrieved_at": 1790200000.0},
+                          "injuries": [{"player": "Example", "status": "Out"}]})
+    monkeypatch.setattr(product_views.db, "q1", lambda *a, **k: {
+        "payload": payload, "created_at": 1790200000.0})
+    result = product_views.matchup(game_id)
+    assert result["context"]["weather"]["conditions"] == "Overcast"
+    assert result["context"]["injuries"][0]["status"] == "Out"
+    assert result["context"]["observed_at"] == 1790200000.0
+    assert result["designation"] == "PASS"

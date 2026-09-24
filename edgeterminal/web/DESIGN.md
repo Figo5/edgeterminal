@@ -5,7 +5,7 @@ This page uses the existing EdgeTerminal dark palette and type scale. The visibl
 ## Components
 
 - Game cards use a two-column desktop grid and one mobile column. Scores carry the strongest visual weight; market and model lines are separated by rules.
-- Matchup pages place the projected score first, then moneyline, spread, total, and the full qualified prop board. PAPER uses a small badge only when an immutable position exists.
+- Matchup pages place the projected score first, then moneyline, spread, total, and the full qualified prop board. Timestamped weather and injury context follows in a disclosure. PAPER uses a small badge only when an immutable position exists.
 - Confidence means the stored model probability for the displayed outcome. It is not a recommendation score.
 - Stale prices remain visible only as *last observed* pregame quotes with timestamps. ESPN fallback is named explicitly.
 - Mobile uses vertical cards and wraps prop facts; it does not require horizontal scrolling for the primary board.

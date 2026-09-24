@@ -44,6 +44,7 @@ def test_matchup_props_and_confidence_are_visible_before_research():
     assert "paper-mark" in js
     assert "filterSortProps" in js
     assert "Research documents" in js
+    assert "Weather and injury context" in js
 
 
 def test_unsupported_betting_controls_are_absent():

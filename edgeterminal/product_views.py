@@ -201,8 +201,16 @@ def matchup(game_id: str) -> dict:
     if not game:
         raise ValueError("unknown current NFL game")
     props = player_props(game_id)
+    snapshot = db.q1(
+        "SELECT s.payload,p.created_at FROM nfl_game_predictions p "
+        "JOIN nfl_game_snapshots s ON s.id=p.snapshot_id "
+        "WHERE p.game_id=? AND p.created_at<? ORDER BY p.created_at DESC LIMIT 1",
+        (game_id, parse_time(game["kickoff_utc"])))
+    stored = json.loads(snapshot["payload"]) if snapshot else {}
+    context = {"weather": stored.get("weather"), "injuries": stored.get("injuries") or [],
+               "observed_at": snapshot["created_at"] if snapshot else None}
     return {"readiness": "RESEARCH_ONLY", "designation": "PASS", "as_of": board["as_of"],
-            "game": game, "props": props}
+            "game": game, "props": props, "context": context}
 
 
 def performance() -> dict:
