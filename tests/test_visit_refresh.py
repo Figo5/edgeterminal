@@ -43,6 +43,16 @@ def test_recent_scheduled_worker_is_reused(isolated, monkeypatch):
     assert visit_refresh.check(1000) == {'ok': True, 'status': 'cached', 'did_work': False, 'checked_at': 900.}
 
 
+def test_successful_worker_replaces_expired_page_failure_in_health_cache(isolated, monkeypatch):
+    db.kv_set(visit_refresh.KEY, {'ok': False, 'status': 'needs_attention', 'started_at': 500.})
+    db.ex('INSERT INTO research_refresh_ticks(run_id,started_at,finished_at,success) VALUES(?,?,?,?)',
+          ('recovered', 950., 951., 1))
+    monkeypatch.setattr(research_refresh, 'run', lambda **kw: pytest.fail('worker called twice'))
+    result = visit_refresh.check(1000)
+    assert result['ok'] and not result['did_work']
+    assert db.kv_get(visit_refresh.KEY) == result
+
+
 def test_weekly_freeze_failure_is_specific_and_survives_idle_checks(isolated, monkeypatch):
     db.ex('INSERT INTO research_refresh_steps(run_id,name,attempted_at,success,detail) '
           'VALUES(?,?,?,?,?)', ('failed', 'weekly_freeze_2026_05', 900., 0,
@@ -73,6 +83,7 @@ def test_snapshot_warning_clears_after_successful_retry(isolated, monkeypatch):
     result = visit_refresh.check(1000)
     assert result['ok'] and result['status'] == 'cached'
     assert 'attention' not in result
+    assert db.kv_get(visit_refresh.KEY) == result
 
 
 def test_concurrent_request_observes_claim(isolated, monkeypatch):

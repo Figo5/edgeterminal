@@ -42,16 +42,25 @@ def check(now: float | None = None) -> dict:
     with db.tx() as conn:
         row = conn.execute('SELECT v FROM kv WHERE k=?', (KEY,)).fetchone()
         previous = json.loads(row['v']) if row else {}
+        def cached(public):
+            # Health reads this same cache. Persist a resolved warning even when
+            # a recent worker tick means this visit needs no provider requests.
+            # A concurrent visit must leave the active refresh claim intact.
+            if previous.get('status') != 'running' and public != previous:
+                conn.execute('INSERT INTO kv(k,v,updated_at) VALUES(?,?,?) '
+                             'ON CONFLICT(k) DO UPDATE SET v=excluded.v,updated_at=excluded.updated_at',
+                             (KEY, json.dumps(public), stamp))
+            return public
         age = stamp - previous.get('started_at', 0)
         if previous and 0 <= age < INTERVAL:
-            return _with_attention({**previous,
+            return cached(_with_attention({**previous,
                 'status': 'busy' if previous.get('status') == 'running' else 'cached',
-                'did_work': False})
+                'did_work': False}))
         tick = conn.execute('SELECT started_at,success FROM research_refresh_ticks '
                             'ORDER BY started_at DESC LIMIT 1').fetchone()
         if tick and 0 <= stamp - tick['started_at'] < INTERVAL:
-            return _with_attention({'ok': bool(tick['success']), 'status': 'cached',
-                                    'did_work': False, 'checked_at': tick['started_at']})
+            return cached(_with_attention({'ok': bool(tick['success']), 'status': 'cached',
+                                          'did_work': False, 'checked_at': tick['started_at']}))
         claim = {'ok': True, 'status': 'running', 'started_at': stamp, 'did_work': False}
         conn.execute('INSERT INTO kv(k,v,updated_at) VALUES(?,?,?) '
                      'ON CONFLICT(k) DO UPDATE SET v=excluded.v,updated_at=excluded.updated_at',
