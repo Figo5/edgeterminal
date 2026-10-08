@@ -3,232 +3,627 @@
   "prospective_2026": {
     "linear": {
       "ats_record": {
-        "losses": 0,
-        "n_decisions": 0,
+        "losses": 13,
+        "n_decisions": 31,
         "passes": 0,
-        "pushes": 0,
-        "win_rate_ci95": null,
-        "wins": 0
+        "pushes": 1,
+        "unavailable": 0,
+        "win_rate": 0.5806451612903226,
+        "win_rate_ci95": [
+          0.41935,
+          0.74194
+        ],
+        "wins": 18
       },
-      "brier": null,
+      "brier": {
+        "bootstrap_ci95": [
+          0.17735,
+          0.27423
+        ],
+        "n": 32,
+        "value": 0.22266319255920267
+      },
       "edge_buckets": {
         "spread": {
           "0-1": {
             "ats_record": {
-              "losses": 0,
-              "n_decisions": 0,
+              "losses": 6,
+              "n_decisions": 9,
               "passes": 0,
               "pushes": 0,
-              "win_rate_ci95": null,
-              "wins": 0
+              "unavailable": 0,
+              "win_rate": 0.3333333333333333,
+              "win_rate_ci95": [
+                0,
+                0.66667
+              ],
+              "wins": 3
             },
-            "brier": null,
-            "games_graded": 0,
-            "margin_mae": null,
-            "total_mae": null,
+            "brier": {
+              "bootstrap_ci95": [
+                0.19446,
+                0.36371
+              ],
+              "n": 9,
+              "value": 0.27515647442190266
+            },
+            "games_graded": 9,
+            "margin_mae": {
+              "bootstrap_ci95": [
+                4.3591,
+                16.83766
+              ],
+              "n": 9,
+              "value": 9.738413995281226
+            },
+            "total_mae": {
+              "bootstrap_ci95": [
+                6.33339,
+                15.12323
+              ],
+              "n": 9,
+              "value": 10.417973304648607
+            },
             "totals_record": {
-              "losses": 0,
-              "n_decisions": 0,
+              "losses": 5,
+              "n_decisions": 9,
               "passes": 0,
               "pushes": 0,
-              "win_rate_ci95": null,
-              "wins": 0
+              "unavailable": 0,
+              "win_rate": 0.4444444444444444,
+              "win_rate_ci95": [
+                0.11111,
+                0.77778
+              ],
+              "wins": 4
             }
           },
           "1-3": {
             "ats_record": {
-              "losses": 0,
-              "n_decisions": 0,
+              "losses": 3,
+              "n_decisions": 10,
               "passes": 0,
               "pushes": 0,
-              "win_rate_ci95": null,
-              "wins": 0
+              "unavailable": 0,
+              "win_rate": 0.7,
+              "win_rate_ci95": [
+                0.4,
+                1
+              ],
+              "wins": 7
             },
-            "brier": null,
-            "games_graded": 0,
-            "margin_mae": null,
-            "total_mae": null,
+            "brier": {
+              "bootstrap_ci95": [
+                0.16447,
+                0.29298
+              ],
+              "n": 10,
+              "value": 0.22803418558851862
+            },
+            "games_graded": 10,
+            "margin_mae": {
+              "bootstrap_ci95": [
+                3.56531,
+                12.24495
+              ],
+              "n": 10,
+              "value": 7.3314554487073815
+            },
+            "total_mae": {
+              "bootstrap_ci95": [
+                4.59704,
+                12.75921
+              ],
+              "n": 10,
+              "value": 8.437828795909198
+            },
             "totals_record": {
-              "losses": 0,
-              "n_decisions": 0,
+              "losses": 4,
+              "n_decisions": 10,
               "passes": 0,
               "pushes": 0,
-              "win_rate_ci95": null,
-              "wins": 0
+              "unavailable": 0,
+              "win_rate": 0.6,
+              "win_rate_ci95": [
+                0.3,
+                0.9
+              ],
+              "wins": 6
             }
           },
           "3-6": {
             "ats_record": {
-              "losses": 0,
-              "n_decisions": 0,
+              "losses": 3,
+              "n_decisions": 9,
               "passes": 0,
-              "pushes": 0,
-              "win_rate_ci95": null,
-              "wins": 0
+              "pushes": 1,
+              "unavailable": 0,
+              "win_rate": 0.6666666666666666,
+              "win_rate_ci95": [
+                0.33333,
+                1
+              ],
+              "wins": 6
             },
-            "brier": null,
-            "games_graded": 0,
-            "margin_mae": null,
-            "total_mae": null,
+            "brier": {
+              "bootstrap_ci95": [
+                0.09969,
+                0.33139
+              ],
+              "n": 10,
+              "value": 0.2013433880682149
+            },
+            "games_graded": 10,
+            "margin_mae": {
+              "bootstrap_ci95": [
+                2.89505,
+                8.89953
+              ],
+              "n": 10,
+              "value": 5.728927220234639
+            },
+            "total_mae": {
+              "bootstrap_ci95": [
+                11.75463,
+                16.7968
+              ],
+              "n": 10,
+              "value": 14.363634071040567
+            },
             "totals_record": {
-              "losses": 0,
-              "n_decisions": 0,
+              "losses": 5,
+              "n_decisions": 10,
               "passes": 0,
               "pushes": 0,
-              "win_rate_ci95": null,
-              "wins": 0
+              "unavailable": 0,
+              "win_rate": 0.5,
+              "win_rate_ci95": [
+                0.2,
+                0.8
+              ],
+              "wins": 5
             }
           },
           "6-plus": {
             "ats_record": {
-              "losses": 0,
-              "n_decisions": 0,
+              "losses": 1,
+              "n_decisions": 3,
               "passes": 0,
               "pushes": 0,
-              "win_rate_ci95": null,
-              "wins": 0
+              "unavailable": 0,
+              "win_rate": 0.6666666666666666,
+              "win_rate_ci95": [
+                0,
+                1
+              ],
+              "wins": 2
             },
-            "brier": null,
-            "games_graded": 0,
-            "margin_mae": null,
-            "total_mae": null,
+            "brier": {
+              "bootstrap_ci95": [
+                0.0414,
+                0.203
+              ],
+              "n": 3,
+              "value": 0.1183460518433419
+            },
+            "games_graded": 3,
+            "margin_mae": {
+              "bootstrap_ci95": [
+                0.57431,
+                17.38955
+              ],
+              "n": 3,
+              "value": 9.750214228401633
+            },
+            "total_mae": {
+              "bootstrap_ci95": [
+                9.87446,
+                11.42354
+              ],
+              "n": 3,
+              "value": 10.55126403643399
+            },
             "totals_record": {
-              "losses": 0,
-              "n_decisions": 0,
+              "losses": 2,
+              "n_decisions": 3,
               "passes": 0,
               "pushes": 0,
-              "win_rate_ci95": null,
-              "wins": 0
+              "unavailable": 0,
+              "win_rate": 0.3333333333333333,
+              "win_rate_ci95": [
+                0,
+                1
+              ],
+              "wins": 1
             }
           }
         },
         "total": {
           "0-1": {
             "ats_record": {
-              "losses": 0,
-              "n_decisions": 0,
+              "losses": 1,
+              "n_decisions": 3,
               "passes": 0,
-              "pushes": 0,
-              "win_rate_ci95": null,
-              "wins": 0
+              "pushes": 1,
+              "unavailable": 0,
+              "win_rate": 0.6666666666666666,
+              "win_rate_ci95": [
+                0,
+                1
+              ],
+              "wins": 2
             },
-            "brier": null,
-            "games_graded": 0,
-            "margin_mae": null,
-            "total_mae": null,
+            "brier": {
+              "bootstrap_ci95": [
+                0.13554,
+                0.38194
+              ],
+              "n": 4,
+              "value": 0.27705578900972205
+            },
+            "games_graded": 4,
+            "margin_mae": {
+              "bootstrap_ci95": [
+                4.29958,
+                21.1033
+              ],
+              "n": 4,
+              "value": 10.748664677935546
+            },
+            "total_mae": {
+              "bootstrap_ci95": [
+                6.67749,
+                18.19198
+              ],
+              "n": 4,
+              "value": 11.680896095751088
+            },
             "totals_record": {
-              "losses": 0,
-              "n_decisions": 0,
+              "losses": 3,
+              "n_decisions": 4,
               "passes": 0,
               "pushes": 0,
-              "win_rate_ci95": null,
-              "wins": 0
+              "unavailable": 0,
+              "win_rate": 0.25,
+              "win_rate_ci95": [
+                0,
+                0.75
+              ],
+              "wins": 1
             }
           },
           "1-3": {
             "ats_record": {
-              "losses": 0,
-              "n_decisions": 0,
+              "losses": 7,
+              "n_decisions": 14,
               "passes": 0,
               "pushes": 0,
-              "win_rate_ci95": null,
-              "wins": 0
+              "unavailable": 0,
+              "win_rate": 0.5,
+              "win_rate_ci95": [
+                0.21429,
+                0.78571
+              ],
+              "wins": 7
             },
-            "brier": null,
-            "games_graded": 0,
-            "margin_mae": null,
-            "total_mae": null,
+            "brier": {
+              "bootstrap_ci95": [
+                0.13397,
+                0.31129
+              ],
+              "n": 14,
+              "value": 0.21939434869225863
+            },
+            "games_graded": 14,
+            "margin_mae": {
+              "bootstrap_ci95": [
+                5.74258,
+                12.37439
+              ],
+              "n": 14,
+              "value": 8.913200710087944
+            },
+            "total_mae": {
+              "bootstrap_ci95": [
+                7.85514,
+                14.07637
+              ],
+              "n": 14,
+              "value": 10.913464065563948
+            },
             "totals_record": {
-              "losses": 0,
-              "n_decisions": 0,
+              "losses": 5,
+              "n_decisions": 14,
               "passes": 0,
               "pushes": 0,
-              "win_rate_ci95": null,
-              "wins": 0
+              "unavailable": 0,
+              "win_rate": 0.6428571428571429,
+              "win_rate_ci95": [
+                0.42857,
+                0.85714
+              ],
+              "wins": 9
             }
           },
           "3-6": {
             "ats_record": {
-              "losses": 0,
-              "n_decisions": 0,
+              "losses": 5,
+              "n_decisions": 13,
               "passes": 0,
               "pushes": 0,
-              "win_rate_ci95": null,
-              "wins": 0
+              "unavailable": 0,
+              "win_rate": 0.6153846153846154,
+              "win_rate_ci95": [
+                0.38462,
+                0.84615
+              ],
+              "wins": 8
             },
-            "brier": null,
-            "games_graded": 0,
-            "margin_mae": null,
-            "total_mae": null,
+            "brier": {
+              "bootstrap_ci95": [
+                0.14749,
+                0.28969
+              ],
+              "n": 13,
+              "value": 0.21165126639930115
+            },
+            "games_graded": 13,
+            "margin_mae": {
+              "bootstrap_ci95": [
+                2.44182,
+                10.72372
+              ],
+              "n": 13,
+              "value": 5.905104815733364
+            },
+            "total_mae": {
+              "bootstrap_ci95": [
+                7.47323,
+                14.29351
+              ],
+              "n": 13,
+              "value": 10.62800985215982
+            },
             "totals_record": {
-              "losses": 0,
-              "n_decisions": 0,
+              "losses": 7,
+              "n_decisions": 13,
               "passes": 0,
               "pushes": 0,
-              "win_rate_ci95": null,
-              "wins": 0
+              "unavailable": 0,
+              "win_rate": 0.46153846153846156,
+              "win_rate_ci95": [
+                0.23077,
+                0.69231
+              ],
+              "wins": 6
             }
           },
           "6-plus": {
             "ats_record": {
               "losses": 0,
-              "n_decisions": 0,
+              "n_decisions": 1,
               "passes": 0,
               "pushes": 0,
-              "win_rate_ci95": null,
-              "wins": 0
+              "unavailable": 0,
+              "win_rate": 1,
+              "win_rate_ci95": [
+                1,
+                1
+              ],
+              "wins": 1
             },
-            "brier": null,
-            "games_graded": 0,
-            "margin_mae": null,
-            "total_mae": null,
+            "brier": {
+              "bootstrap_ci95": [
+                0.19401,
+                0.19401
+              ],
+              "n": 1,
+              "value": 0.19401166097306127
+            },
+            "games_graded": 1,
+            "margin_mae": {
+              "bootstrap_ci95": [
+                2.95436,
+                2.95436
+              ],
+              "n": 1,
+              "value": 2.9543640746490025
+            },
+            "total_mae": {
+              "bootstrap_ci95": [
+                15.75397,
+                15.75397
+              ],
+              "n": 1,
+              "value": 15.753971141659783
+            },
             "totals_record": {
-              "losses": 0,
-              "n_decisions": 0,
+              "losses": 1,
+              "n_decisions": 1,
               "passes": 0,
               "pushes": 0,
-              "win_rate_ci95": null,
+              "unavailable": 0,
+              "win_rate": 0,
+              "win_rate_ci95": [
+                0,
+                0
+              ],
               "wins": 0
             }
           }
         }
       },
-      "games_graded": 0,
-      "margin_mae": null,
-      "total_mae": null,
+      "games_graded": 32,
+      "margin_mae": {
+        "bootstrap_ci95": [
+          5.42254,
+          10.3467
+        ],
+        "n": 32,
+        "value": 7.734381104129879
+      },
+      "total_mae": {
+        "bootstrap_ci95": [
+          8.96272,
+          13.01673
+        ],
+        "n": 32,
+        "value": 11.044693141269908
+      },
       "totals_record": {
-        "losses": 0,
-        "n_decisions": 0,
+        "losses": 16,
+        "n_decisions": 32,
         "passes": 0,
         "pushes": 0,
-        "win_rate_ci95": null,
-        "wins": 0
+        "unavailable": 0,
+        "win_rate": 0.5,
+        "win_rate_ci95": [
+          0.3125,
+          0.6875
+        ],
+        "wins": 16
       },
       "versus_closing_market": {
         "basis": "same-book quote fetched within 15m before kickoff; unavailable otherwise",
         "brier": {
-          "candidate_mae": null,
-          "candidate_minus_close_mae": null,
-          "difference_ci95": null,
-          "n": 0,
-          "observed_close_mae": null
+          "candidate_mae": 0.26051792717607436,
+          "candidate_minus_close_mae": 0.009446549127741299,
+          "difference_ci95": [
+            -0.02639,
+            0.03937
+          ],
+          "n": 15,
+          "observed_close_mae": 0.25107137804833307
         },
         "margin": {
-          "candidate_mae": null,
-          "candidate_minus_close_mae": null,
-          "difference_ci95": null,
-          "n": 0,
-          "observed_close_mae": null
+          "candidate_mae": 8.855508150941187,
+          "candidate_minus_close_mae": 1.58884148427452,
+          "difference_ci95": [
+            0.0422,
+            3.04771
+          ],
+          "n": 15,
+          "observed_close_mae": 7.266666666666667
         },
         "total": {
-          "candidate_mae": null,
-          "candidate_minus_close_mae": null,
-          "difference_ci95": null,
-          "n": 0,
-          "observed_close_mae": null
+          "candidate_mae": 11.489858427333226,
+          "candidate_minus_close_mae": 0.3898584273332266,
+          "difference_ci95": [
+            -1.45526,
+            2.55182
+          ],
+          "n": 15,
+          "observed_close_mae": 11.1
         }
       },
-      "weeks": {}
+      "weeks": {
+        "3": {
+          "ats_record": {
+            "losses": 10,
+            "n_decisions": 16,
+            "passes": 0,
+            "pushes": 0,
+            "unavailable": 0,
+            "win_rate": 0.375,
+            "win_rate_ci95": [
+              0.125,
+              0.625
+            ],
+            "wins": 6
+          },
+          "brier": {
+            "bootstrap_ci95": [
+              0.17451,
+              0.34126
+            ],
+            "n": 16,
+            "value": 0.25154476860555675
+          },
+          "games_graded": 16,
+          "margin_mae": {
+            "bootstrap_ci95": [
+              5.50077,
+              13.81657
+            ],
+            "n": 16,
+            "value": 9.445505833449012
+          },
+          "total_mae": {
+            "bootstrap_ci95": [
+              8.0403,
+              14.86796
+            ],
+            "n": 16,
+            "value": 11.400926442460554
+          },
+          "totals_record": {
+            "losses": 7,
+            "n_decisions": 16,
+            "passes": 0,
+            "pushes": 0,
+            "unavailable": 0,
+            "win_rate": 0.5625,
+            "win_rate_ci95": [
+              0.3125,
+              0.8125
+            ],
+            "wins": 9
+          }
+        },
+        "4": {
+          "ats_record": {
+            "losses": 3,
+            "n_decisions": 15,
+            "passes": 0,
+            "pushes": 1,
+            "unavailable": 0,
+            "win_rate": 0.8,
+            "win_rate_ci95": [
+              0.6,
+              1
+            ],
+            "wins": 12
+          },
+          "brier": {
+            "bootstrap_ci95": [
+              0.13522,
+              0.25328
+            ],
+            "n": 16,
+            "value": 0.19378161651284856
+          },
+          "games_graded": 16,
+          "margin_mae": {
+            "bootstrap_ci95": [
+              3.56458,
+              9.44942
+            ],
+            "n": 16,
+            "value": 6.023256374810746
+          },
+          "total_mae": {
+            "bootstrap_ci95": [
+              8.08176,
+              13.28895
+            ],
+            "n": 16,
+            "value": 10.688459840079265
+          },
+          "totals_record": {
+            "losses": 9,
+            "n_decisions": 16,
+            "passes": 0,
+            "pushes": 0,
+            "unavailable": 0,
+            "win_rate": 0.4375,
+            "win_rate_ci95": [
+              0.1875,
+              0.6875
+            ],
+            "wins": 7
+          }
+        }
+      }
     }
   },
   "retrospective_development": {

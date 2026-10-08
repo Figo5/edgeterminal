@@ -11,6 +11,7 @@ from edgeterminal.config import settings
 
 @pytest.fixture
 def client(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     if db._conn is not None:
         db._conn.close()
         db._conn = None

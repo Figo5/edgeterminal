@@ -21,6 +21,7 @@ FIXTURE = Path(__file__).parent / "fixtures/sgo_nfl_props.json"
 
 @pytest.fixture
 def lab(tmp_path, monkeypatch):
+    monkeypatch.chdir(tmp_path)
     if db._conn is not None:
         db._conn.close()
         db._conn = None
