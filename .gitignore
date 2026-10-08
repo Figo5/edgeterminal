@@ -53,3 +53,4 @@ node_modules/
 # Process control
 *.pid
 data/*.pid
+startup-tycoon/
