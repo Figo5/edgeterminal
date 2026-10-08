@@ -1,7 +1,7 @@
 # EdgeTerminal design system
 
 ## Context
-- Artifact / audience / primary action: NFL projection product for readers comparing frozen model estimates with observed markets. Scan the weekly board, inspect a matchup and player props, then review PAPER and research records.
+- Artifact / audience / primary action: NFL projection product for readers comparing frozen model estimates with observed markets. Scan the weekly board, inspect a matchup and player props, then review weekly and season results.
 - Aesthetic direction: custom near-black financial interface. Native system typography, neutral surfaces, and precise numeric alignment put projections ahead of chrome.
 - Dials: DESIGN_VARIANCE=3, MOTION_INTENSITY=1, VISUAL_DENSITY=7.
 - Signature move: a consistent two-row **Market / Model** comparison on each game, with scores and win probabilities above it.
@@ -50,4 +50,11 @@
 - Hard-no scan: neutral palette, no gradient, no glow, no gauges, no nested metric cards, no decorative status animation.
 
 ## Drift log
-- None.
+- 2026-10-06: restored the original dark palette, compact heading, removed Research chat, added weekly and season records with labeled archived rankings.
+
+- 2026-10-06 local beta: added inline explanations, original prices and separate later lines, saved games/props and local inbox. Separated live and archived weekly/season records. Preserved dark tokens. Verified 1920 × 1080 desktop DOM and 390 × 844 mobile rendering; screenshot surface remains capped at 969 px. Focused Python verification: 112 tests.
+
+- 2026-10-06 coverage improvements: extended the existing dark dashboard for NFL readers tracking game projections and results. Kept the custom system and all three dials. Added factual waiting reasons and check times in game cards, a grouped waiting-game list in About & data, and preserved expanded prop/record disclosures during automatic updates. No palette or navigation changes.
+- Verified coverage improvements at 1920 × 1080 and 390 × 844: no document overflow; mobile waiting-game controls and matchup details remain readable. Season record visibly shows the repaired 28–29 archived prop record separately from 25 pending live selections. Focused verification: 84 Python tests and 6 JavaScript tests passed.
+
+- 2026-10-06 combined season evidence: the main Player props headline and weekly column now include 107 labeled reconstructions plus 25 selections locked before kickoff. Added a collapsed provenance breakdown and weekly win percentages; kept all dark tokens and navigation. Historical replays use genuine local main-line quotes and target-week training cutoffs. Verified 55–49 / 52.9% via the API and visible page, no document overflow at 1920 × 1080 and 390 × 844, and saved `reports/ui/combined-season-record.png`. Verification: 85 focused Python tests and 7 JavaScript tests passed. Week 4 stays unrecorded because no archived prop lines exist.

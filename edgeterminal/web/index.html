@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>EdgeTerminal</title>
-<link rel="stylesheet" href="/static/style.css?v=refresh-20260924b">
+<link rel="stylesheet" href="/static/style.css?v=coverage-20261006c">
 <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23111111'/><text x='8' y='24' fill='%23f5f5f7' font-family='Arial' font-weight='700' font-size='23'>E</text></svg>">
 </head>
 <body>
@@ -13,8 +13,7 @@
   <nav id="sections" aria-label="Primary navigation"></nav>
   <div class="topright">
     <span class="meta" id="lastUpdated" role="status" aria-live="polite">Updated —</span>
-    <button id="refreshButton" class="btn refresh-button" type="button" aria-label="Refresh NFL research data">↻ Refresh</button>
-    <button id="chatToggle" class="btn" type="button">Research chat</button>
+    <button id="refreshButton" class="btn refresh-button" type="button" aria-label="Check due NFL slate and research updates">↻ Check updates</button>
   </div>
   <span class="mobile-update" id="mobileUpdated" role="status" aria-live="polite">Updated —</span>
 </header>
@@ -22,23 +21,11 @@
 <div id="shell">
   <main id="main"><div class="loading">Loading slate…</div></main>
 
-  <section id="chat">
-    <div class="chathead">
-      <span>AI ANALYST</span>
-      <span id="llmBadge" class="badge"></span>
-      <button id="chatClose" class="iconbtn" title="Hide">×</button>
-    </div>
-    <div id="chatLog" class="chatlog"></div>
-    <div class="suggest" id="suggest"></div>
-    <form id="chatForm" class="chatform">
-      <textarea id="chatInput" rows="2" aria-label="Ask about NFL research" placeholder="Ask about a matchup, market price, source, or PASS reason"></textarea>
-      <button class="btn primary" type="submit">Send</button>
-    </form>
-  </section>
+
 </div>
 
 <div id="toast" class="toast hidden" role="status" aria-live="polite"></div>
 <script src="/static/product_ui.js?v=neutral-20260924a"></script>
-<script src="/static/app.js?v=refresh-20260924b"></script>
+<script src="/static/app.js?v=coverage-20261006c"></script>
 </body>
 </html>

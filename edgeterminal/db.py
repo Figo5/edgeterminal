@@ -15,6 +15,29 @@ from typing import Any, Dict, Iterable, List, Optional
 from .config import settings
 
 SCHEMA = """
+CREATE TABLE IF NOT EXISTS members (
+  id TEXT PRIMARY KEY, email TEXT UNIQUE, created_at REAL NOT NULL,
+  access_until REAL, email_alerts INTEGER NOT NULL DEFAULT 0);
+CREATE TABLE IF NOT EXISTS member_login_tokens (
+  token_hash TEXT PRIMARY KEY, member_id TEXT NOT NULL REFERENCES members(id),
+  created_at REAL NOT NULL, expires_at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS member_sessions (
+  token_hash TEXT PRIMARY KEY, member_id TEXT NOT NULL REFERENCES members(id),
+  expires_at REAL NOT NULL);
+CREATE TABLE IF NOT EXISTS member_auth_attempts (
+  id INTEGER PRIMARY KEY, bucket TEXT NOT NULL, attempted_at REAL NOT NULL);
+CREATE INDEX IF NOT EXISTS ix_member_auth_rate ON member_auth_attempts(bucket,attempted_at);
+CREATE TABLE IF NOT EXISTS member_saved_games (
+  member_id TEXT NOT NULL REFERENCES members(id), game_id TEXT NOT NULL REFERENCES events(id),
+  saved_at REAL NOT NULL, PRIMARY KEY(member_id,game_id));
+CREATE TABLE IF NOT EXISTS member_saved_props (
+  member_id TEXT NOT NULL REFERENCES members(id), quote_id INTEGER NOT NULL,
+  game_id TEXT NOT NULL, saved_at REAL NOT NULL, payload TEXT NOT NULL,
+  PRIMARY KEY(member_id,quote_id));
+CREATE TABLE IF NOT EXISTS member_alerts (
+  id TEXT PRIMARY KEY, member_id TEXT NOT NULL REFERENCES members(id),
+  created_at REAL NOT NULL, kind TEXT NOT NULL, game_id TEXT NOT NULL,
+  message TEXT NOT NULL, read_at REAL, emailed_at REAL);
 CREATE TABLE IF NOT EXISTS sports (
   key TEXT PRIMARY KEY, label TEXT NOT NULL);
 
@@ -138,6 +161,14 @@ CREATE TABLE IF NOT EXISTS nfl_prop_research_freezes (
   freeze_sha TEXT PRIMARY KEY, source_batch_id TEXT NOT NULL UNIQUE,
   frozen_at REAL NOT NULL, payload TEXT NOT NULL,
   FOREIGN KEY(source_batch_id) REFERENCES nfl_prop_capture_batches(batch_id));
+CREATE TABLE IF NOT EXISTS nfl_top_five_selections (
+  game_id TEXT PRIMARY KEY, freeze_sha TEXT NOT NULL, selected_at REAL NOT NULL,
+  payload TEXT NOT NULL, sha256 TEXT NOT NULL,
+  FOREIGN KEY(freeze_sha) REFERENCES nfl_prop_research_freezes(freeze_sha));
+CREATE TRIGGER IF NOT EXISTS nfl_top_five_no_update BEFORE UPDATE ON nfl_top_five_selections
+BEGIN SELECT RAISE(ABORT, 'top five selections are immutable'); END;
+CREATE TRIGGER IF NOT EXISTS nfl_top_five_no_delete BEFORE DELETE ON nfl_top_five_selections
+BEGIN SELECT RAISE(ABORT, 'top five selections cannot be deleted'); END;
 CREATE TRIGGER IF NOT EXISTS nfl_prop_research_freeze_no_update BEFORE UPDATE ON nfl_prop_research_freezes
 BEGIN SELECT RAISE(ABORT, 'prop research freezes are immutable'); END;
 CREATE TRIGGER IF NOT EXISTS nfl_prop_research_freeze_no_delete BEFORE DELETE ON nfl_prop_research_freezes

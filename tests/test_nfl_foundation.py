@@ -222,3 +222,31 @@ def test_started_game_only_reads_prekickoff_projection(isolated_db, monkeypatch)
     assert frozen["snapshot_id"] == snapshot_id
     assert frozen["recommendations"] == []
     assert db.q1("SELECT COUNT(*) AS n FROM nfl_game_predictions")["n"] == 1
+
+
+def test_schedule_advances_when_espn_default_week_is_complete(isolated_db, monkeypatch):
+    completed = dict(_espn('2026-10-05T20:15:00Z'), status='STATUS_FINAL',
+                     meta=dict(season=2026, season_type=2, week=4))
+    upcoming = dict(_espn('2026-10-11T20:15:00Z'), id='espn-402',
+                    meta=dict(season=2026, season_type=2, week=5))
+    monkeypatch.setattr(engine.time, 'time', lambda: 1791288000.)
+    monkeypatch.setattr(EspnEvents, 'list_events', lambda self, sport: [completed])
+    calls = []
+    def next_week(self, season, season_type, week):
+        calls.append((season, season_type, week))
+        return [upcoming]
+    monkeypatch.setattr(EspnEvents, 'list_events_for_week', next_week)
+    assert engine.refresh_schedule('NFL')['ok']
+    assert calls == [(2026, 2, 5)]
+    assert db.kv_get('nfl_current_schedule')['week'] == 5
+    assert engine.slate('NFL')[0]['id'] == 'nfl-2026-reg-05-atl-gb'
+
+
+def test_schedule_keeps_active_week_until_all_games_are_final(isolated_db, monkeypatch):
+    active = dict(_espn('2026-10-05T20:15:00Z'), status='STATUS_IN_PROGRESS',
+                  meta=dict(season=2026, season_type=2, week=4))
+    monkeypatch.setattr(EspnEvents, 'list_events', lambda self, sport: [active])
+    monkeypatch.setattr(EspnEvents, 'list_events_for_week',
+                        lambda *a: pytest.fail('advanced an unfinished week'))
+    assert engine.refresh_schedule('NFL')['ok']
+    assert db.kv_get('nfl_current_schedule')['week'] == 4

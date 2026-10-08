@@ -10,7 +10,7 @@ import pytest
 
 from edgeterminal import db, nfl_prop_lab
 from edgeterminal.config import settings
-from edgeterminal.nfl_prop_result_ingest import sync, status_view
+from edgeterminal.nfl_prop_result_ingest import _stats, sync, status_view
 
 GAME = "nfl-2026-reg-03-atl-gb"
 
@@ -80,6 +80,54 @@ def stats(receptions=5):
                          "receiving_yards": 50 if i == 0 else 0,
                          "targets": 5 if i == 0 else 2 if i == 1 else 0})
     return stream.getvalue().encode()
+
+
+def edit_stat_bytes(raw, change):
+    reader = csv.DictReader(io.StringIO(raw.decode()))
+    fields, rows = reader.fieldnames, list(reader)
+    for row in rows:
+        change(row)
+    stream = io.StringIO()
+    writer = csv.DictWriter(stream, fieldnames=fields)
+    writer.writeheader(); writer.writerows(rows)
+    return stream.getvalue().encode()
+
+
+@pytest.mark.parametrize('field', ['receiving_yards', 'rushing_yards', 'passing_yards'])
+def test_signed_official_yardage_is_valid(field):
+    raw = edit_stat_bytes(stats(), lambda r: r.update({field: '-3'}) if r['player_id']=='gsis-a' else None)
+    assert _stats(raw, '2026_03_ATL_GB', GAME)['gsis-a'][field] == '-3'
+
+
+@pytest.mark.parametrize('field', ['receptions', 'carries'])
+def test_negative_count_stats_remain_invalid(field):
+    raw = edit_stat_bytes(stats(), lambda r: r.update({field: '-1'}) if r['player_id']=='gsis-a' else None)
+    with pytest.raises(ValueError, match='official stat'):
+        _stats(raw, '2026_03_ATL_GB', GAME)
+
+
+def test_nflverse_rams_alias_matches_canonical_game():
+    raw = edit_stat_bytes(stats(), lambda r: r.update(team='LA' if r['team']=='ATL' else 'DEN',
+                         opponent_team='DEN' if r['team']=='ATL' else 'LA'))
+    assert len(_stats(raw, '2026_03_ATL_GB', 'nfl-2026-reg-03-lar-den')) == 60
+
+
+def test_anonymous_zero_stat_aggregate_is_ignored():
+    raw = stats().decode()
+    reader = csv.DictReader(io.StringIO(raw))
+    stream = io.StringIO()
+    writer = csv.DictWriter(stream, fieldnames=reader.fieldnames)
+    writer.writeheader()
+    writer.writerows(reader)
+    aggregate = {name: "0" for name in reader.fieldnames}
+    aggregate.update(game_id="2026_03_ATL_GB", player_id="", season="2026",
+                     week="3", season_type="REG", team="ATL", opponent_team="GB")
+    writer.writerow(aggregate)
+    assert len(_stats(stream.getvalue().encode(), "2026_03_ATL_GB", GAME)) == 60
+    aggregate["receptions"] = "2"
+    writer.writerow(aggregate)
+    with pytest.raises(ValueError, match="unidentified"):
+        _stats(stream.getvalue().encode(), "2026_03_ATL_GB", GAME)
 
 
 def manifest(tmp_path):

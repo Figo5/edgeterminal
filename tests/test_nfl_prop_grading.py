@@ -15,6 +15,14 @@ from edgeterminal.nfl_prop_grading import grade_freeze, forward_report, local_ev
 GAME = "nfl-2026-reg-03-atl-gb"
 
 
+def test_negative_receiving_yards_grade_normally(frozen):
+    result = grade_freeze(frozen, [_evidence(value=-3)], now=20001.)
+    grades = [json.loads(r['payload']) for r in db.q('SELECT payload FROM nfl_prop_grade_revisions WHERE quote_id IN (1,2)')]
+    assert result['new_revisions'] > 0
+    assert {r['research_statistical_result'] for r in grades} == {'won', 'lost'}
+    assert all(r['actual_stat'] == -3 for r in grades)
+
+
 @pytest.fixture
 def frozen(tmp_path, monkeypatch):
     if db._conn is not None:

@@ -110,6 +110,13 @@ class Settings:
     # server
     host = os.getenv("HOST", "127.0.0.1")
     port = int(os.getenv("PORT", "8799"))
+    hosted_mode = _b("HOSTED_MODE", False)
+    public_url = os.getenv("PUBLIC_URL", "http://127.0.0.1:8799").rstrip("/")
+    smtp_host = os.getenv("SMTP_HOST", "").strip()
+    smtp_port = int(_f("SMTP_PORT", 587))
+    smtp_user = os.getenv("SMTP_USER", "").strip()
+    smtp_password = os.getenv("SMTP_PASSWORD", "")
+    smtp_from = os.getenv("SMTP_FROM", "").strip()
 
     # versioning -- stored on every prediction so old rows stay comparable
     model_version = "et-model-0.4.0"

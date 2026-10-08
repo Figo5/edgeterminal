@@ -135,7 +135,7 @@ def _validate_evidence(evidence: dict, frozen_games: set[str], now: float) -> di
         for market, value in stats.items():
             if market not in nfl_prop_lab.MARKETS:
                 raise ValueError("unsupported official player stat")
-            _number(value, nonnegative=market != "rushing_yards")
+            _number(value, nonnegative=market in {"receptions", "rushing_attempts"})
         if player_status == "inactive" or (player_status == "active" and
                 any(float(value) == 0 for value in stats.values())):
             participation = player.get("participation_evidence")
@@ -184,7 +184,7 @@ def _grade_row(quote: dict, evidence: dict, checked: dict, now: float,
         return None, "pending_missing_stat"
     else:
         actual = _number(player["stats"][quote["market"]],
-                         nonnegative=quote["market"] != "rushing_yards")
+                         nonnegative=quote["market"] in {"receptions", "rushing_attempts"})
         result = _settlement(quote["side"], actual, quote["line"])
         player_status = "active"
     participation = player.get("participation_evidence") if player else None
@@ -529,7 +529,7 @@ def local_evidence(freeze_sha: str, stats_path: str | Path | None = None) -> lis
             values = {}
             for market, label in nfl_prop_lab.LABEL.items():
                 if row.get(label) not in (None, ""):
-                    values[market] = _number(row[label], nonnegative=market != "rushing_yards")
+                    values[market] = _number(row[label], nonnegative=market in {"receptions", "rushing_attempts"})
             active = _documented_participation(row)
             item = {"gsis_player_id": gsis,
                     "status": "active" if active else "unknown", "stats": values}

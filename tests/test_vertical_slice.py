@@ -43,6 +43,11 @@ def test_nfl_vertical_slice_refresh_persists_and_exposes_dashboard(client):
     assert all(bet["confidence"] >= 80 for bet in data["best_bets"])
     assert all(bet["state"] == "OFFICIAL PICK" for bet in data["best_bets"])
 
+    product_refresh = client.post("/api/product/nfl/refresh")
+    assert product_refresh.status_code == 200
+    assert product_refresh.json()["odds_source"] == "demo"
+    assert product_refresh.json()["odds_rows"] > 0
+
     event_id = data["upcoming"][0]["id"]
     detail = client.get(f"/api/event/{event_id}")
     assert detail.status_code == 200
@@ -120,9 +125,9 @@ def test_frontend_script_exists_and_wires_required_flows(client):
     assert response.status_code == 200
     script = response.text
     for endpoint in ("/api/product/nfl", "/api/product/performance",
-                     "/api/research/paper", "/api/chat", "/api/model-report"):
+                     "/api/research/paper", "/api/model-report"):
         assert endpoint in script
-    for control in ("backBtn", "chatForm", "propSort"):
+    for control in ("backBtn", "recordWeek", "weekSelect"):
         assert control in script
     assert '"/api/refresh"' not in script
     assert "sportTabs" not in script

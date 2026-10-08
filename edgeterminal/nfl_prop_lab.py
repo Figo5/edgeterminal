@@ -70,10 +70,10 @@ def _schedule() -> dict[str, dict]:
                 if 2022 <= int(r["season"]) <= 2026 and r["game_type"] == "REG"}
 
 
-def _read_stats() -> tuple[list[dict], dict[str, str]]:
+def _read_stats(stats_dir: Path | None = None) -> tuple[list[dict], dict[str, str]]:
     rows, hashes = [], {}
     for year in range(2022, 2027):
-        path = STATS / f"stats_player_week_{year}.csv"
+        path = (stats_dir if stats_dir is not None and year == 2026 else STATS) / f"stats_player_week_{year}.csv"
         body = path.read_bytes()
         hashes[path.name] = hashlib.sha256(body).hexdigest()
         for row in csv.DictReader(body.decode("utf-8-sig").splitlines()):
@@ -130,13 +130,13 @@ def _feature(row: dict, history: dict, schedule: dict[str, dict]) -> dict | None
             "date": date, "team": team, "opponent": opponent, "game": game}
 
 
-def build_dataset() -> tuple[dict[str, list[dict]], dict[str, dict], dict[str, str]]:
+def build_dataset(cutoff: tuple[int, int] = (2026, 3), stats_dir: Path | None = None) -> tuple[dict[str, list[dict]], dict[str, dict], dict[str, str]]:
     """Generate every row from prior weeks only; return state after 2026 Week 2."""
-    raw, hashes = _read_stats()
+    raw, hashes = _read_stats(stats_dir)
     schedule = _schedule()
     by_week: dict[tuple[int, int], list[dict]] = defaultdict(list)
     for r in raw:
-        if r["game_id"] in schedule and (int(r["season"]), int(r["week"])) < (2026, 3):
+        if r["game_id"] in schedule and (int(r["season"]), int(r["week"])) < cutoff:
             by_week[(int(r["season"]), int(r["week"]))].append(r)
     history: dict[str, dict] = {"player": defaultdict(list), "team": defaultdict(list),
                                "defense": defaultdict(list)}
@@ -232,12 +232,13 @@ def evaluate(datasets: dict[str, list[dict]]) -> dict:
     return result
 
 
-def _week3_features(history: dict[str, dict]) -> dict[tuple[str, str], dict]:
+def _week3_features(history: dict[str, dict], season: int = 2026, week: int = 3,
+                    stats_dir: Path | None = None) -> dict[tuple[str, str], dict]:
     schedule = _schedule()
-    recent, _ = _read_stats()
+    recent, _ = _read_stats(stats_dir)
     candidates: dict[tuple[str, str], dict] = {}
     for row in recent:
-        if row["season"] not in {"2025", "2026"}:
+        if int(row["season"]) < season - 1 or (int(row["season"]), int(row["week"])) >= (season, week):
             continue
         if row["position"] not in {"QB", "RB", "WR", "TE"}:
             continue
@@ -246,14 +247,14 @@ def _week3_features(history: dict[str, dict]) -> dict[tuple[str, str], dict]:
             candidates[key] = row
     output = {}
     for game_id, game in schedule.items():
-        if game["season"] != "2026" or game["week"] != "3":
+        if int(game["season"]) != season or int(game["week"]) != week:
             continue
         for row in candidates.values():
             team = _team(row["team"])
             if team not in {_team(game["home_team"]), _team(game["away_team"])}:
                 continue
             opponent = _team(game["away_team"]) if team == _team(game["home_team"]) else _team(game["home_team"])
-            virtual = dict(row, game_id=game_id, season="2026", week="3", opponent_team=opponent)
+            virtual = dict(row, game_id=game_id, season=str(season), week=str(week), opponent_team=opponent)
             prepared = _feature(virtual, history, schedule)
             if prepared and prepared["player"]:
                 output[(row["player_id"], team)] = prepared
@@ -297,14 +298,15 @@ def _prob_over(line: float, projection: float, sigma: float) -> float:
 
 
 def project_week3(datasets: dict[str, list[dict]], history: dict[str, dict], validation: dict,
-                  batch_id: str) -> dict:
+                  batch_id: str, *, season: int = 2026, week: int = 3,
+                  stats_dir: Path | None = None) -> dict:
     pairs, coverage = _pair_quotes(batch_id)
     identities = db.q("SELECT DISTINCT player_id,player_name,team FROM nfl_prop_snapshots WHERE batch_id=?",
                       (batch_id,))
     by_name: dict[tuple[str, str], set[str]] = defaultdict(set)
-    recent, _ = _read_stats()
+    recent, _ = _read_stats(stats_dir)
     for r in recent:
-        if r["season"] in {"2025", "2026"} and (int(r["season"]), int(r["week"])) < (2026, 3):
+        if int(r["season"]) >= season - 1 and (int(r["season"]), int(r["week"])) < (season, week):
             by_name[(_norm_name(r["player_display_name"]), _team(r["team"]))].add(r["player_id"])
     mapping, unmatched, ambiguous = {}, [], []
     for item in identities:
@@ -316,7 +318,7 @@ def project_week3(datasets: dict[str, list[dict]], history: dict[str, dict], val
             ambiguous.append(item["player_name"])
         else:
             unmatched.append(item["player_name"])
-    week3 = _week3_features(history)
+    week3 = _week3_features(history, season, week, stats_dir)
     fitted = {}
     for market in MARKETS:
         family = validation[market]["selected_on_2024"]
@@ -352,6 +354,14 @@ def project_week3(datasets: dict[str, list[dict]], history: dict[str, dict], val
                             "side": quote["side"], "price": quote["price"],
                             "observed_at": quote["retrieved_at"], "kickoff_utc": quote["kickoff_utc"],
                             "probability_over": round(over, 6), "probability_under": round(1-over, 6),
+                            "input_context": {"prior_games": feature["prior_games"],
+                                              "stat_last3": feature[f"{LABEL[market]}_last3"],
+                                              "opponent_allowed_last3": feature["opponent_allowed_last3"],
+                                              "opportunities_last3": feature["attempts_last3" if market == "passing_yards" else
+                                                                               "carries_last3" if market in {"rushing_yards", "rushing_attempts"} else
+                                                                               "targets_last3"],
+                                              "opportunity_kind": "pass attempts" if market == "passing_yards" else
+                                                                  "carries" if market in {"rushing_yards", "rushing_attempts"} else "targets"},
                             "raw_difference": round(point-quote["line"], 4)})
     return {"readiness": "RESEARCH_ONLY", "designation": "PASS", "batch_id": batch_id,
             "model_selection": {m: validation[m]["selected_on_2024"] for m in MARKETS},

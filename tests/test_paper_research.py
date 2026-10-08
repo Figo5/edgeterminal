@@ -78,7 +78,7 @@ def test_prospective_position_idempotent_and_correction(research_db):
     assert pos["policy_hash"] == paper_research.policy_hash(policy)
     with pytest.raises(sqlite3.IntegrityError):
         db.ex("UPDATE paper_positions SET stake=999 WHERE id=?", (pos["id"],))
-    assert paper_research.dashboard()["open_positions"] == 1
+    assert paper_research.dashboard(now=70)["open_positions"] == 1
     grade = dict(result="won", sportsbook_settlement_interpretation="won",
                  actual_stat=5.0, sportsbook="fanduel", frozen_line=2.5,
                  frozen_side="over", frozen_price=-110)
@@ -107,7 +107,9 @@ def test_prospective_position_idempotent_and_correction(research_db):
         assert paper_research.needs_settlement()
         assert paper_research.settle() == 1
     latest = paper_research.dashboard()
-    assert latest["open_positions"] == 1
+    assert latest["open_positions"] == 0
+    assert latest["awaiting_settlement_positions"] == 1
+    assert latest["awaiting"][0]["settlement"]["result"] == "pending"
     assert latest["current_bankroll"] == 1000
     assert latest["available_bankroll"] == 990
     assert [r["result"] for r in db.q("SELECT result FROM paper_settlement_revisions ORDER BY revision")] == [
@@ -283,10 +285,13 @@ def test_experimental_policy_slate_cap_and_aggregate_exposure(research_db):
     assert db.q1("SELECT SUM(stake) n FROM paper_positions")["n"] == 100
     assert paper_research._prop_position_limit(policy, {"canonical_game_id": "new-game",
                                                   "player_id": "new-player", "market": "receptions",
-                                                  "kickoff_utc": 86400 + 100}, 10) == "open_position_limit"
+                                                  "kickoff_utc": 86400 + 100}, 10, now=70) == "open_position_limit"
     # With wider count caps, the 10% aggregate exposure remains an independent gate.
     widened = dict(policy, version="fixture-exposure", maximum_open_positions=20,
                    maximum_positions_per_slate=20)
     assert paper_research._prop_position_limit(widened, {"canonical_game_id": "new-game",
                                                    "player_id": "new-player", "market": "receptions",
-                                                   "kickoff_utc": 86400 + 100}, 10) == "bankroll_constraint"
+                                                   "kickoff_utc": 86400 + 100}, 10, now=70) == "bankroll_constraint"
+    assert paper_research._prop_position_limit(widened, {"canonical_game_id": "new-game",
+                                                "player_id": "new-player", "market": "receptions",
+                                                "kickoff_utc": 86400 + 100}, 10, now=1000) is None

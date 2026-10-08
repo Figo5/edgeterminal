@@ -54,8 +54,8 @@ class EspnEvents:
     name = "espn-events"
     is_demo = False
 
-    def list_events(self, sport: str) -> List[Dict]:
-        return self._parse_events(_scoreboard(sport), sport)
+    def list_events(self, sport: str, *, force: bool = False) -> List[Dict]:
+        return self._parse_events(_scoreboard(sport, force=force), sport)
 
     def list_events_for_week(self, season: int, season_type: int, week: int) -> List[Dict]:
         """Retrieve a historical NFL week so ungraded games survive week rollover."""
@@ -103,12 +103,19 @@ class EspnOdds(OddsProvider):
     name = "espn-odds"
     is_demo = False
 
+    def __init__(self, season=None, week=None):
+        self.season, self.week = season, week
+
     def fetch_odds(self, sport: str) -> List[Dict]:
         if sport != "NFL":
             raise ProviderError(self.name, "only NFL is enabled")
-        data = _scoreboard(sport, force=True)
+        params = {"dates": self.season, "seasontype": 2, "week": self.week, "limit": 100}
+        data = get_json(SCOREBOARD_URL, params, provider=self.name) if self.week else _scoreboard(sport, force=True)
         retrieved = time.time()
         source_url = f"{SITE}/{_path(sport)}/scoreboard"
+        if self.week:
+            from urllib.parse import urlencode
+            source_url += "?" + urlencode(params)
         rows: List[Dict] = []
         for ev in data.get("events", []) or []:
             comp = (ev.get("competitions") or [{}])[0]

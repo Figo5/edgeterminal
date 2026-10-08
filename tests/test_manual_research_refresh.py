@@ -73,3 +73,43 @@ def test_provider_failure_is_clean_and_does_not_leak_details(client, monkeypatch
         RuntimeError("secret transport error")))
     response = http.post("/api/research/refresh")
     assert response.status_code == 503 and "secret" not in response.text
+
+
+def test_product_week_check_fetches_fresh_schedule_without_research_worker(client, monkeypatch):
+    http, _ = client
+    db.kv_set("nfl_current_schedule", {"season": 2026, "week": 3})
+    calls = []
+
+    def fresh_schedule(sport, *, force=False):
+        calls.append((sport, force))
+        db.kv_set("nfl_current_schedule", {"season": 2026, "week": 4})
+        return {"ok": True, "changed": []}
+
+    monkeypatch.setattr("edgeterminal.api.engine.refresh_schedule", fresh_schedule)
+    monkeypatch.setattr("edgeterminal.api.engine.ensure_weekly_projections",
+                        lambda: {"missing": []})
+    monkeypatch.setattr("edgeterminal.api.nfl_market_capture.capture_current",
+                        lambda: {"rows_stored": 6, "games_with_quotes": 1,
+                                 "games_without_quotes": []})
+    research_calls = []
+    monkeypatch.setattr(research_refresh, "run", lambda **kwargs: research_calls.append(kwargs) or
+                        {"success": True, "steps": {"prop_near_game_2026_04": {"ok": True}}})
+    response = http.post("/api/product/nfl/refresh")
+    assert response.status_code == 200
+    assert response.json()["week"] == 4
+    assert response.json()["week_changed"]
+    assert response.json()["odds_rows"] == 6
+    assert response.json()["props_refreshed"]
+    assert calls == [("NFL", True)]
+    assert research_calls == [{"record_tick": False, "force_prop_quotes": True}]
+
+
+def test_product_week_check_preserves_stored_week_on_failure(client, monkeypatch):
+    http, _ = client
+    db.kv_set("nfl_current_schedule", {"season": 2026, "week": 3})
+    monkeypatch.setattr("edgeterminal.api.engine.refresh_schedule",
+                        lambda sport, *, force=False: {"ok": False, "error": "private detail"})
+    response = http.post("/api/product/nfl/refresh")
+    assert response.status_code == 503
+    assert "private detail" not in response.text
+    assert db.kv_get("nfl_current_schedule")["week"] == 3

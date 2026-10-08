@@ -16,10 +16,10 @@ import time
 from collections import Counter, defaultdict
 from pathlib import Path
 from urllib.parse import urlencode
-from urllib.request import Request, urlopen
 
 from . import db, nfl_identity, nfl_prop_grading, nfl_prop_lab
 from .integrity import parse_time
+from .providers.base import client
 from .providers.espn import SCOREBOARD_URL
 
 STATS_URL = "https://github.com/nflverse/nflverse-data/releases/download/stats_player/stats_player_week_{season}.csv"
@@ -29,11 +29,9 @@ REQUIRED_STATS = {"game_id", "player_id", "season", "week", "season_type", "team
 
 
 def _fetch(url: str) -> bytes:
-    request = Request(url, headers={"User-Agent": "EdgeTerminal-research-results/1.0"})
-    with urlopen(request, timeout=25) as response:
-        if response.status != 200:
-            raise ValueError(f"result source HTTP {response.status}")
-        return response.read()
+    response = client().get(url, timeout=25)
+    response.raise_for_status()
+    return response.content
 
 
 def _source_file(digest: str) -> str:
@@ -179,25 +177,33 @@ def _stats(raw: bytes, nflverse_id: str, canonical: str) -> dict[str, dict]:
         raise ValueError("player-stat game coverage incomplete")
     parts = canonical.split("-")
     teams = {parts[-2].upper(), parts[-1].upper()}
-    teams = {"LAR" if t == "LAR" else "WAS" if t == "WSH" else t for t in teams}
+    teams = {nfl_identity.team_code(t) for t in teams}
     counts = Counter()
     found = {}
     for row in rows:
         if (row["season"] != parts[1] or int(row["week"]) != int(parts[3]) or
                 row["season_type"] != "REG"):
             raise ValueError("player-stat season/week identity mismatch")
-        team, opponent = row["team"], row["opponent_team"]
+        team, opponent = nfl_identity.team_code(row["team"]), nfl_identity.team_code(row["opponent_team"])
         if team not in teams or opponent not in teams or team == opponent:
             raise ValueError("player-stat team identity mismatch")
         gsis = row["player_id"]
-        if not gsis or gsis in found:
+        if not gsis:
+            # nflverse can include an anonymous team-penalty aggregate row.
+            # Ignore it only when it carries no player name or modeled stat.
+            if (row.get("player_name") or row.get("player_display_name") or
+                    any(row.get(label) not in (None, "", "0", "0.0")
+                        for label in nfl_prop_lab.LABEL.values())):
+                raise ValueError("unidentified player-stat row has modeled data")
+            continue
+        if gsis in found:
             raise ValueError("missing or duplicate GSIS player ID")
         for market, label in nfl_prop_lab.LABEL.items():
             if row[label] not in (None, ""):
-                nfl_prop_grading._number(row[label], nonnegative=market != "rushing_yards")
+                nfl_prop_grading._number(row[label], nonnegative=market in {"receptions", "rushing_attempts"})
         found[gsis] = row
         counts[team] += 1
-    if len(counts) != 2 or min(counts.values()) < 20:
+    if len(found) < 50 or len(counts) != 2 or min(counts.values()) < 20:
         raise ValueError("player-stat team coverage incomplete")
     return found
 
@@ -253,7 +259,7 @@ def _player_evidence(quotes: list[dict], stats: dict[str, dict], stat_source: di
                 value = row.get(nfl_prop_lab.LABEL[market])
                 if value not in (None, ""):
                     values[market] = nfl_prop_grading._number(value,
-                        nonnegative=market != "rushing_yards")
+                        nonnegative=market in {"receptions", "rushing_attempts"})
         if reviewed and reviewed["certified_no_stats"] and not row:
             values = {market: 0.0 for market in markets}
         active_by_stats = bool(row and nfl_prop_grading._documented_participation(row))
@@ -346,7 +352,7 @@ def status_view(freeze_sha: str, now: float | None = None) -> dict:
         elif now < kickoff + nfl_prop_grading.POSTGAME_DELAY_S:
             label = "final_wait"
         elif not stat_source:
-            label = "awaiting_player_stats"
+            label = "source_review" if _latest_source(freeze_sha, game_id, 'player_stats_incomplete') else "awaiting_player_stats"
         else:
             label = "ready_for_grading" if pending == 0 else "participation_pending"
         details.append({"game_id": game_id, "status": label, "frozen_quotes": len(quotes),
@@ -429,10 +435,10 @@ def sync(freeze_sha: str, *, scoreboard_bytes: bytes | None = None,
             raise ValueError("frozen game has no unique nflverse schedule identity")
         try:
             stats = _stats(stats_bytes, schedule[game], game)
-        except ValueError:
+        except ValueError as exc:
             # Archive the exact received bytes, but keep the game pending.
             _archive(freeze_sha, game, "player_stats_incomplete", stats_bytes,
-                     stats_url, now, {"status": "incomplete"})
+                     stats_url, now, {"status": "incomplete", "reason": str(exc)})
             continue
         stat_source = _archive(freeze_sha, game, "player_stats", stats_bytes,
                                stats_url, now, {"nflverse_game_id": schedule[game],

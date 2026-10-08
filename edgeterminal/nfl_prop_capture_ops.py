@@ -79,7 +79,8 @@ def _constrained(rows: list[dict], now: float) -> tuple[bool, str | None]:
     return False, None
 
 
-def plan(events: list[dict], now: float, *, key_configured: bool | None = None) -> dict:
+def plan(events: list[dict], now: float, *, key_configured: bool | None = None,
+         manual: bool = False) -> dict:
     """One batched request per week and due tick; no call before a frozen model exists."""
     if key_configured is None:
         key_configured = bool(settings.sportsgameodds_api_key)
@@ -103,7 +104,7 @@ def plan(events: list[dict], now: float, *, key_configured: bool | None = None) 
                 next_at = min(next_at, candidate) if next_at is not None else candidate
             continue
         last = last_by_game.get(game_id)
-        wait = frequency
+        wait = min(frequency, 30 * 60) if manual else frequency
         if last and not last["success"]:
             wait = max(wait, FAILURE_BACKOFF)
         candidate = last["attempted_at"] + wait if last else kickoff - 24 * 3600

@@ -8,6 +8,8 @@ import time
 from collections import defaultdict
 
 from . import db, engine, nfl_props, paper_research, shadow
+from . import nfl_top_five, nfl_season_record
+from . import product_insights
 from .analytics import football
 from .config import ROOT, settings
 from .integrity import parse_time
@@ -85,6 +87,7 @@ def _game(game: dict) -> dict:
                            "away_win_probability": 1 - home_prob if home_prob is not None else None,
                            "preferred_team": preferred} if projection else None,
             "projection_at": projection_at,
+            "explanation": product_insights.game(projection),
             "market": {"moneyline": {"home": home_ml, "away": away_ml},
                        "spread": {"home": home_spread, "away": away_spread,
                                   "home_cover_probability": cover_home,
@@ -97,9 +100,37 @@ def _game(game: dict) -> dict:
             "designation": "PASS"}
 
 
-def weekly_board() -> dict:
-    games = [_game(game) for game in engine.slate("NFL", limit_events=40)]
+def weekly_board(week: int | None = None) -> dict:
+    current = db.kv_get("nfl_current_schedule") or {}
+    raw = engine.slate("NFL", limit_events=40)
+    if week is not None and week != current.get("week"):
+        raw = db.q("SELECT * FROM events WHERE sport='NFL' AND id LIKE ? ORDER BY start_time,id",
+                   (f"nfl-{current.get('season', 2026)}-reg-{week:02d}-%",))
+    games = [_game(game) for game in raw]
+    research = nfl_season_record.props(current.get("season", 2026))
+    selections = {g["game_id"]: g for g in research["games"]}
+    coverage = {r['game_id']: r for r in nfl_top_five.coverage([g['id'] for g in games])}
+    for game in games:
+        selected = selections.get(game["id"])
+        game["top_props"] = [product_insights.prop(r) for r in selected["rows"]] if selected else []
+        kickoff = parse_time(game["kickoff_utc"])
+        game["props_basis"] = selected["basis"] if selected else None
+        game["props_state"] = selected["basis"] if selected else "awaiting_props" if kickoff and kickoff > time.time() else "not_selected"
+        game['prop_coverage'] = coverage.get(game['id'])
+    available = sorted({int(r["id"].split("-")[3]) for r in db.q(
+        "SELECT id FROM events WHERE id LIKE ?", (f"nfl-{current.get('season', 2026)}-reg-%",))
+                        if len(r["id"].split("-")) == 6})
+    step = db.q1("SELECT detail,attempted_at FROM research_refresh_steps WHERE name='top_five_capture' ORDER BY rowid DESC LIMIT 1")
+    prop_health = json.loads(step["detail"]) if step else {}
     return {"readiness": "RESEARCH_ONLY", "designation": "PASS", "as_of": time.time(),
+            "week": week or current.get("week"), "current_week": current.get("week"),
+            "weeks": available, "schedule_checked_at": engine.schedule_meta()["retrieved_at"],
+            "prop_health": prop_health, "research_record": research["record"],
+            "locked_prop_record": research.get("locked", {}),
+            "season_prop_record": {k: research[k] for k in ('record', 'count', 'win_rate', 'historical_count')},
+            "archived_prop_record": research.get("archived", {}),
+            "weekly_locked_prop_record": research.get("locked", {}).get("weekly", {}).get(week or current.get("week"), {}),
+            "weekly_prop_record": research["weekly"].get(week or current.get("week"), {}),
             "games": games, "game_count": len(games),
             "latest_market_observed_at": max((g["market_observed_at"] or 0 for g in games), default=0) or None}
 
@@ -196,7 +227,8 @@ def player_props(game_id: str) -> dict:
 
 
 def matchup(game_id: str) -> dict:
-    board = weekly_board()
+    parts = game_id.split("-")
+    board = weekly_board(int(parts[3])) if len(parts) == 6 and parts[3].isdigit() else weekly_board()
     game = next((g for g in board["games"] if g["id"] == game_id), None)
     if not game:
         raise ValueError("unknown current NFL game")
@@ -209,8 +241,12 @@ def matchup(game_id: str) -> dict:
     stored = json.loads(snapshot["payload"]) if snapshot else {}
     context = {"weather": stored.get("weather"), "injuries": stored.get("injuries") or [],
                "observed_at": snapshot["created_at"] if snapshot else None}
+    selections = [g for g in nfl_season_record.props(int(parts[1]))["games"] if g["game_id"] == game_id]
+    for selected in selections:
+        selected["rows"] = [product_insights.prop(r) for r in selected["rows"]]
     return {"readiness": "RESEARCH_ONLY", "designation": "PASS", "as_of": board["as_of"],
-            "game": game, "props": props, "context": context}
+            "game": game, "props": props, "top_five": {"games": [g for g in
+                selections]}, "context": context}
 
 
 def performance() -> dict:
@@ -219,6 +255,7 @@ def performance() -> dict:
     prospective = prop.get("prospective_2026", {})
     paper = paper_research.dashboard()
     return {"readiness": "RESEARCH_ONLY", "designation": "PASS",
+            "top_five": nfl_top_five.view(), "season_record": nfl_season_record.view(),
             "prospective_2026": {"games": shadow.performance(),
                                  "player_props": {key: prospective.get(key) for key in
                                                   ("distinct_player_markets_graded",
@@ -226,6 +263,7 @@ def performance() -> dict:
                                                    "markets")},
                                  "paper": {k: paper[k] for k in
                                            ("starting_bankroll", "current_bankroll", "open_positions",
+                                            "awaiting_settlement_positions", "verified_statistical_record",
                                             "settled_positions", "record", "profit_loss", "roi")}},
             "retrospective_research": {
                 "available": bool(prop.get("retrospective_validation")),

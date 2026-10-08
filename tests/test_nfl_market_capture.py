@@ -7,7 +7,7 @@ import pytest
 
 from edgeterminal import db
 from edgeterminal.config import settings
-from edgeterminal.nfl_market_capture import capture_if_due,capture_week
+from edgeterminal.nfl_market_capture import capture_current,capture_if_due,capture_week
 from edgeterminal.nfl_capture_health import report as health_report
 from edgeterminal.nfl_forward_research import _current_quote
 
@@ -71,6 +71,15 @@ def test_weekly_capture_reads_only_espn_fixture(fixture_db):
     now,_,_=fixture_db
     result=capture_week(2026,3,provider=Provider(),now=now)
     assert result["rows_stored"]==2
+
+
+def test_current_week_capture_refreshes_upcoming_game(fixture_db):
+    now,_,game=fixture_db
+    db.kv_set("nfl_current_schedule", {"game_ids": [game]})
+    result=capture_current(provider=Provider(),now=now)
+    assert result["rows_stored"]==2
+    assert result["games_with_quotes"]==1
+    assert len(db.q("SELECT id FROM odds_snapshots WHERE event_id=?",(game,)))==2
 
 
 def test_demo_event_near_kickoff_never_triggers_espn_fetch(fixture_db):

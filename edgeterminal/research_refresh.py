@@ -9,6 +9,7 @@ import uuid
 from pathlib import Path
 
 from . import db, engine, nfl_forward_grading, nfl_forward_weekly
+from . import nfl_top_five
 from . import nfl_market_capture, nfl_prop_capture_ops, nfl_prop_result_ingest, paper_research, research_scheduler
 from .config import ROOT, settings
 from .integrity import parse_time
@@ -20,6 +21,8 @@ GAME_DELAY = 4 * 3600
 SCHEDULE_INTERVAL = 6 * 3600
 CONTEXT_INTERVAL = 3 * 3600
 RESULT_INTERVAL = 6 * 3600
+GAME_ODDS_INTERVAL = 15 * 60
+GAME_ODDS_NEAR_INTERVAL = 5 * 60
 
 
 def _events(now: float) -> list[dict]:
@@ -57,6 +60,12 @@ def _schedule_interval(now: float, events: list[dict]) -> int:
     if nearest <= 36 * 3600:
         return 2 * 3600
     return SCHEDULE_INTERVAL
+
+
+def _game_odds_interval(now: float, events: list[dict]) -> int:
+    nearest = min((e["kickoff_utc"] - now for e in events if e["kickoff_utc"] > now),
+                  default=float("inf"))
+    return GAME_ODDS_NEAR_INTERVAL if nearest <= 60 * 60 else GAME_ODDS_INTERVAL
 
 
 def _last_attempt(name: str) -> float | None:
@@ -190,6 +199,8 @@ def status(now: float | None = None) -> dict:
         warnings.append("worker_tick_gap; Mac sleep, offline state, or stopped worker is possible")
     if not scheduler["loaded"]:
         warnings.append("research_launchagent_not_loaded")
+    from .product_insights import unresolved_failures
+    unresolved = unresolved_failures(steps)
     return {"readiness": "RESEARCH_ONLY", "designation": "PASS",
             "last_successful_research_refresh": success["finished_at"] if success else None,
             "last_attempt": latest["finished_at"] if latest else None,
@@ -205,14 +216,15 @@ def status(now: float | None = None) -> dict:
             "sportsgameodds": prop_health,
             "provider_health": steps,
             "errors": [{"step": row["name"], "detail": row["detail"],
-                        "attempted_at": row["attempted_at"]} for row in steps if not row["success"]],
+                        "attempted_at": row["attempted_at"]} for row in unresolved],
             "scheduler": scheduler,
             "worker_tick": tick,
             "worker_tick_gap_seconds": tick_gap,
             "operations_warnings": warnings}
 
 
-def run(now: float | None = None, *, record_tick: bool = True) -> dict:
+def run(now: float | None = None, *, record_tick: bool = True,
+        force_prop_quotes: bool = False) -> dict:
     stamp = time.time() if now is None else now
     db.init()
     LOCK.parent.mkdir(parents=True, exist_ok=True)
@@ -221,10 +233,12 @@ def run(now: float | None = None, *, record_tick: bool = True) -> dict:
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return {"status": "already_running", "steps": {}}
-        return _run_locked(stamp, record_tick=record_tick)
+        return _run_locked(stamp, record_tick=record_tick,
+                           force_prop_quotes=force_prop_quotes)
 
 
-def _run_locked(now: float, *, record_tick: bool = True) -> dict:
+def _run_locked(now: float, *, record_tick: bool = True,
+                force_prop_quotes: bool = False) -> dict:
     run_id = uuid.uuid4().hex
     steps: dict[str, dict] = {}
     def attempt(name: str, action) -> None:
@@ -243,6 +257,17 @@ def _run_locked(now: float, *, record_tick: bool = True) -> dict:
     if _due("schedule", now, _schedule_interval(now, events)):
         attempt("schedule", lambda: engine.refresh_schedule("NFL"))
         events = _events(now)
+        if steps["schedule"]["ok"]:
+            attempt("product_projections", engine.ensure_weekly_projections)
+    missing_capture_interval = min((nfl_prop_capture_ops.cadence(e["kickoff_utc"] - now)
+                                    or 3600 for e in events if e["kickoff_utc"] > now), default=3600)
+    if _due("top_five_capture", now, missing_capture_interval) or force_prop_quotes:
+        attempt("top_five_capture", lambda: nfl_top_five.capture_missing(now))
+    if _due("top_five_grading", now, RESULT_INTERVAL):
+        attempt("top_five_grading", lambda: nfl_top_five.grade_due(now))
+    if (any(0 < e["kickoff_utc"] - now <= 24 * 3600 for e in events) and
+            _due("current_game_odds", now, _game_odds_interval(now, events))):
+        attempt("current_game_odds", lambda: nfl_market_capture.capture_current(now=now))
     week = _week_due(events, now)
     if week:
         season, number = week
@@ -257,7 +282,8 @@ def _run_locked(now: float, *, record_tick: bool = True) -> dict:
         if not freeze_captured_market and _due(market_name, now, 6 * 3600):
             attempt(market_name, lambda: nfl_market_capture.capture_week(season, number, now=now))
     capture_succeeded = False
-    for (season, number), game_ids in nfl_prop_capture_ops.plan(events, now)["due"].items():
+    for (season, number), game_ids in nfl_prop_capture_ops.plan(
+            events, now, manual=force_prop_quotes)["due"].items():
         name = f"prop_near_game_{season}_{number:02d}"
         attempt(name, lambda s=season, w=number, ids=game_ids:
                 nfl_prop_capture_ops.capture(s, w, ids, now))
@@ -277,9 +303,6 @@ def _run_locked(now: float, *, record_tick: bool = True) -> dict:
         attempt("availability", lambda: _availability(events, now))
     if any(e["kickoff_utc"] <= now - GAME_DELAY for e in events) and _due("game_grading", now, RESULT_INTERVAL):
         attempt("game_grading", lambda: _game_grading(now))
-    freeze_sha = _latest_prop_freeze()
-    if freeze_sha and any(e["kickoff_utc"] <= now for e in events) and _due("prop_grading", now, RESULT_INTERVAL):
-        attempt("prop_grading", lambda: nfl_prop_result_ingest.sync(freeze_sha, now=now))
     if paper_research.needs_settlement():
         attempt("paper_settlement", paper_research.settle)
     policy = paper_research.active_policy()
@@ -304,6 +327,16 @@ def _run_locked(now: float, *, record_tick: bool = True) -> dict:
         # Manual checks must not make a sleeping LaunchAgent appear healthy.
         db.ex("INSERT INTO research_refresh_ticks VALUES(?,?,?,?)",
               (run_id, now, complete, int(successful)))
+    # Saved-research notifications consume stored observations only. They cannot
+    # change freezes, selections or grading and never send email automatically.
+    from . import members
+    if db.q1('SELECT 1 FROM member_saved_props LIMIT 1'):
+        try:
+            members.sync_alerts()
+        except Exception:
+            db.kv_set('member_alerts_health', {'ok': False, 'checked_at': time.time()})
+        else:
+            db.kv_set('member_alerts_health', {'ok': True, 'checked_at': time.time()})
     return output
 
 
@@ -312,6 +345,9 @@ def main() -> None:
     parser.add_argument("action", nargs="?", choices=("run", "status"), default="run")
     args = parser.parse_args()
     result = status() if args.action == "status" else run()
+    if args.action == 'run':
+        from .service_ops import maintain_local
+        maintain_local()
     print(json.dumps(result, sort_keys=True, default=str))
     if args.action == "run" and result.get("success") is False:
         raise SystemExit(2)

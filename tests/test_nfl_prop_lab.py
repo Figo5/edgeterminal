@@ -165,3 +165,20 @@ def test_walk_forward_fits_only_earlier_weeks(monkeypatch):
     result = nfl_prop_lab.evaluate({"receiving_yards": rows})
     assert seen == [1.0, 1.0, 1000.0, 1000.0]
     assert result["receiving_yards"]["metrics"]["development_2024_rolling"]["n"] == 2
+
+
+def test_target_week_features_exclude_target_and_future_candidate_rows(monkeypatch):
+    prior = dict(player_id='gsis', team='TB', position='TE', season='2026', week='4')
+    future = {**prior, 'team': 'DAL', 'week': '6'}
+    target = dict(season='2026', week='5', home_team='DAL', away_team='TB')
+    monkeypatch.setattr(nfl_prop_lab, '_read_stats', lambda directory=None: ([prior, future], {}))
+    monkeypatch.setattr(nfl_prop_lab, '_schedule', lambda: {'week5': target, 'week6': {**target, 'week': '6'}})
+    observed = []
+    def feature(row, history, schedule):
+        observed.append(row)
+        return {'player': [{'week': '4'}]}
+    monkeypatch.setattr(nfl_prop_lab, '_feature', feature)
+    result = nfl_prop_lab._week3_features({}, season=2026, week=5)
+    assert set(result) == {('gsis', 'tb')}
+    assert len(observed) == 1
+    assert observed[0]['week'] == '5' and observed[0]['game_id'] == 'week5'

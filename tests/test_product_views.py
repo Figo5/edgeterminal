@@ -26,7 +26,11 @@ def test_weekly_board_uses_stored_pregame_quotes_and_marks_stale(monkeypatch):
             ("moneyline", game["home_team"], None, -245),
             ("spread", game["home_team"], -4.5, -115),
             ("total", "Over", 42.5, -118)], 1)]
-    monkeypatch.setattr(product_views.db, "q", lambda *a, **k: rows)
+    monkeypatch.setattr(product_views.db, "q", lambda sql, *a, **k: rows if "FROM odds" in sql else [])
+    monkeypatch.setattr(product_views.db, "q1", lambda *a, **k: None)
+    monkeypatch.setattr(product_views.db, "kv_get", lambda *a: {"season": 2026, "week": 3})
+    monkeypatch.setattr(product_views.engine, "schedule_meta", lambda: {"retrieved_at": kickoff - 1800})
+    monkeypatch.setattr(product_views.nfl_top_five, "view", lambda *a: {"games": [], "record": {}})
     monkeypatch.setattr(product_views.time, "time", lambda: kickoff - 900)
     board = product_views.weekly_board()
     item = board["games"][0]
@@ -95,6 +99,7 @@ def test_product_performance_keeps_forward_summary_separate(tmp_path, monkeypatc
     monkeypatch.setattr(product_views.shadow, "performance", lambda: {"all_projections": {"n": 0}})
     monkeypatch.setattr(product_views.paper_research, "dashboard", lambda: {
         "starting_bankroll": 1000, "current_bankroll": 1000, "open_positions": 3,
+        "awaiting_settlement_positions": 0, "verified_statistical_record": {},
         "settled_positions": 0, "record": {}, "profit_loss": 0, "roi": None})
     result = product_views.performance()
     assert result["prospective_2026"]["player_props"]["quote_sides_graded"] == 4
@@ -105,10 +110,12 @@ def test_product_performance_keeps_forward_summary_separate(tmp_path, monkeypatc
 
 def test_matchup_context_is_from_stored_pregame_snapshot(monkeypatch):
     game_id = _game()["id"]
-    monkeypatch.setattr(product_views, "weekly_board", lambda: {
+    monkeypatch.setattr(product_views, "weekly_board", lambda *a, **k: {
         "games": [{"id": game_id, "kickoff_utc": "2026-09-25T00:15Z"}],
         "as_of": 1790200000.0})
     monkeypatch.setattr(product_views, "player_props", lambda g: {"rows": [], "count": 0})
+    monkeypatch.setattr(product_views.nfl_top_five, "view", lambda *a: {"games": [], "record": {}})
+    monkeypatch.setattr(product_views.nfl_season_record, "props", lambda *a: {"games": []})
     payload = json.dumps({"weather": {"conditions": "Overcast", "retrieved_at": 1790200000.0},
                           "injuries": [{"player": "Example", "status": "Out"}]})
     monkeypatch.setattr(product_views.db, "q1", lambda *a, **k: {

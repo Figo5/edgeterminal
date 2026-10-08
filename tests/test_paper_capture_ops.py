@@ -112,6 +112,16 @@ def test_cadence_and_quota_cooldown_are_fail_closed(lab):
     assert nfl_prop_capture_ops.plan([_event()], KICKOFF - 300, key_configured=False)["due"] == {}
 
 
+def test_manual_prop_check_uses_shorter_cooldown_with_same_quota_guard(lab):
+    _freeze_original(KICKOFF - 25 * 3600)
+    first = KICKOFF - 12 * 3600
+    nfl_prop_capture_ops.capture(2026, 4, [GAME], first, provider=_provider(first))
+    assert nfl_prop_capture_ops.plan([_event()], first + 20 * 60, manual=True)["due"] == {}
+    assert nfl_prop_capture_ops.plan([_event()], first + 35 * 60)["due"] == {}
+    assert nfl_prop_capture_ops.plan([_event()], first + 35 * 60, manual=True)["due"] == {
+        (2026, 4): [GAME]}
+
+
 def test_offline_capture_records_request_and_backs_off(lab):
     _freeze_original(KICKOFF - 3600)
     def offline(*_args, **_kwargs):

@@ -50,6 +50,20 @@ def capture_week(season,week,provider=None,now=None):
     return _capture(targets,provider,stamp)
 
 
+def capture_current(provider=None, now=None):
+    """Observe ESPN prices for every unstarted game in the stored current week."""
+    stamp = time.time() if now is None else now
+    current_ids = (db.kv_get("nfl_current_schedule") or {}).get("game_ids") or []
+    targets = {}
+    for game_id in current_ids:
+        event = db.q1("SELECT * FROM events WHERE id=? AND sport='NFL'", (game_id,))
+        kickoff = parse_time(event.get("start_time")) if event else None
+        if (event and _mapped_live_game(event) and kickoff is not None and
+                stamp < kickoff and str(event.get("status") or "").upper() not in INACTIVE):
+            targets[game_id] = event
+    return _capture(targets, provider, stamp)
+
+
 def _record_attempts(targets, stamp, outcomes, error_type=None):
     with db.tx() as c:
         c.executemany(
@@ -66,7 +80,10 @@ def _capture(targets,provider,stamp):
         return result
     # Explicit ESPN adapter: this job cannot consume an Odds API request.
     try:
-        raw=(provider or EspnOdds()).fetch_odds("NFL")
+        if provider is None:
+            parts = next(iter(targets)).split("-")
+            provider = EspnOdds(season=int(parts[1]), week=int(parts[3]))
+        raw=provider.fetch_odds("NFL")
         if not isinstance(raw,list) or any(not isinstance(row,dict) for row in raw):
             raise ValueError("malformed ESPN odds response")
         by_game={game_id:[] for game_id in targets}

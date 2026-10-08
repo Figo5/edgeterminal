@@ -122,9 +122,11 @@ def _schedule(season: int, week: int) -> list[dict]:
 class SportsGameOddsProps:
     """Explicit, bounded fetch; header authentication keeps keys out of URLs."""
 
-    def __init__(self, api_key: str | None = None, getter=None):
+    def __init__(self, api_key: str | None = None, getter=None, *, odd_ids: str | None = None,
+                 bookmaker_ids: str | None = None):
         self.api_key = api_key if api_key is not None else settings.sportsgameodds_api_key
         self.getter = getter
+        self.odd_ids, self.bookmaker_ids = odd_ids, bookmaker_ids
 
     def fetch(self, starts_after: float, starts_before: float,
               batch_id: str | None = None, include_alt_lines: bool = True) -> dict:
@@ -143,6 +145,10 @@ class SportsGameOddsProps:
                       "startsBefore": _utc(starts_before), "started": "false",
                       "cancelled": "false", "oddsAvailable": "true",
                       "includeAltLines": "true" if include_alt_lines else "false", "limit": 100}
+            if self.odd_ids:
+                params["oddIDs"] = self.odd_ids
+            if self.bookmaker_ids:
+                params["bookmakerID"] = self.bookmaker_ids
             if cursor:
                 params["cursor"] = cursor
             db.ex("INSERT INTO nfl_prop_api_request_attempts VALUES(?,?,?,?)",

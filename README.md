@@ -5,7 +5,7 @@
 > are deliberately disabled (see *Release limits* below). Use it to browse verified
 > prices and research a game, not as a source of betting advice.
 
-EdgeTerminal is a local **NFL-only** betting research and analytics terminal. It compares stored prices with deterministic projections, exposes confidence and risk inputs, records odds history, and provides a tool-grounded chat analyst. It does **not** place bets.
+EdgeTerminal is a local **NFL-only** betting research and analytics terminal. It compares stored prices with deterministic projections, exposes confidence and risk inputs, records odds history. It does **not** place bets.
 
 The active product and UI are NFL-only. Reusable provider abstractions for other sports remain dormant for future expansion.
 
@@ -23,6 +23,43 @@ PORT=8799 .venv/bin/python -m uvicorn edgeterminal.api:app --host 127.0.0.1 --po
 ```
 
 Open <http://127.0.0.1:8799>.
+
+## Weekly projections and top-five record
+
+The home screen shows the current NFL week, projected scores, winners, spreads,
+totals, and five player props per game. Once ESPN's default week is entirely final,
+the app checks the next week's schedule automatically. The week selector keeps
+previously stored weeks accessible.
+
+The **Season record** shows weekly and cumulative winner, spread, total and prop results. It counts the five strongest modeled prop probabilities for
+each game, with wins, losses, pushes, voids, and pending results. There are no stakes
+or bankroll inputs in this flow. One side per player/stat market is selected from
+observed main lines; five distinct markets are required. Selections lock before
+kickoff and cannot be overwritten. Games without enough supported lines wait for
+the provider; the selection ledger never backfills completed games.
+
+Older prop forecasts appear as **Archived ranking**: a read-only top-five ranking
+of the earliest saved pregame freeze, with fewer rows when fewer supported markets
+were saved. This is retrospective selection of original predictions, not a claim
+that the top-five policy existed then. Season totals include these labeled archive
+rows. Game records use the latest saved pregame forecast and its own market lines,
+with final scores from verified grade sources. Repeated forecasts count once.
+Legacy Weeks 1–2 market predictions are matched to ESPN results by exact teams
+and kickoff time, using the more probable side of each saved market forecast.
+Hash-checked result artifacts in `data/research/season_results/` preserve source
+evidence. No new prediction is generated. Week 1 has only one saved game; Week 2
+has sixteen. Weeks without saved predictions show **Not recorded**, never
+synthetic results.
+Research chat has been removed from the interface.
+
+The existing research LaunchAgent runs every five minutes while this Mac is awake.
+Missing prop boards are fetched in batches every six hours early in the week, with
+more frequent checks near kickoff, subject to the provider's quota guards. The UI
+reads new stored data every minute. Postgame grading uses verified result sources
+and appends corrections. Historical freezes remain intact; the original prop
+model's training cutoff and parameters stay fixed, while recent completed games
+update the next week's player features. ESPN supplies game odds; SportsGameOdds
+supplies player lines. This flow never calls Odds API.
 
 Port `8799` is EdgeTerminal's default; `8787` is reserved for CivicFolio.
 
@@ -53,6 +90,24 @@ This is opt-in and reversible; nothing is installed unless you run it:
 ./tools/edgeterminal.sh install-service     # writes ~/Library/LaunchAgents/com.edgeterminal.app.plist
 ./tools/edgeterminal.sh uninstall-service   # unloads and removes it
 ```
+
+## Weekly NFL updates
+
+The local research LaunchAgent checks ESPN's current NFL schedule automatically.
+When ESPN advances to the next week, EdgeTerminal stores that slate and creates
+missing pregame board projections. The open NFL board checks stored data every
+15 minutes; reopening the page also loads the latest stored week. The app
+service above keeps the web interface available after login.
+
+**Refresh odds** in the header checks ESPN's current week and captures fresh
+pregame game prices for its unstarted games, then reloads the board. The local
+research worker also captures ESPN game prices every 15 minutes during the
+24 hours before kickoff and every five minutes in the final hour. These checks
+never invoke the Odds API. The button also runs the quota-guarded research
+worker. A manual prop check can run after a 30-minute minimum interval, while
+the provider quota and failure cooldowns remain enforced.
+The board reports when ESPN has no current quote and keeps each observed price
+labeled with its own timestamp.
 
 ## Release limits
 
@@ -100,7 +155,11 @@ Demo mode supports the complete workflow without credentials:
 4. Open a matchup for projections, market prices, team comparison, injuries, news, weather, disagreement, risks, and sources.
 5. Ask the analyst for the best bet in the selected game or the best parlay.
 
-The application does not poll odds. Refreshes occur only on startup for an empty database, on the button/API action, or when a chat analysis detects stale prices.
+In live mode, the background research worker captures ESPN game prices before
+kickoff. The current product shows saved data immediately, then opening or reloading the
+page checks for due updates. **Check updates** uses the same shared five-minute
+cooldown and provider cadence/quota guards. Localhost still needs the Mac backend
+running. The legacy demo interface keeps its explicit fixture-price refresh.
 
 ## Live integrations
 
@@ -256,3 +315,7 @@ SQLite defaults to `data/edgeterminal.db`. The schema stores events, append-only
 ## Responsible use
 
 Outputs are probabilistic research estimates. A `PASS`, `WATCHLIST`, or `WAIT FOR PRICE` result is expected when evidence or price does not support a play. EdgeTerminal does not use guaranteed-win language and does not place wagers.
+
+## Local beta product
+
+The dark NFL board now includes saved games and props, local result/line updates, separate live and archived records, probability checks and daily database backups. Hosting and checkout are deferred. See [local beta operations](docs/local_beta_operations.md) for refresh limits, backup recovery and the inactive invited-member foundation.

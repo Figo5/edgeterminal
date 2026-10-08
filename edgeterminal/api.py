@@ -4,19 +4,21 @@ from __future__ import annotations
 import logging
 import json
 import time
+from urllib.parse import urlsplit
 from datetime import datetime, timezone
 from contextlib import asynccontextmanager
 from typing import Any, Dict, List, Optional
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, HTTPException, Query, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
-from . import calibration, db, engine, logs, nfl_forward_grading, nfl_props, paper_research, product_views, research_refresh, parlay, props, shadow
+from . import calibration, db, engine, logs, nfl_forward_grading, nfl_market_capture, nfl_props, paper_research, product_views, research_refresh, parlay, props, shadow
 from .agents import llm
 from .config import ROOT, settings
 from .providers import registry as R
+from . import beta_access, beta_api, product_insights, visit_refresh
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -30,6 +32,12 @@ async def _lifespan(_app: FastAPI):
     logs.install_redaction()
     db.init()
     engine.restore_families(force=True)
+    if settings.hosted_mode:
+        if urlsplit(settings.public_url).scheme != 'https' or settings.odds_provider != 'espn':
+            raise RuntimeError('Hosted beta requires an HTTPS PUBLIC_URL and ODDS_PROVIDER=espn')
+        # Hosted HTTP processes only serve stored data. The worker owns requests.
+        yield
+        return
     if not db.q1("SELECT id FROM events LIMIT 1"):
         log.info("empty database — running an initial odds refresh")
         try:
@@ -53,6 +61,45 @@ async def _lifespan(_app: FastAPI):
 app = FastAPI(title="EdgeTerminal", version="0.4.0",
               description="Local sports-market research terminal. Not a sportsbook.",
               lifespan=_lifespan)
+app.include_router(beta_api.router)
+
+
+@app.middleware('http')
+async def beta_boundary(request: Request, call_next):
+    """Prevent public users from reaching legacy ingestion, grading or debug APIs."""
+    host = request.url.hostname
+    expected = urlsplit(settings.public_url).hostname
+    valid_host = host == expected if settings.hosted_mode else host in {'127.0.0.1', 'localhost', '::1', 'testserver'}
+    if not valid_host:
+        return JSONResponse({'detail': 'Unknown application host'}, status_code=400)
+    path = request.url.path
+    if settings.hosted_mode:
+        readable = {'/api/health', '/api/config', '/api/product/nfl', '/api/product/performance',
+                    '/api/product/status', '/api/product/methodology', '/api/product/nfl/refresh',
+                    '/api/product/nfl/check'}
+        member_path = path.startswith('/api/account') or path in {
+            '/api/auth/request-link', '/api/auth/signin', '/api/auth/signout'}
+        matchup_path = path.startswith('/api/product/nfl/nfl-')
+        if path.startswith('/api/') and not (member_path or path in readable or matchup_path):
+            return JSONResponse({'detail': 'This endpoint is private to the research operator'}, status_code=403)
+        if path == '/api/product/nfl/refresh':
+            return JSONResponse({'detail': 'The background worker manages refreshes'}, status_code=403)
+    if request.method not in {'GET', 'HEAD', 'OPTIONS'}:
+        origin = request.headers.get('origin')
+        expected_origin = settings.public_url if settings.hosted_mode else str(request.base_url).rstrip('/')
+        if (origin and origin.rstrip('/') != expected_origin) or (settings.hosted_mode and not origin):
+            return JSONResponse({'detail': 'A same-origin request is required'}, status_code=403)
+        if request.headers.get('sec-fetch-site') == 'cross-site':
+            return JSONResponse({'detail': 'A same-origin request is required'}, status_code=403)
+    response = await call_next(request)
+    response.headers['X-Content-Type-Options'] = 'nosniff'
+    response.headers['Referrer-Policy'] = 'no-referrer'
+    response.headers['Content-Security-Policy'] = "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'"
+    if settings.hosted_mode:
+        response.headers['Strict-Transport-Security'] = 'max-age=31536000'
+    if path.startswith('/api/') or path == '/':
+        response.headers['Cache-Control'] = 'no-store'
+    return response
 
 WEB = ROOT / "edgeterminal" / "web"
 
@@ -100,8 +147,13 @@ def health() -> Dict:
 
 @app.get("/api/config")
 def config() -> Dict:
+    if settings.hosted_mode:
+        return {'sports': ['NFL'], 'product_scope': 'NFL-only', 'hosted_mode': True,
+                'model_version': settings.model_version, 'confidence_version': settings.confidence_version,
+                'demo_mode': False, 'llm_enabled': False}
     lr = engine.last_refresh()
     return dict(
+        hosted_mode=False,
         sports=list(settings.active_sports), product_scope="NFL-only",
         preferred_books=settings.preferred_books,
         official_pick_confidence=settings.official_pick_confidence,
@@ -154,23 +206,95 @@ def paper_dashboard() -> Dict:
 
 
 @app.get("/api/product/nfl")
-def product_nfl_board() -> Dict:
+def product_nfl_board(request: Request, week: Optional[int] = None) -> Dict:
     """Read stored weekly projections and labeled pregame observations only."""
-    return product_views.weekly_board()
+    if week is not None and not 1 <= week <= 18:
+        raise HTTPException(422, "Week must be between 1 and 18")
+    return beta_access.board(product_views.weekly_board(week), request)
+
+
+@app.post("/api/product/nfl/refresh")
+def product_nfl_refresh() -> Dict:
+    """Fetch current ESPN schedule and game prices without paid provider calls."""
+    if settings.demo_mode:
+        demo = engine.refresh(["NFL"])["sports"]["NFL"]
+        engine.ensure_weekly_projections()
+        return {"ok": True, "season": None, "week": None, "week_changed": False,
+                "schedule_changed": False, "odds_rows": demo.get("odds_rows", 0),
+                "odds_games": demo.get("events", 0), "games_without_quotes": 0,
+                "projections_missing": 0, "odds_source": "demo",
+                "checked_at": datetime.now(timezone.utc).isoformat()}
+    previous = db.kv_get("nfl_current_schedule") or {}
+    result = engine.refresh_schedule("NFL", force=True)
+    if not result.get("ok"):
+        raise HTTPException(503, "NFL schedule check failed; showing last stored week")
+    try:
+        odds = nfl_market_capture.capture_current()
+    except Exception as exc:  # noqa: BLE001 - do not leak provider details
+        log.warning("manual ESPN odds refresh failed: %s", type(exc).__name__)
+        raise HTTPException(503, "NFL odds refresh failed; showing last stored prices") from None
+    projections = engine.ensure_weekly_projections()
+    try:
+        research = research_refresh.run(record_tick=False, force_prop_quotes=True)
+    except Exception as exc:  # noqa: BLE001 - game odds remain valid after a research failure
+        log.warning("manual research check failed after odds refresh: %s", type(exc).__name__)
+        research = {"success": False, "steps": {}}
+    research_steps = research.get("steps", {})
+    current = db.kv_get("nfl_current_schedule") or {}
+    week = current.get("week")
+    return {"ok": True, "season": current.get("season"), "week": week,
+            "week_changed": (previous.get("season"), previous.get("week")) !=
+                            (current.get("season"), week),
+            "schedule_changed": bool(result.get("changed")),
+            "odds_rows": odds["rows_stored"],
+            "odds_games": odds.get("games_with_quotes", 0),
+            "games_without_quotes": len(odds.get("games_without_quotes", [])),
+            "odds_source": "espn",
+            "props_refreshed": any((name.startswith("prop_near_game_") or
+                                     (name == "top_five_capture" and step.get("result", {}).get("status") == "captured")) and step.get("ok")
+                                   for name, step in research_steps.items()),
+            "research_check_failed": research.get("success") is False,
+            "projections_missing": len(projections["missing"]),
+            "checked_at": datetime.now(timezone.utc).isoformat()}
+
+
+@app.post('/api/product/nfl/check')
+def product_visit_check() -> Dict:
+    """A page visit may run due work; it never forces a provider request."""
+    try:
+        return visit_refresh.check()
+    except ValueError:
+        raise HTTPException(503, 'Automatic updates require ESPN research mode') from None
 
 
 @app.get("/api/product/nfl/{game_id}")
-def product_nfl_matchup(game_id: str) -> Dict:
+def product_nfl_matchup(game_id: str, request: Request) -> Dict:
     """Read-only matchup and paired prop projections; no ingestion or picks."""
     try:
-        return product_views.matchup(game_id)
+        return beta_access.matchup(product_views.matchup(game_id), request)
     except ValueError as exc:
         raise HTTPException(404, str(exc)) from exc
 
 
 @app.get("/api/product/performance")
-def product_performance() -> Dict:
-    return product_views.performance()
+def product_performance(request: Request) -> Dict:
+    return beta_access.performance(product_views.performance(), request)
+
+
+@app.get('/api/product/status')
+def product_status() -> Dict:
+    return product_insights.health()
+
+
+@app.get('/api/product/methodology')
+def product_methodology() -> Dict:
+    return {'title': 'How the record works', 'readiness': 'RESEARCH_ONLY', 'designation': 'PASS',
+            'notes': ['Five distinct player/stat selections lock before kickoff when five supported main lines are available.',
+                      'Player prop model families and residual uncertainty are fixed. Training ends before 2026 Week 3; later completed weeks update inputs only.',
+                      'Model probability is an estimate. Its difference from the quoted price is not a validated betting edge.',
+                      'Live selections and archived rankings have separate records. Archive rankings were applied after games to forecasts saved before kickoff.',
+                      'Latest verified source revisions determine outcomes. Missing stats stay pending; corrections remain visible.',
+                      'Game forecast records use the saved prediction and its original line. Missing historical forecasts are never recreated.']}
 
 
 @app.get("/api/product/research-index")

@@ -23,11 +23,15 @@ def isolated(tmp_path, monkeypatch):
 
 
 def test_idle_refresh_is_idempotent_and_does_not_call_paid_provider(isolated, monkeypatch):
-    calls = {"schedule": 0}
+    calls = {"schedule": 0, "projections": 0}
     def schedule(_sport):
         calls["schedule"] += 1
         return {"ok": True, "events": 0}
     monkeypatch.setattr(research_refresh.engine, "refresh_schedule", schedule)
+    def projections():
+        calls["projections"] += 1
+        return {"ok": True, "needed": 0, "created": 0, "missing": []}
+    monkeypatch.setattr(research_refresh.engine, "ensure_weekly_projections", projections)
     monkeypatch.setattr(research_refresh, "_events", lambda _now: [])
     monkeypatch.setattr(research_refresh, "_availability", lambda *_args: {"games": 0, "observations": 0})
     monkeypatch.setattr(research_refresh.nfl_prop_capture_ops, "capture",
@@ -35,7 +39,7 @@ def test_idle_refresh_is_idempotent_and_does_not_call_paid_provider(isolated, mo
     first = research_refresh.run(now=1000)
     second = research_refresh.run(now=1001)
     assert first["success"] and second["success"]
-    assert calls["schedule"] == 1
+    assert calls == {"schedule": 1, "projections": 1}
     assert second["status"] == "no_work_due"
     assert db.q1("SELECT COUNT(*) n FROM research_refresh_runs")["n"] == 1
     assert db.q1("SELECT COUNT(*) n FROM research_refresh_ticks")["n"] == 2
@@ -59,11 +63,18 @@ def test_prop_capture_waits_for_frozen_projection(isolated, monkeypatch):
     monkeypatch.setattr(research_refresh.nfl_forward_weekly, "run", lambda **_kwargs: {"freeze": "fixture"})
     monkeypatch.setattr(research_refresh.nfl_market_capture, "capture_week",
                         lambda *_args, **_kwargs: {"target_games": 1, "rows_stored": 2})
+    game_odds_calls = []
+    monkeypatch.setattr(research_refresh.nfl_market_capture, "capture_current",
+                        lambda *, now: game_odds_calls.append(now) or
+                        {"target_games": 1, "rows_stored": 2})
     first = research_refresh.run(now=20000)
     second = research_refresh.run(now=20001)
     assert first["success"] and second["success"]
     assert calls == []
+    assert game_odds_calls == [20000]
     assert research_refresh.interval(99900, [event]) == 300
+    assert research_refresh._game_odds_interval(99900, [event]) == 300
+    assert research_refresh._game_odds_interval(20000, [event]) == 900
 
 
 def test_concurrent_read_endpoints_share_sqlite_safely(isolated):

@@ -232,12 +232,13 @@ def _frozen_quotes(now: float) -> list[tuple[str, dict, dict]]:
 
 def _paired_quotes(now: float) -> list[tuple[str, dict, dict]]:
     out = []
+    verified_freezes = {row["freeze_sha"] for row in db.q(
+        "SELECT freeze_sha,payload FROM nfl_prop_research_freezes")
+        if hashlib.sha256(row["payload"].encode()).hexdigest() == row["freeze_sha"]}
     for row in db.q("SELECT * FROM paper_prop_quote_pairings WHERE created_at<=?", (now,)):
         if hashlib.sha256(row["payload"].encode()).hexdigest() != row["pair_sha256"]:
             raise ValueError("paper quote pairing hash mismatch")
-        source_freeze = db.q1("SELECT payload FROM nfl_prop_research_freezes WHERE freeze_sha=?",
-                              (row["freeze_sha"],))
-        if not source_freeze or hashlib.sha256(source_freeze["payload"].encode()).hexdigest() != row["freeze_sha"]:
+        if row["freeze_sha"] not in verified_freezes:
             raise ValueError("paper quote pairing source freeze hash mismatch")
         payload = json.loads(row["payload"])
         if payload["quote"]["quote_id"] != row["quote_id"] or payload["frozen_quote_id"] != row["frozen_quote_id"]:
@@ -383,10 +384,11 @@ def opportunity_distribution(now: float | None = None) -> dict:
 def current_opportunities(now: float | None = None) -> list[dict]:
     stamp = time.time() if now is None else now
     rows = []
+    observed_by_quote = {row["id"]: row["provider_updated_at"] for row in
+                         db.q("SELECT id,provider_updated_at FROM nfl_prop_snapshots "
+                              "WHERE provider_updated_at IS NOT NULL")}
     for freeze_sha, _, quote in _frozen_quotes(stamp) + _paired_quotes(stamp):
-        source = db.q1("SELECT provider_updated_at FROM nfl_prop_snapshots WHERE id=?",
-                       (quote["quote_id"],))
-        observed = source["provider_updated_at"] if source else None
+        observed = observed_by_quote.get(quote["quote_id"])
         if (quote.get("market") not in MARKETS or quote.get("line") is None or
                 quote.get("projection") is None or quote.get("price") is None or
                 not _valid_price(quote["price"]) or
@@ -422,7 +424,9 @@ def _ordered_frozen_quotes(now: float) -> list[tuple[str, dict, dict]]:
                                                 item[2]["quote_id"]))
 
 
-def _prop_position_limit(policy: dict, quote: dict, stake: float) -> str | None:
+def _prop_position_limit(policy: dict, quote: dict, stake: float,
+                         now: float | None = None) -> str | None:
+    stamp = time.time() if now is None else now
     current, available, positions, settled = _balances()
     if sum(p["game_id"] == quote["canonical_game_id"] and
            p["player_id"] == quote["player_id"] and p["market"] == quote["market"]
@@ -434,7 +438,8 @@ def _prop_position_limit(policy: dict, quote: dict, stake: float) -> str | None:
     if sum(_slate_day(p["kickoff_utc"], policy) == _slate_day(quote["kickoff_utc"], policy)
            for p in positions) >= policy.get("maximum_positions_per_slate", float("inf")):
         return "slate_position_limit"
-    open_positions = [p for p in positions if settled.get(p["id"], {}).get("result", "pending") == "pending"]
+    open_positions = [p for p in positions if stamp < p["kickoff_utc"] and
+                      settled.get(p["id"], {}).get("result", "pending") == "pending"]
     if len(open_positions) >= policy["maximum_open_positions"]:
         return "open_position_limit"
     if (stake > available or stake > current * policy["maximum_stake_fraction"] or
@@ -528,7 +533,7 @@ def evaluate(policy: dict, now: float | None = None) -> dict:
                   (policy["version"], qid, reason, stamp))
             continue
         stake = float(policy["stake_policy"]["amount"])
-        reason = _prop_position_limit(policy, quote, stake)
+        reason = _prop_position_limit(policy, quote, stake, stamp)
         if reason:
             counts[reason] += 1
             db.ex("INSERT OR IGNORE INTO paper_opportunity_skips VALUES(?,?,?,?)",
@@ -598,7 +603,9 @@ def _evaluate_game_moneylines(policy: dict, now: float) -> Counter[str]:
             current, available, positions, settled = _balances()
             stake = float(policy["stake_policy"]["amount"])
             if (sum(p["game_id"] == game["game_id"] for p in positions) >= policy["maximum_positions_per_game"] or
-                    sum(settled.get(p["id"], {}).get("result", "pending") == "pending" for p in positions)
+                    sum(now < p["kickoff_utc"] and
+                        settled.get(p["id"], {}).get("result", "pending") == "pending"
+                        for p in positions)
                     >= policy["maximum_open_positions"]):
                 reason = "position_limit"
             elif stake > available or stake > current * policy["maximum_stake_fraction"]:
@@ -762,7 +769,11 @@ def dashboard(now: float | None = None) -> dict:
     current, available, positions, settled = _balances()
     account = db.q1("SELECT * FROM paper_accounts WHERE id=?", (ACCOUNT,))
     records = Counter(settled[p["id"]]["result"] for p in positions if p["id"] in settled)
-    open_positions = [p for p in positions if settled.get(p["id"], {}).get("result", "pending") == "pending"]
+    pending_positions = [p for p in positions if settled.get(p["id"], {}).get("result", "pending") == "pending"]
+    open_positions = [p for p in pending_positions if stamp < p["kickoff_utc"]]
+    awaiting = [p for p in pending_positions if stamp >= p["kickoff_utc"]]
+    statistical = Counter(settled[p["id"]]["research_statistical_result"] for p in awaiting
+                          if p["id"] in settled and settled[p["id"]]["research_statistical_result"])
     resolved = [p for p in positions if settled.get(p["id"], {}).get("result") in {"win", "loss", "push", "void"}]
     profit = sum(settled[p["id"]]["profit_loss"] for p in resolved)
     wagered = sum(p["stake"] for p in resolved)
@@ -780,7 +791,9 @@ def dashboard(now: float | None = None) -> dict:
     return {"label": "PAPER / EXPERIMENTAL / NOT A REAL BETTING RECOMMENDATION",
             "starting_bankroll": account["starting_bankroll"] if account else example_policy()["starting_bankroll"],
             "current_bankroll": round(current, 2), "available_bankroll": round(available, 2),
-            "open_positions": len(open_positions), "settled_positions": len(resolved),
+            "open_positions": len(open_positions), "awaiting_settlement_positions": len(awaiting),
+            "settled_positions": len(resolved),
+            "verified_statistical_record": {key: statistical[key] for key in ("won", "lost", "push", "void")},
             "record": {key: records[key] for key in ("win", "loss", "push", "void")},
             "units": round(sum(settled[p["id"]]["profit_loss"] / p["stake"] for p in resolved), 3),
             "profit_loss": round(profit, 2),
@@ -788,6 +801,8 @@ def dashboard(now: float | None = None) -> dict:
             "by_market": group("market"), "by_model_version": group("model_version"),
             "by_policy_version": group("policy_version"),
             "open": [decorate(p) for p in open_positions[-20:]],
+            "awaiting": [{**decorate(p), "settlement": settled.get(p["id"])}
+                         for p in awaiting[-20:]],
             "current_opportunities": current_opportunities(stamp),
             "recent": [{**decorate(p), "settlement": settled.get(p["id"])}
                        for p in positions[-20:][::-1]],

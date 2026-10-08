@@ -20,6 +20,7 @@ from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
 from . import db
+from .integrity import parse_time
 from . import nfl_identity as NI
 from . import nfl_market as NM
 from .agents import pipeline as ap
@@ -246,7 +247,7 @@ def schedule_meta(sport: str = "NFL", now: Optional[float] = None) -> Dict:
                 error=meta.get("error"))
 
 
-def refresh_schedule(sport: str = "NFL") -> Dict:
+def refresh_schedule(sport: str = "NFL", *, force: bool = False) -> Dict:
     """Refresh only the schedule, on demand.
 
     Deliberately narrower than `refresh()`: it calls the events endpoint, which
@@ -266,7 +267,19 @@ def refresh_schedule(sport: str = "NFL") -> Dict:
     try:
         if sport == "NFL" and not settings.demo_mode:
             from .providers.espn import EspnEvents
-            events, source, is_demo = EspnEvents().list_events("NFL"), "espn-events", False
+            provider = EspnEvents()
+            events = provider.list_events("NFL", force=True) if force else provider.list_events("NFL")
+            # ESPN keeps the completed week on its default scoreboard until
+            # Thursday. Advance the product as soon as every game is final.
+            if events and all(str(e.get("status", "")).upper() in
+                              {"FINAL", "STATUS_FINAL"} for e in events):
+                meta = events[0].get("meta") or {}
+                season, week = int(meta.get("season", 0)), int(meta.get("week", 0))
+                if meta.get("season_type") in (2, "2", "reg", "REG") and 0 < week < 18:
+                    upcoming = provider.list_events_for_week(season, 2, week + 1)
+                    if upcoming and all(parse_time(e["start_time"]) > time.time() for e in upcoming):
+                        events = upcoming
+            source, is_demo = "espn-events", False
         else:
             events, source, is_demo = R.list_events(sport, prefer=prefer)
     except Exception as e:  # noqa: BLE001 - a failed refresh must not break a turn
@@ -288,6 +301,9 @@ def refresh_schedule(sport: str = "NFL") -> Dict:
     changed: List[str] = []
     if sport == "NFL":
         events = _ingest_nfl_schedule(events, source, is_demo)
+        if not events:
+            return dict(ok=False, sport=sport, error="provider returned no usable NFL games",
+                        changed=[], events=0)
     for e in events:
         e.setdefault("sport", sport)
         e["meta"] = dict(e.get("meta") or {}, is_demo=bool(is_demo), source=source)
@@ -1149,6 +1165,28 @@ def weekly_board() -> List[Dict]:
         game["projection_created_at"] = now_ts
         game["snapshot_id"] = snapshot_id
     return games
+
+
+def ensure_weekly_projections() -> Dict:
+    """Create missing pregame board projections once for the stored NFL week."""
+    games = slate("NFL", limit_events=40)
+    now = time.time()
+    missing = []
+    for game in games:
+        kickoff = NI.kickoff_utc(game.get("start_time"))
+        if kickoff is None or kickoff.timestamp() <= now:
+            continue
+        if not db.q1("SELECT 1 FROM nfl_game_predictions WHERE game_id=? AND "
+                     "model_version=? AND created_at<? LIMIT 1",
+                     (game["id"], settings.model_version, kickoff.timestamp())):
+            missing.append(game["id"])
+    if missing:
+        weekly_board()
+    remaining = [game_id for game_id in missing if not db.q1(
+        "SELECT 1 FROM nfl_game_predictions WHERE game_id=? AND model_version=? LIMIT 1",
+        (game_id, settings.model_version))]
+    return {"ok": not remaining, "needed": len(missing),
+            "created": len(missing) - len(remaining), "missing": remaining}
 
 
 def analyze_slate(sports: Optional[List[str]] = None, max_events: int = 24,
