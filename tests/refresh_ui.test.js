@@ -134,3 +134,17 @@ test('Combined season record includes replayed wins while preserving provenance 
   assert.match(elements.main.innerHTML,/training before Week 1/);
   assert.doesNotMatch(elements.main.innerHTML,/Live top-five props|Excluded from the live/);
 });
+
+test('Linear research results render in a separate model table', () => {
+  const {elements, performance} = harness(() => {throw Error('no request expected');});
+  const empty={count:0,record:{},win_rate:null};
+  performance({season_record:{season:2026,props:{...empty,games:[]},
+    games:{rows:[],winner:empty,spread:empty,total:empty},weekly:[],
+    linear_research:{weekly:[{week:5,game_count:15,winner:empty,
+      spread:{count:15,record:{won:9,lost:6},win_rate:.6},
+      total:{count:15,record:{won:5,lost:10},win_rate:1/3}}]}}});
+  assert.match(elements.main.innerHTML,/Linear research model · weekly results/);
+  assert.match(elements.main.innerHTML,/separate from the main forecast record/);
+  assert.match(elements.main.innerHTML,/60.0% win rate/);
+  assert.match(elements.main.innerHTML,/33.3% win rate/);
+});

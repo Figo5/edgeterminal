@@ -135,6 +135,34 @@ def test_empty_weeks_have_no_record(isolated, monkeypatch):
     assert result['weekly'][2]['props']['record'] == dict(won=1)
 
 
+def test_linear_research_stays_separate_and_verifies_provenance(isolated, monkeypatch):
+    payload = dict(status='RESEARCH_ONLY', designation='PASS', season=2026, week=3,
+                   family='linear', frozen_at=20., training_games=100, code_sha256='code',
+                   games=[dict(game_id='2026_03_ATL_GB', home='Green Bay Packers', away='Atlanta Falcons',
+                               kickoff_et='1970-01-01T00:01:40Z',
+                               model=dict(margin=-5., total=40., home_win_prob=.3))])
+    path = record.ROOT / 'linear.json'
+    raw = json.dumps(payload).encode()
+    path.write_bytes(raw)
+    sha = hashlib.sha256(raw).hexdigest()
+    frozen = dict(file_path=str(path), freeze_sha=sha, week=3)
+    body = dict(freeze_sha256=sha, game_id='2026_03_ATL_GB', model_family='linear',
+                final_home_score=24, final_away_score=21,
+                straight_up_result='loss', ats_result='win', total_result='loss')
+    grade = dict(game_id=body['game_id'], home_score=24, away_score=21, payload=json.dumps(body))
+    monkeypatch.setattr(db, 'q', lambda sql, args=(): [frozen] if 'FROM nfl_research_freezes' in sql else [grade])
+    result = record.linear_research_record()
+    assert result['winner']['record'] == {'lost': 1}
+    assert result['spread']['record'] == {'won': 1}
+    assert result['weekly'][0]['total']['record'] == {'lost': 1}
+    grade['payload'] = json.dumps({**body, 'model_family': 'board'})
+    with pytest.raises(ValueError, match='identity'):
+        record.linear_research_record()
+    path.write_bytes(raw + b' ')
+    with pytest.raises(ValueError, match='hash'):
+        record.linear_research_record()
+
+
 def test_final_grade_identity_mismatch_is_rejected(monkeypatch):
     body = dict(freeze_sha256='freeze', game_id='2026_03_ATL_GB',
                 final_home_score=24, final_away_score=21, home_team='Green Bay Packers',

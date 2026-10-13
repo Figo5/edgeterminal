@@ -185,6 +185,44 @@ def games(season: int = 2026) -> dict:
                                                 for w in sorted({r['week'] for r in rows})}}
 
 
+def linear_research_record(season: int = 2026) -> dict:
+    """Keep the sealed linear forecasts in their own model cohort."""
+    from .nfl_forward_grading import _valid_freeze
+    from .nfl_repro_bundle import verify_bundle
+    rows = []
+    for frozen in db.q("SELECT * FROM nfl_research_freezes WHERE season=? AND family='linear' ORDER BY week", (season,)):
+        path = ROOT / frozen['file_path']
+        raw = path.read_bytes()
+        if hashlib.sha256(raw).hexdigest() != frozen['freeze_sha']:
+            raise ValueError('linear research freeze hash mismatch')
+        payload = json.loads(raw)
+        _valid_freeze(payload)
+        if (payload['season'], payload['week'], payload['family']) != (season, frozen['week'], 'linear'):
+            raise ValueError('linear research freeze identity mismatch')
+        if (season, frozen['week']) > (2026, 3):
+            verify_bundle(path, deep=False)
+        grades = {g['game_id']: g for g in db.q(
+            'SELECT * FROM nfl_research_grades WHERE freeze_sha=? ORDER BY revision', (frozen['freeze_sha'],))}
+        for game in payload['games']:
+            grade = grades.get(game['game_id'])
+            results = dict(winner='pending', spread='pending', total='pending')
+            if grade:
+                body = json.loads(grade['payload'])
+                if (body.get('freeze_sha256') != frozen['freeze_sha'] or body.get('game_id') != game['game_id'] or
+                        body.get('model_family') != 'linear' or body.get('final_home_score') != grade['home_score'] or
+                        body.get('final_away_score') != grade['away_score']):
+                    raise ValueError('linear research grade identity mismatch')
+                results = {market: {'win': 'won', 'loss': 'lost'}.get(body[field], body[field])
+                           for market, field in (('winner', 'straight_up_result'), ('spread', 'ats_result'), ('total', 'total_result'))}
+            rows.append({'game_id': game['game_id'], 'week': frozen['week'], 'results': results})
+    def sums(items):
+        return {m: summary([{'result': r['results'][m]} for r in items]) for m in ('winner', 'spread', 'total')}
+    return {'model_family': 'linear', 'label': 'Linear research model', 'rows': rows,
+            'weekly': [{'week': w, 'game_count': sum(r['week'] == w for r in rows),
+                        **sums([r for r in rows if r['week'] == w])} for w in sorted({r['week'] for r in rows})],
+            **sums(rows)}
+
+
 def view(season: int = 2026) -> dict:
     prop, game = props(season), games(season)
     current = db.kv_get('nfl_current_schedule') or {}
@@ -196,6 +234,7 @@ def view(season: int = 2026) -> dict:
                'games': game['weekly'].get(w, {m: summary([]) for m in ('winner', 'spread', 'total')})}
               for w in range(1, max_week + 1)]
     return {'season': season, 'props': prop, 'games': game, 'weekly': weekly,
+            'linear_research': linear_research_record(season),
             'historical_note': 'The season total includes locked selections, rankings from saved pregame forecasts, '
                                'and labeled historical replays using archived lines and earlier training cutoffs. '
                                'Coverage is partial; weeks without supported saved lines have no prop record.'}
