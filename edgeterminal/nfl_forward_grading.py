@@ -309,6 +309,10 @@ def sync_freeze(path, provider=None, now=None):
     if not due:
         return counts
     results = (provider or EspnEvents()).list_events_for_week(freeze["season"],2,freeze["week"])
+    # Live retrieval may finish well after the worker started. Validate its
+    # observation time against completion; replay providers keep their as-of time.
+    if provider is None:
+        stamp = time.time()
     if not isinstance(results,list):
         raise ValueError("malformed ESPN scoreboard response")
     by_id = {}

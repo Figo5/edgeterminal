@@ -62,6 +62,17 @@ class Provider:
         return [self.game]
 
 
+def test_slow_live_fetch_uses_completion_time(frozen, monkeypatch):
+    from edgeterminal import nfl_forward_grading as grading
+    started = frozen['kickoff'] + 5*3600
+    completed = started + 180
+    result = _result(frozen)
+    result['meta']['retrieved_at'] = completed
+    monkeypatch.setattr(grading, 'EspnEvents', lambda: Provider(result))
+    monkeypatch.setattr(grading.time, 'time', lambda: completed)
+    assert sync_freeze(frozen['path'], now=started)['graded'] == 1
+
+
 def test_final_grade_and_correction_append_without_mutating_freeze(frozen):
     first=sync_freeze(frozen["path"],provider=Provider(_result(frozen)),
                       now=frozen["kickoff"]+5*3600)
