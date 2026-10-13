@@ -224,6 +224,7 @@ def linear_research_record(season: int = 2026) -> dict:
 
 
 def view(season: int = 2026) -> dict:
+    from . import nfl_prop_challenger
     prop, game = props(season), games(season)
     current = db.kv_get('nfl_current_schedule') or {}
     max_week = max([current.get('week') or 0, *prop['weekly'], *game['weekly'], 1])
@@ -235,6 +236,7 @@ def view(season: int = 2026) -> dict:
               for w in range(1, max_week + 1)]
     return {'season': season, 'props': prop, 'games': game, 'weekly': weekly,
             'linear_research': linear_research_record(season),
+            'challenger': nfl_prop_challenger.view(),
             'historical_note': 'The season total includes locked selections, rankings from saved pregame forecasts, '
                                'and labeled historical replays using archived lines and earlier training cutoffs. '
                                'Coverage is partial; weeks without supported saved lines have no prop record.'}

@@ -13,6 +13,9 @@ from .config import ROOT
 def prop(row: dict, now: float | None = None) -> dict:
     stamp = time.time() if now is None else now
     result = dict(row)
+    from .nfl_prop_availability import view as availability
+    result['availability'] = availability(row.get('player_name') or row['player'], row['canonical_game_id'],
+                                          row['kickoff_utc'], row['market'], stamp)
     point, line = row.get('projection'), row.get('line')
     reasons = []
     if point is not None and line is not None:

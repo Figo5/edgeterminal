@@ -118,7 +118,7 @@ def _availability_interval(now: float, events: list[dict]) -> int:
 
 
 def _availability(events: list[dict], now: float) -> dict:
-    due = [e for e in events if 0 < e["kickoff_utc"] - now <= 24 * 3600]
+    due = [e for e in events if 0 < e["kickoff_utc"] - now <= 7 * 86400]
     if not due:
         return {"games": 0, "observations": 0}
     injuries, source, is_demo = registry.injuries("NFL")
@@ -259,6 +259,8 @@ def _run_locked(now: float, *, record_tick: bool = True,
         events = _events(now)
         if steps["schedule"]["ok"]:
             attempt("product_projections", engine.ensure_weekly_projections)
+    if any(0 < e['kickoff_utc']-now <= 7*86400 for e in events) and _due('availability', now, _availability_interval(now, events)):
+        attempt('availability', lambda: _availability(events, now))
     missing_capture_interval = min((nfl_prop_capture_ops.cadence(e["kickoff_utc"] - now)
                                     or 3600 for e in events if e["kickoff_utc"] > now), default=3600)
     if _due("top_five_capture", now, missing_capture_interval) or force_prop_quotes:
@@ -291,6 +293,9 @@ def _run_locked(now: float, *, record_tick: bool = True,
                                   steps[weekly_name]["result"].get("market_capture"))
         if not freeze_captured_market and _due(market_name, now, 6 * 3600):
             attempt(market_name, lambda: nfl_market_capture.capture_week(season, number, now=now))
+    if any(name in steps and steps[name]['ok'] for name in ('current_game_odds',)) or any(
+            name.startswith('current_game_market_') and step['ok'] for name, step in steps.items()):
+        attempt('forecast_lines', engine.save_missing_forecast_lines)
     capture_succeeded = False
     for (season, number), game_ids in nfl_prop_capture_ops.plan(
             events, now, manual=force_prop_quotes)["due"].items():
@@ -313,7 +318,7 @@ def _run_locked(now: float, *, record_tick: bool = True,
     availability_due = (any(0 < e["kickoff_utc"] - now <= 24 * 3600 for e in events) and
                         (capture_succeeded or _due("availability", now,
                                                    _availability_interval(now, events))))
-    if availability_due:
+    if availability_due and 'availability' not in steps:
         attempt("availability", lambda: _availability(events, now))
     if any(e["kickoff_utc"] <= now - GAME_DELAY for e in events) and _due("game_grading", now, RESULT_INTERVAL):
         attempt("game_grading", lambda: _game_grading(now))

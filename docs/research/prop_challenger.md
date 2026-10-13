@@ -11,3 +11,11 @@ Gates: 2025 MAE no worse than baseline and synthetic-threshold Brier no worse th
 Availability: a quoted line does not prove playing time. Retain an explicit unresolved status unless supported by a timestamped availability source. Snap shares and routes are not present in this dataset and must not be fabricated.
 Safety: PASS / RESEARCH_ONLY, no official picks, no new provider calls, no historical selections, no modification of immutable freezes or current selection policy.
 Artifacts: versioned models, calibration residuals, source hashes, evaluation report and pregame shadow snapshots. Existing main model remains the fallback.
+
+## Recording and availability
+
+The worker appends a new forecast-with-lines snapshot when both fresh ESPN spread and total lines exist before kickoff. It retains the original projection and parent snapshot ID, saves the quote timestamps, and never repairs past games with later lines. Repeated checks leave a complete saved snapshot alone.
+
+Timestamped injury observations are checked before new top-five and challenger rankings. Reported out/inactive and doubtful players are excluded from new selections. Unconfirmed availability remains unconfirmed; missing starter announcements do not prove a quarterback is starting. Existing locked selections remain immutable and display updated availability warnings separately.
+
+The Season record page exposes challenger totals, paired forecast errors, and statistical Brier score. Upcoming challenger picks are not exposed through the public comparison summary. These are separate from the main model's record.

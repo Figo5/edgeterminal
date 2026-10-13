@@ -150,3 +150,15 @@ def test_next_capture_keeps_six_hour_early_week_cadence():
     event = {'start_time':'1970-01-03T00:00:00Z', 'status':'STATUS_SCHEDULED'}
     assert top.next_capture(event, {'success':1, 'attempted_at':1000.}, 1100.) == 22600.
     assert top.next_capture(event, None, 172800.) is None
+
+
+def test_new_selection_excludes_reported_out_and_preserves_frozen_quotes(isolated):
+    from edgeterminal.nfl_context_observations import record
+    original=db.q1('SELECT payload FROM nfl_prop_research_freezes WHERE freeze_sha=?',(isolated,))['payload']
+    record(dict(game_id=GAME,kind='offensive_injury',subject='Player 0',payload={'status':'Out'},
+                source_url='https://espn.example/injury',fetched_at=40.,kickoff_utc=100.),now=50.)
+    assert top.lock(isolated,50.)['games_selected']==1
+    saved=json.loads(db.q1('SELECT payload FROM nfl_top_five_selections')['payload'])
+    assert all(r['player_id']!='player-0' for r in saved['selections'])
+    assert len(saved['availability_at_selection'])==5
+    assert db.q1('SELECT payload FROM nfl_prop_research_freezes WHERE freeze_sha=?',(isolated,))['payload']==original

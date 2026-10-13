@@ -219,3 +219,44 @@ def test_legacy_markets_match_exact_schedule_without_recreating_forecasts(tmp_pa
     path.write_text('{}')
     with pytest.raises(ValueError, match='hash mismatch'):
         record._legacy_games(2026, set())
+
+
+def test_pregame_lines_append_snapshot_once_without_rewriting_projection(isolated, monkeypatch):
+    from edgeterminal import engine
+    monkeypatch.setattr(settings,'model_version','board-model')
+    monkeypatch.setattr(db,'now',lambda:20.)
+    db.ex("UPDATE events SET status='STATUS_SCHEDULED'")
+    p=dict(proj_home=25.,proj_away=20.,margin=5.,total=45.,home_win_prob=.8,feature_version='f1')
+    original=dict(game={'id':GAME,'home_team':'Green Bay Packers','away_team':'Atlanta Falcons',
+                        'kickoff_utc':'1970-01-01T00:01:40Z'}, projection=p,market=[])
+    db.save_nfl_snapshot('original',GAME,original,'board-model','f1')
+    db.save_nfl_game_prediction('p',GAME,'original',p,'board-model')
+    before=db.q1("SELECT payload FROM nfl_game_snapshots WHERE id='original'")['payload']
+    db.kv_set('nfl_current_schedule',{'game_ids':[GAME]})
+    monkeypatch.setattr(engine.time,'time',lambda:50.)
+    quotes=[dict(event_id=GAME,market=m,selection=s,line=l,price=-110,book='draftkings',
+                 provider='espn-odds',captured_at=40.,fetched_at=40.,quote_phase='current',is_demo=False)
+            for m,s,l in [('spread','Green Bay Packers',-3.5),('total','Over',44.5)]]
+    monkeypatch.setattr(db,'latest_odds',lambda **kw:quotes)
+    assert engine.save_missing_forecast_lines()['saved']==1
+    assert engine.save_missing_forecast_lines()['saved']==0
+    latest=json.loads(db.q1("SELECT payload FROM nfl_game_snapshots WHERE id!='original'")['payload'])
+    assert latest['projection']==p and latest['parent_snapshot_id']=='original'
+    assert db.q1("SELECT payload FROM nfl_game_snapshots WHERE id='original'")['payload']==before
+    assert len(latest['market'])==2
+    monkeypatch.setattr(engine.time,'time',lambda:101.)
+    assert engine.save_missing_forecast_lines()['saved']==0
+
+
+def test_availability_is_sourced_pregame_and_absence_is_unconfirmed(isolated):
+    from edgeterminal.nfl_prop_availability import view
+    from edgeterminal.nfl_context_observations import record as observe
+    assert view('Player',GAME,100.,'passing_yards',50.)['starter_confirmed'] is False
+    assert view('Player',GAME,100.,now=50.)['status']=='unresolved'
+    observe(dict(game_id=GAME,kind='offensive_injury',subject='Player Jr.',payload={'status':'Out'},
+                 source_url='https://espn.example/injury',fetched_at=40.,kickoff_utc=100.),now=50.)
+    status=view('Player',GAME,100.,now=50.)
+    assert status['blocked'] and status['observed_at']==40.
+    assert status['source_url']=='https://espn.example/injury'
+    assert view('Other Player',GAME,100.,now=50.)['status']=='unresolved'
+    assert view('Player',GAME,200000.,now=100000.)['status']=='stale'

@@ -131,12 +131,20 @@ def lock(freeze_sha: str, now: float) -> dict:
         seal = db.q1("SELECT frozen_at FROM nfl_prop_research_freezes WHERE freeze_sha=?", (freeze_sha,))
         if not seal or now < seal["frozen_at"]:
             raise ValueError("selection predates its model freeze")
-        top = rank(rows)
+        from .nfl_prop_availability import view as availability
+        eligible, availability_evidence = [], {}
+        for row in rows:
+            status = availability(row['player_name'], game, row['kickoff_utc'], row['market'], now)
+            if not status['blocked']:
+                eligible.append(row)
+                availability_evidence[str(row['quote_id'])] = status
+        top = rank(eligible)
         if len(top) < 5:
             counts["awaiting_five_props"] += 1
             continue
         payload = json.dumps({"policy": POLICY, "game_id": game, "selected_at": now,
-                              "freeze_sha": freeze_sha, "selections": top}, sort_keys=True,
+                              "freeze_sha": freeze_sha, "selections": top,
+                              "availability_at_selection": {str(r['quote_id']): availability_evidence[str(r['quote_id'])] for r in top}}, sort_keys=True,
                              separators=(",", ":"), allow_nan=False)
         db.ex("INSERT OR IGNORE INTO nfl_top_five_selections VALUES(?,?,?,?,?)",
               (game, freeze_sha, now, payload, hashlib.sha256(payload.encode()).hexdigest()))

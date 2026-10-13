@@ -1167,6 +1167,55 @@ def weekly_board() -> List[Dict]:
     return games
 
 
+def save_missing_forecast_lines() -> Dict:
+    """Append a priced pregame snapshot without rewriting the saved forecast."""
+    saved = []
+    current = db.kv_get('nfl_current_schedule') or {}
+    for game_id in current.get('game_ids', []):
+        event = db.q1('SELECT * FROM events WHERE id=?', (game_id,))
+        kickoff = parse_time(event['start_time']) if event else None
+        if not kickoff or time.time() >= kickoff or str(event['status']).upper() in {
+                'STATUS_FINAL','FINAL','STATUS_CANCELED','STATUS_POSTPONED'}:
+            continue
+        latest = db.q1('SELECT * FROM nfl_game_predictions WHERE game_id=? AND model_version=? '
+                        'AND created_at<? ORDER BY created_at DESC,id DESC LIMIT 1',
+                        (game_id, settings.model_version, kickoff))
+        if not latest:
+            continue
+        original = db.q1('SELECT payload FROM nfl_game_snapshots WHERE id=?', (latest['snapshot_id'],))
+        payload = json.loads(original['payload'])
+        home = event['home_team']
+        def complete(quotes):
+            return (any(q.get('market')=='spread' and q.get('selection')==home and q.get('line') is not None for q in quotes) and
+                    any(q.get('market')=='total' and q.get('line') is not None for q in quotes))
+        if complete(payload.get('market', [])):
+            continue
+        stamp = time.time()
+        quotes = NM.valid_game_quotes(db.latest_odds(event_id=game_id, max_age_s=settings.stale_odds_s), event)
+        quotes = [q for q in quotes if not q.get('is_demo') and q.get('quote_phase')=='current' and
+                  q.get('provider')=='espn-odds' and parse_time(q.get('captured_at')) is not None and
+                  parse_time(q['captured_at']) <= stamp < kickoff]
+        if not complete(quotes):
+            continue
+        payload.update(market=quotes, created_at=stamp, kind='forecast_with_market_lines',
+                       parent_snapshot_id=latest['snapshot_id'], forecast_created_at=latest['created_at'])
+        payload['missing_data'] = {**payload.get('missing_data', {}), 'market': False}
+        encoded = json.dumps(payload, sort_keys=True, separators=(',', ':'), default=str)
+        snapshot_id = hashlib.sha256(encoded.encode()).hexdigest()[:24]
+        p = payload['projection']
+        with db.tx() as conn:
+            if time.time() >= kickoff:
+                continue
+            conn.execute('INSERT INTO nfl_game_snapshots VALUES(?,?,?,?,?,?)',
+                         (snapshot_id, game_id, encoded, latest['model_version'], latest['feature_version'], stamp))
+            conn.execute('INSERT INTO nfl_game_predictions VALUES(?,?,?,?,?,?,?,?,?,?,?,?)',
+                         (uuid.uuid4().hex, game_id, snapshot_id, latest['model_version'], latest['feature_version'],
+                          p.get('proj_home'), p.get('proj_away'), p.get('margin'), p.get('total'),
+                          p.get('home_win_prob'), p.get('uncertainty'), stamp))
+        saved.append(game_id)
+    return {'ok': True, 'saved': len(saved), 'games': saved}
+
+
 def ensure_weekly_projections() -> Dict:
     """Create missing pregame board projections once for the stored NFL week."""
     games = slate("NFL", limit_events=40)
@@ -1186,7 +1235,8 @@ def ensure_weekly_projections() -> Dict:
         "SELECT 1 FROM nfl_game_predictions WHERE game_id=? AND model_version=? LIMIT 1",
         (game_id, settings.model_version))]
     return {"ok": not remaining, "needed": len(missing),
-            "created": len(missing) - len(remaining), "missing": remaining}
+            "created": len(missing) - len(remaining), "missing": remaining,
+            "priced_snapshots": save_missing_forecast_lines()['saved']}
 
 
 def analyze_slate(sports: Optional[List[str]] = None, max_events: int = 24,

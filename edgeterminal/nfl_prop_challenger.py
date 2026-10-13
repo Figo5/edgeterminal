@@ -185,13 +185,15 @@ def shadow(batch_id, season, week):
         point = float((1-config['usage_weight'])*baseline +
                       config['usage_weight']*usage([row],market)[0])
         over = probability(quote['line'], point, config['residuals'])
+        from .nfl_prop_availability import view as availability
         output.append({'quote_id': quote['id'], 'game_id': quote['canonical_game_id'], 'player_id': quote['player_id'],
                        'player': quote['player_name'], 'market': market, 'line': quote['line'],
                        'side': quote['side'], 'price': quote['price'], 'sportsbook': quote['sportsbook'],
                        'observed_at': quote['retrieved_at'], 'kickoff_utc': quote['kickoff_utc'],
                        'projection': point, 'baseline_projection': baseline, 'probability_over': over,
                        'probability_under': probability(-quote['line'], -point, -np.array(config['residuals'])),
-                       'availability': 'unresolved', 'offline_gate_passed': manifest['evaluation_2025'][market]['offline_gate_passed']})
+                       'availability': availability(quote['player_name'],quote['canonical_game_id'],quote['kickoff_utc'],market,now),
+                       'offline_gate_passed': manifest['evaluation_2025'][market]['offline_gate_passed']})
     if not output:
         return {'status': 'no_supported_pregame_quotes'}
     report = {'version': VERSION, 'readiness': 'RESEARCH_ONLY', 'designation': 'PASS', 'mode': 'shadow',
@@ -213,6 +215,8 @@ def rank(rows):
     """At most two markets per player, no duplicate sides or player/stat pairs."""
     grouped = defaultdict(list)
     for row in rows:
+        if isinstance(row.get('availability'), dict) and row['availability'].get('blocked'):
+            continue
         grouped[row['game_id']].append(row)
     selected = {}
     for game, candidates in grouped.items():
@@ -287,6 +291,20 @@ def report():
     temporary.write_text(json.dumps(result,sort_keys=True,allow_nan=False))
     temporary.replace(destination)
     return {'status': 'updated', 'record': result['record'], 'selections': len(rows)}
+
+
+def view():
+    """Public comparison totals only; never expose upcoming shadow picks."""
+    path = DIRECTORY/'performance.json'
+    if not path.exists():
+        return None
+    result = json.loads(path.read_text())
+    rows = result.get('rows', [])
+    decided = [r for r in rows if r['result'] in {'won','lost'}]
+    brier = float(np.mean([(r['confidence']-(r['result']=='won'))**2 for r in decided])) if decided else None
+    return {'version': result['version'], 'record': result['record'], 'selections': len(rows),
+            'comparison': result.get('same_selections_comparison', {}), 'brier': brier,
+            'checked_at': result['checked_at']}
 
 
 def main():
