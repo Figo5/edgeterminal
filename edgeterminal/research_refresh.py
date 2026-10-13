@@ -263,8 +263,18 @@ def _run_locked(now: float, *, record_tick: bool = True,
                                     or 3600 for e in events if e["kickoff_utc"] > now), default=3600)
     if _due("top_five_capture", now, missing_capture_interval) or force_prop_quotes:
         attempt("top_five_capture", lambda: nfl_top_five.capture_missing(now))
+        captured = steps['top_five_capture'].get('result', {}).get('capture', {})
+        if steps['top_five_capture']['ok'] and captured.get('batch_id'):
+            from . import nfl_prop_challenger
+            current = db.kv_get('nfl_current_schedule') or {}
+            if (nfl_prop_challenger.DIRECTORY / 'active.json').exists():
+                attempt('challenger_capture', lambda: nfl_prop_challenger.shadow(
+                    captured['batch_id'], current['season'], current['week']))
     if _due("top_five_grading", now, RESULT_INTERVAL):
         attempt("top_five_grading", lambda: nfl_top_five.grade_due(now))
+        from . import nfl_prop_challenger
+        if steps['top_five_grading']['ok'] and (nfl_prop_challenger.DIRECTORY / 'active.json').exists():
+            attempt('challenger_grading', nfl_prop_challenger.report)
     if (any(0 < e["kickoff_utc"] - now <= 24 * 3600 for e in events) and
             _due("current_game_odds", now, _game_odds_interval(now, events))):
         attempt("current_game_odds", lambda: nfl_market_capture.capture_current(now=now))
@@ -292,6 +302,10 @@ def _run_locked(now: float, *, record_tick: bool = True,
             batch_id = steps[name]["result"]["batch_id"]
             attempt(f"prop_pair_{season}_{number:02d}",
                     lambda bid=batch_id: paper_research.pair_batch(bid, now=now))
+            from . import nfl_prop_challenger
+            if (nfl_prop_challenger.DIRECTORY / 'active.json').exists():
+                attempt(f"challenger_{season}_{number:02d}",
+                        lambda bid=batch_id, s=season, w=number: nfl_prop_challenger.shadow(bid, s, w))
     if any(0 < e["kickoff_utc"] - now <= nfl_market_capture.WINDOW_S for e in events):
         attempt("near_kickoff_market", lambda: _market(now))
     if any(0 < e["kickoff_utc"] - now <= 6 * 3600 for e in events) and _due("context", now, CONTEXT_INTERVAL):
