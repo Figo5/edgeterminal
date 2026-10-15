@@ -1,0 +1,46 @@
+[
+  {
+    "game_id": "nfl-2026-reg-02-cin-hou",
+    "gsis_player_id": "00-0036554",
+    "player_name": "Nico Collins",
+    "source": {
+      "source": "https://static.www.nfl.com/image/upload/v1789989331/gamecenter/a9e0c7c0-4feb-11f1-abca-2c54536568a9.pdf",
+      "file": "/Users/giofiore/edgeterminal/data/research/participation_review/cin-hou-2026-week02.pdf",
+      "sha256": "f55d92d4ea786fa9fc637a802864b81360969c55098debb5878f54e9c29b35bd",
+      "retrieved_at": 1792068462.106054
+    },
+    "reviewed_at": 1792068592.3373451,
+    "reviewer": "Codex: visual NFL Game Book review",
+    "pages": [
+      1
+    ],
+    "note": "Game Book page 1 identifies Cincinnati at Houston on September 20, 2026, final 20-6. Houston WR 12 N.Collins is listed under Not Active.",
+    "active_roster": false,
+    "snap_played": false,
+    "stats": {}
+  },
+  {
+    "game_id": "nfl-2026-reg-03-car-cle",
+    "gsis_player_id": "00-0036407",
+    "player_name": "Jerry Jeudy",
+    "source": {
+      "source": "https://static.www.nfl.com/image/upload/v1790594133/gamecenter/aa04a395-4feb-11f1-abca-2c54536568a9.pdf",
+      "file": "/Users/giofiore/edgeterminal/data/research/participation_review/car-cle-2026-week03.pdf",
+      "sha256": "471e4bc1553961f65a7a29e1488c8cc2ab49911cc9090e5dded11ad7105f9cc1",
+      "retrieved_at": 1792068432.2857676
+    },
+    "reviewed_at": 1792068592.33784,
+    "reviewer": "Codex: visual NFL Game Book review",
+    "pages": [
+      1,
+      3,
+      17
+    ],
+    "note": "Game Book identifies Carolina at Cleveland on September 27, 2026, final 18-21. Page 1 lists WR 3 J.Jeudy among substitutions; page 17 lists 36 offensive plays. The complete final receiving table on page 3 has no Jeudy reception; its five positive-reception rows sum to all 17 Cleveland receptions. Confirmed participation with zero receptions, not inferred from missing nflverse row.",
+    "active_roster": true,
+    "snap_played": true,
+    "stats": {
+      "receptions": 0
+    }
+  }
+]

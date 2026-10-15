@@ -99,3 +99,57 @@ def test_artifact_hash_and_source_tampering_are_rejected(tmp_path,monkeypatch):
     path.write_text('{}')
     with pytest.raises(ValueError,match='integrity'):
         replay.load()
+
+
+def reviewed_result(tmp_path):
+    path=tmp_path/'gamebook.pdf';path.write_bytes(b'%PDF-1.7 reviewed game book')
+    row=dict(canonical_game_id='nfl-2026-reg-02-cin-hou',gsis_player_id='player',
+             player_name='Example Player',market='receptions',side='over',line=1.5,kickoff_utc=100.)
+    review=dict(game_id=row['canonical_game_id'],gsis_player_id='player',player_name='Example Player',
+                source=dict(source='https://static.www.nfl.com/gamebook.pdf',file=str(path),
+                            sha256=hashlib.sha256(path.read_bytes()).hexdigest(),retrieved_at=200.),
+                reviewed_at=201.,reviewer='Codex',pages=[1,3],note='Reviewed lineup and full receiving table',
+                active_roster=True,snap_played=True,stats={'receptions':0})
+    return row,review,path
+
+
+def test_review_distinguishes_confirmed_zero_from_inactive(tmp_path):
+    row,review,_=reviewed_result(tmp_path)
+    assert replay._reviewed_grade(row,review,202.)['result']=='lost'
+    review.update(active_roster=False,snap_played=False,stats={})
+    result=replay._reviewed_grade(row,review,202.)
+    assert result['result']=='void' and result['actual'] is None
+
+
+@pytest.mark.parametrize('change', ['identity','future','missing_stat','no_snap','untrusted_url','hash'])
+def test_review_rejects_unsupported_settlement(tmp_path,change):
+    row,review,path=reviewed_result(tmp_path)
+    if change=='identity': review['gsis_player_id']='other'
+    if change=='future': review['reviewed_at']=300.
+    if change=='missing_stat': review['stats']={}
+    if change=='no_snap': review['snap_played']=False
+    if change=='untrusted_url': review['source']['source']='https://example.com/gamebook.pdf'
+    if change=='hash': path.write_bytes(b'%PDF-changed')
+    with pytest.raises(ValueError): replay._reviewed_grade(row,review,202.)
+
+
+def test_settlement_preserves_original_forecast_and_is_idempotent(tmp_path,monkeypatch):
+    row,review,_=reviewed_result(tmp_path)
+    row.update(quote_id=1,result='pending',actual=None,projection=2.9)
+    original={'games':[dict(game_id=row['canonical_game_id'],rows=[row])]}
+    monkeypatch.setattr(replay,'DIRECTORY',tmp_path)
+    monkeypatch.setattr(replay,'load',lambda season:copy.deepcopy(original))
+    monkeypatch.setattr(replay.time,'time',lambda:202.)
+    monkeypatch.setattr(record,'games',lambda season:{'rows':[dict(game_id=row['canonical_game_id'],final_home_points=6)]})
+    monkeypatch.setattr(replay.db,'kv_get',lambda key:{'artifact':'original.json'})
+    registrations=[]
+    monkeypatch.setattr(replay.db,'kv_set',lambda key,value:registrations.append(value))
+    result=replay.settle_pending([review])
+    revised=json.loads((tmp_path/registrations[0]['artifact']).read_text())
+    assert original['games'][0]['rows'][0]['result']=='pending'
+    settled=revised['games'][0]['rows'][0]
+    assert settled['projection']==2.9 and settled['result']=='lost'
+    assert revised['parent_artifact']=='original.json'
+    monkeypatch.setattr(replay,'load',lambda season:revised)
+    assert replay.settle_pending([review])['settled']==0
+    assert len(registrations)==1

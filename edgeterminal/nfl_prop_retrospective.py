@@ -7,6 +7,7 @@ Artifacts disclose that these forecasts and rankings were calculated afterward.
 from __future__ import annotations
 
 import argparse
+import copy
 import hashlib
 import json
 import math
@@ -14,6 +15,7 @@ import re
 import time
 from collections import defaultdict
 from datetime import datetime
+from urllib.parse import urlsplit
 
 import numpy as np
 
@@ -155,6 +157,69 @@ def grade(row, stats):
     return dict(result='won' if delta>0 else 'lost' if delta<0 else 'push', actual=actual)
 
 
+def _reviewed_grade(row, review, now):
+    """Resolve a missing replay result from a reviewed, archived NFL Game Book."""
+    from . import nfl_prop_grading
+    if (review.get('game_id') != row['canonical_game_id'] or
+            review.get('gsis_player_id') != row['gsis_player_id'] or
+            lab._norm_name(review.get('player_name', '')) != lab._norm_name(row['player_name'])):
+        raise ValueError('Game Book review player/game identity mismatch')
+    source = nfl_prop_grading._source(review.get('source'), now, 'Game Book')
+    url = urlsplit(source['source'])
+    if (url.scheme != 'https' or url.hostname not in
+            {'www.nfl.com', 'static.www.nfl.com', 'static.clubs.nfl.com'} or
+            not nfl_prop_grading._source_bytes(source['file']).startswith(b'%PDF-')):
+        raise ValueError('Review requires an archived NFL Game Book PDF')
+    reviewed_at = nfl_prop_grading._number(review.get('reviewed_at'))
+    if (not row['kickoff_utc'] < source['retrieved_at'] <= reviewed_at <= now or
+            not review.get('reviewer') or not review.get('note') or
+            not review.get('pages') or any(type(p) is not int or p < 1 for p in review['pages'])):
+        raise ValueError('Game Book review provenance incomplete')
+    active, snap = review.get('active_roster'), review.get('snap_played')
+    if type(active) is not bool or type(snap) is not bool or snap != active:
+        raise ValueError('Review needs confirmed inactivity or participation')
+    if not active:
+        if review.get('stats'):
+            raise ValueError('Inactive player cannot have reviewed stats')
+        return dict(result='void', actual=None, grading_note='Confirmed inactive in reviewed NFL Game Book')
+    value = (review.get('stats') or {}).get(row['market'])
+    actual = nfl_prop_grading._number(value, nonnegative=row['market'] in {'receptions', 'rushing_attempts'})
+    return dict(result=nfl_prop_grading._settlement(row['side'], actual, row['line']),
+                actual=actual, grading_note='Official stat and participation verified in NFL Game Book')
+
+
+def settle_pending(reviews, season=2026):
+    """Append a report revision without reranking or changing any saved forecast."""
+    from . import nfl_season_record
+    original = load(season)
+    revised = copy.deepcopy(original)
+    stamp = time.time()
+    finals = {r['game_id'] for r in nfl_season_record.games(season)['rows']
+              if r['final_home_points'] is not None}
+    indexed = {(r['game_id'], r['gsis_player_id']): r for r in reviews}
+    if len(indexed) != len(reviews):
+        raise ValueError('Duplicate Game Book reviews')
+    settled = []
+    for game in revised['games']:
+        for row in game['rows']:
+            review = indexed.get((game['game_id'], row['gsis_player_id']))
+            if not review or row.get('result') != 'pending':
+                continue
+            if game['game_id'] not in finals or row['kickoff_utc'] >= stamp:
+                raise ValueError('Only completed replay games can be settled')
+            row.update(_reviewed_grade(row, review, stamp), participation_review=review)
+            settled.append(row['quote_id'])
+    if not settled:
+        return {'settled': 0, 'quote_ids': []}
+    parent = db.kv_get(f'nfl_prop_retrospective_{season}')['artifact']
+    revised.update(parent_artifact=parent, settlement_reviewed_at=stamp)
+    path = DIRECTORY / f'{season}-{digest(revised)}.json'
+    with path.open('x') as stream:
+        json.dump(revised, stream, sort_keys=True, separators=(',', ':'), allow_nan=False)
+    db.kv_set(f'nfl_prop_retrospective_{season}', {'artifact': path.name})
+    return {'settled': len(settled), 'quote_ids': settled, 'artifact': str(path)}
+
+
 def build(season=2026):
     from . import nfl_season_record
     lab_raw = (ROOT / 'data/research/nfl_prop_lab_2026_week3.json').read_bytes()
@@ -250,6 +315,10 @@ def load(season=2026):
             saved = db.q1(f"SELECT * FROM {q['source_table']} WHERE id=?",(q['quote_id'],))
             if not saved or digest(saved) != q['source_sha256']:
                 raise ValueError('Retrospective quote source mismatch')
+            if q.get('participation_review'):
+                reviewed = _reviewed_grade(q, q['participation_review'], time.time())
+                if any(q.get(k) != v for k, v in reviewed.items()):
+                    raise ValueError('Retrospective reviewed result mismatch')
     return body
 
 
