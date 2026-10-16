@@ -23,7 +23,7 @@ The existing `com.edgeterminal.research-refresh` LaunchAgent also checks every f
 The scheduled command remains:
 
 ```sh
-cd /Users/giofiore/edgeterminal
+cd ~/edgeterminal
 .venv/bin/python -m edgeterminal.research_refresh run
 ```
 

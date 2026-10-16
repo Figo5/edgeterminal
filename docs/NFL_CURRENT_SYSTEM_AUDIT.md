@@ -1,6 +1,6 @@
 # EdgeTerminal NFL current-system audit
 
-Audited 2026-09-23 from `/Users/giofiore/edgeterminal`, `main` at `e97bfd6`.
+Audited 2026-09-23 from `~/edgeterminal`, `main` at `e97bfd6`.
 This is an audit of the working copy and the running app, not an endorsement of its
 predictions. The pre-existing `.gitignore` edit was left untouched.
 

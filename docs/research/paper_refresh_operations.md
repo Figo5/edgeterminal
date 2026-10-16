@@ -4,7 +4,7 @@
 
 ## Commands and local scheduling
 
-From `/Users/giofiore/edgeterminal`:
+From `~/edgeterminal`:
 
 ```sh
 .venv/bin/python -m edgeterminal.research_refresh run

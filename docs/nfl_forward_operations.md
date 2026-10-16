@@ -8,7 +8,7 @@ revisions. These research records are not consumer betting signals.
 
 ## Local jobs and dependencies
 
-Run commands from `/Users/giofiore/edgeterminal` with `.venv/bin/python`.
+Run commands from `~/edgeterminal` with `.venv/bin/python`.
 The Codex desktop scheduler, local Mac, and writable `data/edgeterminal.db`
 must be available. ESPN schedule and odds retrieval also require network access.
 The web server is not needed for these jobs. `ODDS_PROVIDER=espn` is configured;
