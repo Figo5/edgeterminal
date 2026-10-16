@@ -6,7 +6,7 @@ predictions. The pre-existing `.gitignore` edit was left untouched.
 
 ## Evidence gathered
 
-- Read `README.md`, `docs/RELEASE_HANDOFF.md`, configuration, API, database,
+- Read `README.md`, configuration, API, database,
   provider, model, backtest, chat, and browser code. The handoff is historical;
   its passing-test claim does not describe this checkout on today's date.
 - Baseline: `235 passed, 11 failed` from `.venv/bin/python -m pytest -q`.

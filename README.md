@@ -319,3 +319,7 @@ Outputs are probabilistic research estimates. A `PASS`, `WATCHLIST`, or `WAIT FO
 ## Local beta product
 
 The dark NFL board now includes saved games and props, local result/line updates, separate live and archived records, probability checks and daily database backups. Hosting and checkout are deferred. See [local beta operations](docs/local_beta_operations.md) for refresh limits, backup recovery and the inactive invited-member foundation.
+
+## License
+
+Released under the [MIT License](LICENSE). Copyright (c) 2026 Gio Fiore.
