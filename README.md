@@ -14,7 +14,8 @@ The active product and UI are NFL-only. Reusable provider abstractions for other
 Requires Python 3.9+ (3.11 recommended).
 
 ```bash
-cd ~/edgeterminal
+git clone https://github.com/Figo5/edgeterminal.git
+cd edgeterminal
 python3 -m venv .venv
 .venv/bin/python -m pip install -r requirements.txt
 cp .env.example .env
@@ -23,6 +24,12 @@ PORT=8799 .venv/bin/python -m uvicorn edgeterminal.api:app --host 127.0.0.1 --po
 ```
 
 Open <http://127.0.0.1:8799>.
+
+These commands use a macOS/Linux shell. On Windows PowerShell, create the
+environment with `py -3.11 -m venv .venv`, install with
+`.\.venv\Scripts\python.exe -m pip install -r requirements.txt`, and start with
+`.\.venv\Scripts\python.exe -m uvicorn edgeterminal.api:app --host 127.0.0.1 --port 8799`.
+Copy `.env.example` to `.env` with `Copy-Item .env.example .env` first.
 
 ## Weekly projections and top-five record
 
