@@ -19,7 +19,7 @@ function harness(fetch) {
   };
   const scope = {document: {getElementById: id => elements[id]}, fetch,
     setTimeout: () => 1, clearTimeout: () => {}, console, Date};
-  vm.runInNewContext(source + '\nglobalThis.__test = {refreshProduct, pollStoredBoard, state, paper, performance};', scope);
+  vm.runInNewContext(source + '\nglobalThis.__test = {refreshProduct, pollStoredBoard, state, paper, performance, updateChecks};', scope);
   return {elements, ...scope.__test};
 }
 
@@ -27,6 +27,22 @@ const response = body => ({ok: true, json: async () => body});
 const board = name => ({games: [{id: 'nfl-2026-reg-03-atl-gb',
   away_team: name, home_team: 'Green Bay Packers', kickoff_utc: '2026-09-25T00:15Z',
   designation: 'PASS', projection: null, market: {}}]});
+
+test('About data distinguishes a pending source retry from an expired capture window', () => {
+  const {state, updateChecks} = harness(() => { throw Error('status display must not fetch'); });
+  state.service = {update_checks: [
+    {label: 'Player-prop grading', message: 'Source unavailable <private>', checked_at: 900,
+      next_retry_at: Date.now()/1000 + 3600, state: 'retry_pending'},
+    {label: 'Near-kickoff game quotes', message: 'The failed capture window has ended.',
+      checked_at: 100, state: 'past_window'},
+  ]};
+  const html = updateChecks();
+  assert.match(html, /Next scheduled retry/);
+  assert.match(html, /Last checked/);
+  assert.match(html, /window has ended/);
+  assert.match(html, /&lt;private&gt;/);
+  assert.doesNotMatch(html, /<private>/);
+});
 
 test('Refresh disables immediately, ignores a second click, then reloads stored board', async () => {
   let finishPost;

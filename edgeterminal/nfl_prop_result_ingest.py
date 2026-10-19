@@ -17,6 +17,8 @@ from collections import Counter, defaultdict
 from pathlib import Path
 from urllib.parse import urlencode
 
+import httpx
+
 from . import db, nfl_identity, nfl_prop_grading, nfl_prop_lab
 from .integrity import parse_time
 from .providers.base import client
@@ -29,9 +31,16 @@ REQUIRED_STATS = {"game_id", "player_id", "season", "week", "season_type", "team
 
 
 def _fetch(url: str) -> bytes:
-    response = client().get(url, timeout=25)
-    response.raise_for_status()
-    return response.content
+    # Result feeds are public. Retry one transient connection/read failure;
+    # HTTP failures and invalid result data still fail closed immediately.
+    for attempt in range(2):
+        try:
+            response = client().get(url, timeout=25)
+            response.raise_for_status()
+            return response.content
+        except httpx.TransportError:
+            if attempt:
+                raise
 
 
 def _source_file(digest: str) -> str:

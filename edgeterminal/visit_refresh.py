@@ -13,12 +13,12 @@ KEY = 'product_visit_refresh'
 log = logging.getLogger(__name__)
 
 
-def _with_attention(public: dict, steps: dict | None = None) -> dict:
+def _with_attention(public: dict, steps: dict | None = None, now: float | None = None) -> dict:
     """Name an unresolved snapshot failure without exposing provider errors."""
     from .product_insights import unresolved_failures
-    latest = db.q('SELECT name,success FROM research_refresh_steps WHERE id IN '
+    latest = db.q('SELECT name,success,attempted_at FROM research_refresh_steps WHERE id IN '
                   '(SELECT MAX(id) FROM research_refresh_steps GROUP BY name)')
-    names = {row['name'] for row in unresolved_failures(latest)}
+    names = {row['name'] for row in unresolved_failures(latest, now)}
     names.update(name for name, step in (steps or {}).items() if step.get('ok') is False)
     previous_attention = public.pop('attention', None)
     if names:
@@ -55,12 +55,12 @@ def check(now: float | None = None) -> dict:
         if previous and 0 <= age < INTERVAL:
             return cached(_with_attention({**previous,
                 'status': 'busy' if previous.get('status') == 'running' else 'cached',
-                'did_work': False}))
+                'did_work': False}, now=stamp))
         tick = conn.execute('SELECT started_at,success FROM research_refresh_ticks '
                             'ORDER BY started_at DESC LIMIT 1').fetchone()
         if tick and 0 <= stamp - tick['started_at'] < INTERVAL:
             return cached(_with_attention({'ok': bool(tick['success']), 'status': 'cached',
-                                          'did_work': False, 'checked_at': tick['started_at']}))
+                                          'did_work': False, 'checked_at': tick['started_at']}, now=stamp))
         claim = {'ok': True, 'status': 'running', 'started_at': stamp, 'did_work': False}
         conn.execute('INSERT INTO kv(k,v,updated_at) VALUES(?,?,?) '
                      'ON CONFLICT(k) DO UPDATE SET v=excluded.v,updated_at=excluded.updated_at',

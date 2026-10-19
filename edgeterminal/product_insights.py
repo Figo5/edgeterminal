@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import time
 
 from . import db
@@ -67,14 +68,20 @@ def game(projection: dict | None) -> list[str]:
     return notes
 
 
-def unresolved_failures(steps: list[dict]) -> list[dict]:
-    """A failed creation attempt is resolved by a verified registered freeze."""
+def unresolved_failures(steps: list[dict], now: float | None = None) -> list[dict]:
+    """Keep current failures; expired capture windows remain in the audit log."""
+    stamp = time.time() if now is None else now
     failures = []
     for step in steps:
         if step.get('success'):
             continue
         parts = step['name'].split('_')
         resolved = False
+        if step['name'] == 'near_kickoff_market' and step.get('attempted_at') is not None:
+            from .nfl_market_capture import WINDOW_S
+            # Every target was within this window when the attempt started.
+            # After it closes, current coverage checks describe new targets.
+            resolved = stamp >= step['attempted_at'] + WINDOW_S
         if len(parts) == 4 and parts[:2] == ['weekly', 'freeze'] and parts[2].isdigit() and parts[3].isdigit():
             frozen = db.q1('SELECT file_path,freeze_sha FROM nfl_research_freezes '
                            "WHERE season=? AND week=? AND family='linear'", (int(parts[2]), int(parts[3])))
@@ -86,14 +93,46 @@ def unresolved_failures(steps: list[dict]) -> list[dict]:
     return failures
 
 
+def update_checks(steps: list[dict], now: float) -> list[dict]:
+    """Public, source-safe status for the latest refresh steps."""
+    from .research_refresh import RESULT_INTERVAL
+    failed = {r['name'] for r in unresolved_failures(steps, now)}
+    labels = {'current_game_odds': 'ESPN game quotes',
+              'top_five_capture': 'Five-prop selections',
+              'top_five_grading': 'Player-prop grading', 'game_grading': 'Game grading',
+              'near_kickoff_market': 'Near-kickoff game quotes'}
+    checks = []
+    for step in steps:
+        if step['name'] not in labels:
+            continue
+        active = step['name'] in failed
+        detail = json.loads(step.get('detail') or '{}')
+        error = detail.get('error') or ''
+        transport = any(kind in error for kind in (
+            'ReadError', 'ReadTimeout', 'ConnectError', 'ConnectTimeout', 'RemoteProtocolError'))
+        state = 'retry_pending' if active and transport else 'needs_review' if active else (
+            'ok' if step['success'] else 'past_window')
+        message = {'ok': 'Latest check succeeded.',
+                   'past_window': 'The failed capture window has ended; retained in audit history.',
+                   'retry_pending': 'Result source could not be read. Waiting for the next scheduled retry.',
+                   'needs_review': 'Latest check failed and still needs review.'}[state]
+        if active and 'provider player ID changed name' in error:
+            message = 'The prop provider returned a conflicting player identity. Capture was rejected.'
+        checks.append({'name': step['name'], 'label': labels[step['name']], 'state': state,
+                       'message': message, 'checked_at': step.get('attempted_at'),
+                       'next_retry_at': step['attempted_at'] + RESULT_INTERVAL
+                       if active and step['name'] in {'top_five_grading', 'game_grading'} else None})
+    return checks
+
+
 def health(now: float | None = None) -> dict:
     stamp = time.time() if now is None else now
     schedule = db.kv_get('nfl_current_schedule') or {}
     checked = db.kv_time('nfl_current_schedule')
     tick = db.q1('SELECT started_at,success FROM research_refresh_ticks ORDER BY started_at DESC LIMIT 1')
-    failures = unresolved_failures(db.q('SELECT name,success FROM research_refresh_steps WHERE id IN '
-                    '(SELECT MAX(id) FROM research_refresh_steps GROUP BY name) AND success=0')
-                                  )
+    steps = db.q('SELECT name,success,detail,attempted_at FROM research_refresh_steps WHERE id IN '
+                 '(SELECT MAX(id) FROM research_refresh_steps GROUP BY name) ORDER BY name')
+    failures = unresolved_failures(steps, stamp)
     covered = {r['game_id'] for r in db.q('SELECT game_id FROM nfl_top_five_selections')}
     from .nfl_top_five import coverage
     prop_coverage = coverage(schedule.get('game_ids', []), stamp)
@@ -122,8 +161,12 @@ def health(now: float | None = None) -> dict:
         warnings.append('The latest background check did not finish successfully.')
     if checked is None or stamp - checked > settings.stale_schedule_s:
         warnings.append('The saved schedule needs a refresh.')
-    if failures:
-        warnings.append('A source or grading check needs review in About & data.')
+    checks = update_checks(steps, stamp)
+    for check in checks:
+        if check['state'] in {'retry_pending', 'needs_review'}:
+            warnings.append(f"{check['label']}: {check['message']}")
+    if any(r['name'] not in {c['name'] for c in checks} for r in failures):
+        warnings.append('A source check needs review in About & data.')
     if near:
         warnings.append('A game starting within 15 minutes lacks five selections or fresh game quotes.')
     if any(r['status'] in {'projection_gap', 'selection_needed', 'capture_failed', 'missing_source', 'source_paused'} for r in prop_coverage):
@@ -133,7 +176,11 @@ def health(now: float | None = None) -> dict:
         warnings.append('The local database backup needs review.')
     if (db.kv_get('member_alerts_health') or {}).get('ok') is False:
         warnings.append('Saved-selection updates need a source-integrity review.')
-    if (db.kv_get('product_visit_refresh') or {}).get('ok') is False:
+    visit = db.kv_get('product_visit_refresh') or {}
+    recovered = tick and tick['success'] and tick['started_at'] >= visit.get('checked_at', float('inf'))
+    # Tagged attention mirrors step failures already described above. Only an
+    # independent page exception warrants another warning.
+    if visit.get('ok') is False and not visit.get('attention') and not recovered:
         warnings.append('The latest page-triggered update check needs review.')
     return {'state': 'attention' if warnings else 'healthy', 'warnings': warnings,
             'worker_checked_at': tick['started_at'] if tick else None,
@@ -141,6 +188,7 @@ def health(now: float | None = None) -> dict:
             'upcoming_games': len(upcoming), 'games_with_five': sum(x['props_ready'] for x in upcoming),
             'near_kickoff_missing': near, 'checked_at': stamp,
             'prop_coverage': prop_coverage,
+            'update_checks': checks,
             'runtime': 'hosted' if settings.hosted_mode else 'local',
             'last_backup_at': backup.get('created_at'),
             'readiness': 'RESEARCH_ONLY', 'designation': 'PASS'}

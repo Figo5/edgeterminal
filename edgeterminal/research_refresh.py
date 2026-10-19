@@ -200,7 +200,7 @@ def status(now: float | None = None) -> dict:
     if not scheduler["loaded"]:
         warnings.append("research_launchagent_not_loaded")
     from .product_insights import unresolved_failures
-    unresolved = unresolved_failures(steps)
+    unresolved = unresolved_failures(steps, stamp)
     return {"readiness": "RESEARCH_ONLY", "designation": "PASS",
             "last_successful_research_refresh": success["finished_at"] if success else None,
             "last_attempt": latest["finished_at"] if latest else None,
