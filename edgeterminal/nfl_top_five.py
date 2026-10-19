@@ -270,7 +270,7 @@ def grade_due(now: float) -> dict:
         try:
             frozen = nfl_prop_grading._freeze(sha)
             if any(q["kickoff_utc"] + nfl_prop_grading.POSTGAME_DELAY_S <= now for q in frozen["projections"]):
-                results.append(nfl_prop_result_ingest.sync(sha, now=now))
+                results.append(nfl_prop_result_ingest.sync(sha, now=now, automatic_participation=True))
         except Exception as exc:
             failures.append(f"{sha}: {type(exc).__name__}")
     if failures:

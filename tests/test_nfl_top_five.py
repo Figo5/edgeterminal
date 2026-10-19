@@ -101,7 +101,8 @@ def test_grading_includes_older_freezes_when_new_week_is_current(isolated, monke
     # No top-five selection is needed for the legacy immutable research record.
     calls = []
     monkeypatch.setattr(top.nfl_prop_result_ingest, 'sync',
-                        lambda sha, *, now: calls.append(sha) or {'status': 'graded'})
+                        lambda sha, *, now, automatic_participation: calls.append(sha) or {'status': 'graded'}
+                        if automatic_participation else pytest.fail('official fallback disabled'))
     result = top.grade_due(100. + top.nfl_prop_grading.POSTGAME_DELAY_S)
     assert calls == [isolated]
     assert result['freezes_checked'] == 1

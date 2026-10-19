@@ -136,12 +136,20 @@ def _validate_evidence(evidence: dict, frozen_games: set[str], now: float) -> di
             if market not in nfl_prop_lab.MARKETS:
                 raise ValueError("unsupported official player stat")
             _number(value, nonnegative=market in {"receptions", "rushing_attempts"})
-        if player_status == "inactive" or (player_status == "active" and
-                any(float(value) == 0 for value in stats.values())):
-            participation = player.get("participation_evidence")
-            if not isinstance(participation, dict):
-                raise ValueError("zero/inactive player needs participation evidence")
+        participation = player.get('participation_evidence')
+        needs_participation = player_status == 'inactive' or (player_status == 'active' and
+                any(float(value) == 0 for value in stats.values()))
+        if needs_participation and not isinstance(participation, dict):
+            raise ValueError('zero/inactive player needs participation evidence')
+        if participation is not None:
             _source(participation, now, "participation")
+            supporting_sources = participation.get('supporting_sources', [])
+            if not isinstance(supporting_sources, list) or len(supporting_sources) > 8:
+                raise ValueError('invalid supporting participation sources')
+            for supporting in supporting_sources:
+                _source(supporting, now, 'supporting participation')
+                if supporting['retrieved_at'] > retrieved:
+                    raise ValueError('grade evidence predates supporting source')
             if participation["retrieved_at"] > retrieved:
                 raise ValueError("grade evidence predates participation source")
             if not isinstance(participation.get("active_roster"), bool) or not isinstance(participation.get("snap_played"), bool):

@@ -68,6 +68,16 @@ def test_missed_capture_is_reported_as_history_not_current_provider_failure(isol
     assert status['historical_warnings'][0]['game_ids'] == ['completed-game']
 
 
+def test_missing_official_participation_stays_visible_after_successful_idle_tick(isolated):
+    detail = {'result': {'results': [{'official_checks': [{'status': 'needs_review', 'game_id': 'finished'}]}]}}
+    db.ex('INSERT INTO research_refresh_steps(run_id,name,attempted_at,success,detail) VALUES(?,?,?,?,?)',
+          ('grade', 'top_five_grading', 900., 1, json.dumps(detail)))
+    db.ex('INSERT INTO research_refresh_ticks VALUES(?,?,?,?)', ('idle', 950., 951., 1))
+    h = product_insights.health(1000.)
+    assert h['update_checks'][0]['state'] == 'needs_review'
+    assert any('participation evidence' in s for s in h['warnings'])
+
+
 def test_result_source_retries_transport_once_without_using_cached_bytes(monkeypatch):
     calls = []
     class Source:

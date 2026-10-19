@@ -238,6 +238,8 @@ def _participation(raw: bytes, game: str, frozen_ids: set[str]) -> tuple[dict, d
             raise ValueError("Game Book source SHA-256 mismatch")
         players = {}
         for player in data["players"]:
+            if 'official_stats' in player:
+                raise ValueError('official stats require the deterministic Game Book parser')
             gsis = player["gsis_player_id"]
             if gsis not in frozen_ids or gsis in players:
                 raise ValueError("participation player identity ambiguous")
@@ -270,12 +272,21 @@ def _player_evidence(quotes: list[dict], stats: dict[str, dict], stat_source: di
                 if value not in (None, ""):
                     values[market] = nfl_prop_grading._number(value,
                         nonnegative=market in {"receptions", "rushing_attempts"})
-        if reviewed and reviewed["certified_no_stats"] and not row:
+        if reviewed and reviewed.get("certified_no_stats") and not row:
             values = {market: 0.0 for market in markets}
+        if reviewed and reviewed.get('official_stats'):
+            for market in markets:
+                if market not in reviewed['official_stats']:
+                    continue
+                actual = nfl_prop_grading._number(reviewed['official_stats'][market],
+                    nonnegative=market in {'receptions', 'rushing_attempts'})
+                if market in values and values[market] != actual:
+                    raise ValueError('Game Book conflicts with recorded player stat')
+                values[market] = actual
         active_by_stats = bool(row and nfl_prop_grading._documented_participation(row))
         if reviewed:
             status = "active" if reviewed["active_roster"] else "inactive"
-            if active_by_stats and not reviewed["snap_played"]:
+            if active_by_stats and (not reviewed["active_roster"] or not reviewed["snap_played"]):
                 raise ValueError("Game Book attestation conflicts with recorded player action")
             source = {**participation_source, "active_roster": reviewed["active_roster"],
                       "snap_played": reviewed["snap_played"], "reviewer": participation["reviewer"],
@@ -334,7 +345,8 @@ def status_view(freeze_sha: str, now: float | None = None) -> dict:
             try:
                 nflverse_id = _schedule_ids({game_id: quotes})[game_id]
                 stats = _stats(_raw(stat_source), nflverse_id, game_id)
-                manifest_source = _latest_source(freeze_sha, game_id, "participation_manifest")
+                manifest_source = (_latest_source(freeze_sha, game_id, "participation_manifest") or
+                                   _latest_source(freeze_sha, game_id, 'official_participation_manifest'))
                 manifest = json.loads(_raw(manifest_source)) if manifest_source else None
                 reviewed = {p["gsis_player_id"]: p for p in manifest["players"]} if manifest else {}
                 needed = defaultdict(set)
@@ -346,10 +358,11 @@ def status_view(freeze_sha: str, now: float | None = None) -> dict:
                     review = reviewed.get(gsis)
                     if not review and not (row and nfl_prop_grading._documented_participation(row)):
                         pending += 1
-                    elif review and review["active_roster"] and not row and not review["certified_no_stats"]:
+                    elif review and review["active_roster"] and not row and not (review.get("certified_no_stats") or
+                            all(m in review.get('official_stats', {}) for m in markets)):
                         pending += 1
                     elif row and (review is None or review["active_roster"]) and any(
-                            row.get(nfl_prop_lab.LABEL[m]) in (None, "") for m in markets):
+                            row.get(nfl_prop_lab.LABEL[m]) in (None, "") and m not in (review or {}).get('official_stats', {}) for m in markets):
                         pending += 1
             except (ValueError, KeyError):
                 pending = None
@@ -383,7 +396,7 @@ def status_view(freeze_sha: str, now: float | None = None) -> dict:
 def sync(freeze_sha: str, *, scoreboard_bytes: bytes | None = None,
          stats_bytes: bytes | None = None, participation_bytes: bytes | None = None,
          scoreboard_source: str | None = None, stats_source: str | None = None,
-         now: float | None = None) -> dict:
+         now: float | None = None, automatic_participation: bool = False) -> dict:
     now = time.time() if now is None else now
     games = _games(freeze_sha)
     first = next(iter(games))
@@ -439,7 +452,7 @@ def sync(freeze_sha: str, *, scoreboard_bytes: bytes | None = None,
             raise ValueError("participation attestation is not JSON") from exc
         if not isinstance(participation_data, dict) or participation_data.get("canonical_game_id") not in games:
             raise ValueError("participation attestation is not for a frozen game")
-    grade_counts = []
+    grade_counts, official_checks = [], []
     for game, state in final_due.items():
         if game not in schedule:
             raise ValueError("frozen game has no unique nflverse schedule identity")
@@ -454,24 +467,72 @@ def sync(freeze_sha: str, *, scoreboard_bytes: bytes | None = None,
                                stats_url, now, {"nflverse_game_id": schedule[game],
                                                 "player_rows": len(stats)})
         part, part_source = None, None
-        if participation_data is not None and participation_data.get("canonical_game_id") == game:
-            validated, part = _participation(participation_bytes, game,
+        review_bytes = participation_bytes if participation_data and participation_data.get('canonical_game_id') == game else None
+        if review_bytes is None:
+            saved_review = _latest_source(freeze_sha, game, 'participation_manifest')
+            if saved_review:
+                review_bytes = _raw(saved_review)
+        if review_bytes is not None:
+            validated, part = _participation(review_bytes, game,
                                              {q["gsis_player_id"] for q in games[game]})
             if not state["kickoff"] <= validated["reviewed_at"] <= now:
                 raise ValueError("participation attestation timestamp is outside completed game")
             raw_book = part["source_bytes"]
             part_source = _archive(freeze_sha, game, "participation_gamebook", raw_book,
                                    validated["source_url"], now, {"reviewer": validated["reviewer"]})
-            manifest_source = _archive(freeze_sha, game, "participation_manifest", participation_bytes,
+            manifest_source = _archive(freeze_sha, game, "participation_manifest", review_bytes,
                                        "local:reviewed-gamebook-attestation", now,
                                        {"gamebook_sha256": part_source["sha256"],
                                         "reviewer": validated["reviewer"]})
             part["manifest_sha256"] = manifest_source["sha256"]
+        if automatic_participation:
+            # Only unresolved visible selections need additional sources. Other
+            # frozen quote observations never multiply official-source calls.
+            selected = db.q1('SELECT payload FROM nfl_top_five_selections WHERE game_id=?', (game,))
+            selected_ids = {q['gsis_player_id'] for q in json.loads(selected['payload'])['selections']} if selected else set()
+            existing, _ = _player_evidence(games[game], stats, stat_source, part, part_source)
+            unresolved = {p['gsis_player_id'] for p in existing if p['gsis_player_id'] in selected_ids and
+                          (p['status'] == 'unknown' or (p['status'] == 'active' and any(
+                              q['market'] not in p['stats'] for q in games[game] if q['gsis_player_id'] == p['gsis_player_id'])))}
+            if unresolved:
+                from . import nfl_official_participation
+                previous_part, previous_source = part, part_source
+                try:
+                    auto, source = nfl_official_participation.resolve(game,
+                        [q for q in games[game] if q['gsis_player_id'] in unresolved], stats_bytes,
+                        state['kickoff'], state['score'], now)
+                    if part_source:
+                        source['supporting_sources'].append(part_source)
+                    players_by_id = {**(part or {}).get('players', {}), **auto['players']}
+                    manifest = {**auto, 'players': [{'gsis_player_id': k, **v} for k, v in players_by_id.items()],
+                                'sources': source, 'canonical_game_id': game}
+                    manifest_bytes = json.dumps(manifest, sort_keys=True).encode()
+                    part = {**auto, 'players': players_by_id,
+                            'manifest_sha256': hashlib.sha256(manifest_bytes).hexdigest()}
+                    # Reject conflicting stats before registering an automatic
+                    # participation manifest as usable evidence.
+                    _player_evidence(games[game], stats, stat_source, part, source)
+                    manifest_source = _archive(freeze_sha, game, 'official_participation_manifest',
+                        manifest_bytes, 'local:' + nfl_official_participation.VERSION,
+                        now, {'parser_version': nfl_official_participation.VERSION})
+                    source['supporting_sources'].append(manifest_source)
+                    part = {**auto, 'players': players_by_id, 'manifest_sha256': manifest_source['sha256']}
+                    part_source = source
+                    unresolved -= set(auto['players'])
+                    official_checks.append({'game_id': game, 'status': 'needs_review' if unresolved else 'resolved',
+                                            'players_pending': sorted(unresolved)})
+                except Exception as exc:
+                    # Keep prior evidence and grades; source absence is never zero.
+                    part, part_source = previous_part, previous_source
+                    official_checks.append({'game_id': game, 'status': 'needs_review',
+                                            'players_pending': sorted(unresolved), 'reason': type(exc).__name__})
         players, pending = _player_evidence(games[game], stats, stat_source,
                                             part, part_source)
         score_source = _latest_source(freeze_sha, game, "scoreboard")
-        retrieved = max(score_source["retrieved_at"], stat_source["retrieved_at"],
-                        part_source["retrieved_at"] if part_source else 0)
+        sources = [score_source, stat_source]
+        if part_source:
+            sources.extend([part_source, *part_source.get('supporting_sources', [])])
+        retrieved = max(ref['retrieved_at'] for ref in sources)
         evidence = {"game_id": game, "game_status": "final",
                     "final_score": state["score"],
                     "actual_kickoff_utc": state["kickoff"],
@@ -487,7 +548,7 @@ def sync(freeze_sha: str, *, scoreboard_bytes: bytes | None = None,
         FORWARD_REPORT_PATH.write_text(json.dumps(nfl_prop_grading.forward_report(), indent=2,
                                                   sort_keys=True) + "\n")
     return {"grade_counts": grade_counts, "status": status_view(freeze_sha, now),
-            "network_requests": requests}
+            "network_requests": requests, 'official_checks': official_checks}
 
 
 def main() -> None:

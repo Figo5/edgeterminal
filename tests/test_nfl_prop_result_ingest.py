@@ -163,6 +163,63 @@ def test_official_gamebook_cdn_requires_exact_https_host(tmp_path, url, accepted
             _participation(json.dumps(body).encode(), GAME, {'gsis-c', 'gsis-d'})
 
 
+def test_review_manifest_cannot_inject_arbitrary_official_stats(tmp_path):
+    from edgeterminal.nfl_prop_result_ingest import _participation
+    body = json.loads(manifest(tmp_path))
+    body['players'][0]['official_stats'] = {'receptions': 99}
+    with pytest.raises(ValueError, match='deterministic'):
+        _participation(json.dumps(body).encode(), GAME, {'gsis-c', 'gsis-d'})
+
+
+@pytest.mark.parametrize('fails', [False, True])
+def test_builtin_official_fallback_grades_without_a_human_manifest_and_repeats_safely(setup, monkeypatch, fails):
+    from edgeterminal import nfl_official_participation, nfl_prop_grading
+    sha, tmp_path = setup
+    frozen_before = db.q1('SELECT payload FROM nfl_prop_research_freezes')['payload']
+    selected = json.dumps({'selections': [{'gsis_player_id': 'gsis-c'}, {'gsis_player_id': 'gsis-d'}]})
+    db.ex('INSERT INTO nfl_top_five_selections VALUES(?,?,?,?,?)',
+          (GAME, sha, 30., selected, hashlib.sha256(selected.encode()).hexdigest()))
+    selected_before = db.q1('SELECT payload FROM nfl_top_five_selections')['payload']
+    book = tmp_path / 'automatic.pdf'; book.write_bytes(b'%PDF-1.4 official-source fixture')
+    source = {'source': 'https://static.www.nfl.com/official.pdf', 'file': str(book),
+              'sha256': hashlib.sha256(book.read_bytes()).hexdigest(), 'retrieved_at': 20000.,
+              'supporting_sources': []}
+    def resolve(*args):
+        if fails: raise ValueError('official evidence ambiguous')
+        return {'reviewer': 'automatic-fixture', 'reviewed_at': args[-1], 'players': {
+            'gsis-c': {'active_roster': False, 'snap_played': False, 'official_stats': {}},
+            'gsis-d': {'active_roster': True, 'snap_played': True, 'official_stats': {'receptions': 0.}}}}, {**source, 'supporting_sources': []}
+    monkeypatch.setattr(nfl_official_participation, 'resolve', resolve)
+    def run(now=20000.):
+        return sync(sha, scoreboard_bytes=scoreboard(), stats_bytes=stats(),
+                    scoreboard_source='fixture://scoreboard', stats_source='fixture://stats',
+                    now=now, automatic_participation=True)
+    result = run()
+    grades = {r['gsis_player_id']: r for r in nfl_prop_grading._latest(sha)}
+    if fails:
+        assert not {'gsis-c', 'gsis-d'} & grades.keys()
+        assert result['official_checks'][0]['status'] == 'needs_review'
+    else:
+        assert grades['gsis-c']['result'] == 'void'
+        assert grades['gsis-d']['result'] == 'lost' and grades['gsis-d']['actual_stat'] == 0
+        assert grades['gsis-d']['participation_evidence']['manifest_sha256']
+        assert result['official_checks'][0]['status'] == 'resolved'
+    assert run(20001.)['grade_counts'][0]['new_revisions'] == 0
+    assert db.q1('SELECT payload FROM nfl_prop_research_freezes')['payload'] == frozen_before
+    assert db.q1('SELECT payload FROM nfl_top_five_selections')['payload'] == selected_before
+
+
+@pytest.mark.parametrize('status,now', [('STATUS_IN_PROGRESS', 20000.), ('STATUS_FINAL', 200.)])
+def test_official_fallback_never_runs_before_completed_game_delay(setup, monkeypatch, status, now):
+    from edgeterminal import nfl_official_participation
+    sha, _ = setup
+    monkeypatch.setattr(nfl_official_participation, 'resolve', lambda *args: pytest.fail('premature official lookup'))
+    result = sync(sha, scoreboard_bytes=scoreboard(status), scoreboard_source='fixture://scoreboard',
+                  stats_bytes=stats(), stats_source='fixture://stats', now=now, automatic_participation=True)
+    assert result['grade_counts'] == []
+    assert db.q1('SELECT COUNT(*) n FROM nfl_prop_grade_revisions')['n'] == 0
+
+
 def test_result_sync_wait_pending_participation_revision_and_idempotency(setup):
     sha, tmp_path = setup
     assert status_view(sha, now=99)["counts"] == {"not_started": 1}

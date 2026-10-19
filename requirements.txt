@@ -6,3 +6,4 @@ openai>=1.30
 pytest>=8.0
 numpy>=1.26
 scikit-learn>=1.4
+pdfplumber>=0.11,<0.12

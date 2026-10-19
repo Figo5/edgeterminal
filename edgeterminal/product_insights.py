@@ -108,6 +108,8 @@ def update_checks(steps: list[dict], now: float) -> list[dict]:
         active = step['name'] in failed
         detail = json.loads(step.get('detail') or '{}')
         error = detail.get('error') or ''
+        official_review = [c for r in detail.get('result', {}).get('results', [])
+                           for c in r.get('official_checks', []) if c.get('status') == 'needs_review']
         transport = any(kind in error for kind in (
             'ReadError', 'ReadTimeout', 'ConnectError', 'ConnectTimeout', 'RemoteProtocolError'))
         state = 'retry_pending' if active and transport else 'needs_review' if active else (
@@ -118,6 +120,9 @@ def update_checks(steps: list[dict], now: float) -> list[dict]:
                    'needs_review': 'Latest check failed and still needs review.'}[state]
         if active and 'provider player ID changed name' in error:
             message = 'The prop provider returned a conflicting player identity. Capture was rejected.'
+        if official_review:
+            active, state = True, 'needs_review'
+            message = 'Official participation evidence is missing, ambiguous, or conflicting. Affected results remain pending; the worker will retry.'
         checks.append({'name': step['name'], 'label': labels[step['name']], 'state': state,
                        'message': message, 'checked_at': step.get('attempted_at'),
                        'next_retry_at': step['attempted_at'] + RESULT_INTERVAL
