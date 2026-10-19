@@ -1,0 +1,33 @@
+{
+  "source_url": "https://static.www.nfl.com/image/upload/v1792409923/gamecenter/aab588fe-4feb-11f1-abca-2c54536568a9.pdf",
+  "source_file": "/Users/giofiore/edgeterminal/data/research/participation_review/car-phi-2026-week06.pdf",
+  "source_sha256": "24d779905a8ffb0cf8823dc1ed1a6766484eefb9af690fd11d4270ca3aeffd4a",
+  "retrieved_at": 1792415211.4499578,
+  "canonical_game_id": "nfl-2026-reg-06-car-phi",
+  "reviewer": "Codex reviewed official NFL Game Book and cited official team evidence",
+  "reviewed_at": 1792415303.074419,
+  "review_pages": [
+    1,
+    17
+  ],
+  "review_note": "Jalen Hurts not on active game roster; Eagles official October 17 roster transaction confirms placement on Injured Reserve before this game. Game Book identifies Tanner McKee as starting QB and does not list Hurts as a participant.",
+  "supplemental_sources": [
+    {
+      "source_url": "https://www.philadelphiaeagles.com/news/eagles-place-jalen-hurts-on-injured-reserve-sign-jaydon-blue-to-the-active-roster-2026-nfl-week-6-panthers",
+      "source_file": "/Users/giofiore/edgeterminal/data/research/participation_review/jalen-hurts-ir-2026-week06.html",
+      "source_sha256": "1fa12103f2eeeb3348c9598e30c9269bce1800f88633b485dd6c166c97e9b9e1",
+      "retrieved_at": 1792415303.073946,
+      "published_at": "2026-10-17",
+      "fact": "Eagles officially placed Jalen Hurts on Injured Reserve before Carolina game."
+    }
+  ],
+  "players": [
+    {
+      "gsis_player_id": "00-0036389",
+      "player_name": "Jalen Hurts",
+      "active_roster": false,
+      "snap_played": false,
+      "certified_no_stats": true
+    }
+  ]
+}

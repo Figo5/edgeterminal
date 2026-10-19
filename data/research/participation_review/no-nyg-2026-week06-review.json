@@ -1,0 +1,25 @@
+{
+  "source_url": "https://static.www.nfl.com/image/upload/v1792409924/gamecenter/aab5857e-4feb-11f1-abca-2c54536568a9.pdf",
+  "source_file": "/Users/giofiore/edgeterminal/data/research/participation_review/no-nyg-2026-week06.pdf",
+  "source_sha256": "1745831c6e08d66f1cc9502be48aa9052ba6cf16704523ae717c95a6311e1ad2",
+  "retrieved_at": 1792415211.7179809,
+  "canonical_game_id": "nfl-2026-reg-06-no-nyg",
+  "reviewer": "Codex reviewed official NFL Game Book and cited official team evidence",
+  "reviewed_at": 1792415303.074848,
+  "review_pages": [
+    1,
+    3,
+    20
+  ],
+  "review_note": "Game Book lists RB 44 C. Skattebo in substitutions and six offensive snaps (8%). Complete final individual statistics show zero Skattebo receptions; Giants receiving rows sum to all 25 completions. No individual offensive stat row was recorded for Skattebo.",
+  "supplemental_sources": [],
+  "players": [
+    {
+      "gsis_player_id": "00-0040715",
+      "player_name": "Cam Skattebo",
+      "active_roster": true,
+      "snap_played": true,
+      "certified_no_stats": true
+    }
+  ]
+}

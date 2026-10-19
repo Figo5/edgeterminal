@@ -145,6 +145,24 @@ def manifest(tmp_path):
     return json.dumps(body).encode()
 
 
+@pytest.mark.parametrize('url,accepted', [
+    ('https://static.www.nfl.com/image/upload/gamecenter/official.pdf', True),
+    ('https://static.www.nfl.com.evil.test/official.pdf', False),
+    ('https://static.www.nfl.com@evil.test/official.pdf', False),
+    ('http://static.www.nfl.com/official.pdf', False),
+    ('https://static.www.nfl.com:444/official.pdf', False),
+])
+def test_official_gamebook_cdn_requires_exact_https_host(tmp_path, url, accepted):
+    from edgeterminal.nfl_prop_result_ingest import _participation
+    body = json.loads(manifest(tmp_path))
+    body['source_url'] = url
+    if accepted:
+        assert _participation(json.dumps(body).encode(), GAME, {'gsis-c', 'gsis-d'})[0]['source_url'] == url
+    else:
+        with pytest.raises(ValueError, match='Game Book URL'):
+            _participation(json.dumps(body).encode(), GAME, {'gsis-c', 'gsis-d'})
+
+
 def test_result_sync_wait_pending_participation_revision_and_idempotency(setup):
     sha, tmp_path = setup
     assert status_view(sha, now=99)["counts"] == {"not_started": 1}

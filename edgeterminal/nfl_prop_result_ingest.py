@@ -15,7 +15,7 @@ import json
 import time
 from collections import Counter, defaultdict
 from pathlib import Path
-from urllib.parse import urlencode
+from urllib.parse import urlencode, urlparse
 
 import httpx
 
@@ -225,9 +225,10 @@ def _participation(raw: bytes, game: str, frozen_ids: set[str]) -> tuple[dict, d
         if isinstance(data.get("reviewed_at"), bool) or not isinstance(data.get("reviewed_at"), (int, float)):
             raise ValueError("participation attestation needs review timestamp")
         source_url = data["source_url"]
-        if not isinstance(source_url, str) or not (
-                source_url.startswith("https://www.nfl.com/") or
-                source_url.startswith("https://static.clubs.nfl.com/")):
+        parsed_source = urlparse(source_url) if isinstance(source_url, str) else None
+        if (not parsed_source or parsed_source.scheme != 'https' or
+                parsed_source.hostname not in {'www.nfl.com', 'static.www.nfl.com', 'static.clubs.nfl.com'} or
+                parsed_source.username or parsed_source.password or parsed_source.port not in (None, 443)):
             raise ValueError("participation needs NFL Game Book URL")
         source_path = Path(data["source_file"])
         source_bytes = source_path.read_bytes()
