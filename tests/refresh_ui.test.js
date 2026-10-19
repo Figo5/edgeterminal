@@ -19,7 +19,7 @@ function harness(fetch) {
   };
   const scope = {document: {getElementById: id => elements[id]}, fetch,
     setTimeout: () => 1, clearTimeout: () => {}, console, Date};
-  vm.runInNewContext(source + '\nglobalThis.__test = {refreshProduct, pollStoredBoard, state, paper, performance, updateChecks};', scope);
+  vm.runInNewContext(source + '\nglobalThis.__test = {refreshProduct, pollStoredBoard, state, paper, performance, updateChecks, captureHistory};', scope);
   return {elements, ...scope.__test};
 }
 
@@ -42,6 +42,16 @@ test('About data distinguishes a pending source retry from an expired capture wi
   assert.match(html, /window has ended/);
   assert.match(html, /&lt;private&gt;/);
   assert.doesNotMatch(html, /<private>/);
+});
+
+test('Past capture gaps are labeled as history and preserve the no-backfill explanation', () => {
+  const {captureHistory} = harness(() => { throw Error('history must not fetch'); });
+  assert.equal(captureHistory({}), '');
+  const html = captureHistory({historical_warnings: [{message: 'A past capture was missed.',
+    game_ids: ['nfl-2026-reg-06-buf-lv']}]});
+  assert.match(html, /Past capture gaps/);
+  assert.match(html, /BUF at LV/);
+  assert.match(html, /not added after kickoff/);
 });
 
 test('Refresh disables immediately, ignores a second click, then reloads stored board', async () => {

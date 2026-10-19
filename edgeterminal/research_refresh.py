@@ -192,7 +192,12 @@ def status(now: float | None = None) -> dict:
                  "ORDER BY started_at DESC LIMIT 1")
     prop_health = nfl_prop_capture_ops.health(stamp, events)
     tick_gap = stamp - tick["started_at"] if tick else None
-    warnings = list(prop_health["warnings"])
+    warnings = [w for w in prop_health["warnings"] if w != 'final_pregame_capture_window_missed']
+    historical_warnings = []
+    if prop_health.get('missed_final_window_games'):
+        historical_warnings.append({
+            'message': 'These completed games missed a prop capture in the final 15 minutes before kickoff.',
+            'game_ids': prop_health['missed_final_window_games']})
     if prop_health["upcoming_capture_windows"] and tick_gap is None:
         warnings.append("worker_tick_history_not_yet_available")
     elif prop_health["upcoming_capture_windows"] and tick_gap > 12 * 60:
@@ -220,7 +225,8 @@ def status(now: float | None = None) -> dict:
             "scheduler": scheduler,
             "worker_tick": tick,
             "worker_tick_gap_seconds": tick_gap,
-            "operations_warnings": warnings}
+            "operations_warnings": warnings,
+            "historical_warnings": historical_warnings}
 
 
 def run(now: float | None = None, *, record_tick: bool = True,

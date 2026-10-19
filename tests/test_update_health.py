@@ -4,7 +4,7 @@ import json
 import httpx
 import pytest
 
-from edgeterminal import db, nfl_prop_result_ingest, product_insights, visit_refresh
+from edgeterminal import db, nfl_prop_result_ingest, product_insights, research_refresh, visit_refresh
 from edgeterminal.config import settings
 
 
@@ -56,6 +56,16 @@ def test_independent_page_failure_is_kept_until_successful_worker(isolated):
     assert any('page-triggered' in x for x in product_insights.health(1000.)['warnings'])
     db.ex('INSERT INTO research_refresh_ticks VALUES(?,?,?,?)', ('ok', 950., 951., 1))
     assert not any('page-triggered' in x for x in product_insights.health(1000.)['warnings'])
+
+
+def test_missed_capture_is_reported_as_history_not_current_provider_failure(isolated, monkeypatch):
+    monkeypatch.setattr(research_refresh.research_scheduler, 'status', lambda: {'loaded': True})
+    monkeypatch.setattr(research_refresh.nfl_prop_capture_ops, 'health', lambda *args: {
+        'warnings': ['final_pregame_capture_window_missed', 'capture_window_overdue'],
+        'missed_final_window_games': ['completed-game'], 'upcoming_capture_windows': []})
+    status = research_refresh.status(1000.)
+    assert status['operations_warnings'] == ['capture_window_overdue']
+    assert status['historical_warnings'][0]['game_ids'] == ['completed-game']
 
 
 def test_result_source_retries_transport_once_without_using_cached_bytes(monkeypatch):
