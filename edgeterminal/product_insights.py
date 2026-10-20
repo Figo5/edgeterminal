@@ -100,6 +100,7 @@ def update_checks(steps: list[dict], now: float) -> list[dict]:
     labels = {'current_game_odds': 'ESPN game quotes',
               'top_five_capture': 'Five-prop selections',
               'top_five_grading': 'Player-prop grading', 'game_grading': 'Game grading',
+              'challenger_grading': 'Challenger grading',
               'near_kickoff_market': 'Near-kickoff game quotes'}
     checks = []
     for step in steps:
@@ -126,7 +127,7 @@ def update_checks(steps: list[dict], now: float) -> list[dict]:
         checks.append({'name': step['name'], 'label': labels[step['name']], 'state': state,
                        'message': message, 'checked_at': step.get('attempted_at'),
                        'next_retry_at': step['attempted_at'] + result_interval(step)
-                       if active and step['name'] in {'top_five_grading', 'game_grading'} else None})
+                       if active and step['name'] in {'top_five_grading', 'game_grading', 'challenger_grading'} else None})
     return checks
 
 

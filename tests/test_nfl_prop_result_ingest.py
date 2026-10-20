@@ -93,6 +93,97 @@ def edit_stat_bytes(raw, change):
     return stream.getvalue().encode()
 
 
+@pytest.fixture
+def challenger_setup(setup, monkeypatch):
+    from edgeterminal import nfl_prop_challenger as model
+    root = model.DIRECTORY
+    artifact = root / 'model'
+    artifact.mkdir(parents=True)
+    (root / 'active.json').write_text(json.dumps({'path': str(artifact), 'sha256': 'manifest'}))
+    db.ex('INSERT INTO nfl_prop_capture_batches VALUES(?,?,?,?,?,?,?,?,?)',
+          ('challenger-batch', 'sportsgameodds', 10., 'source', '{}', 1, 1, 3, '{}'))
+    rows = []
+    for i, letter in enumerate('abc', 11):
+        row = dict(game_id=GAME, quote_id=i, player_id=f'sgo:challenger-{letter}', player=f'Player {letter}',
+                   market='receptions', line=2.5 if letter != 'b' else .5,
+                   side='over' if letter == 'a' else 'under', price=-110, sportsbook='fanduel',
+                   observed_at=10., kickoff_utc=100., projection=3., baseline_projection=4., confidence=.7)
+        rows.append(row)
+        fields = dict(id=i, batch_id='challenger-batch', canonical_game_id=GAME, provider_event_id='sgo-game',
+                      player_id=row['player_id'], provider_player_id=letter, player_name=row['player'],
+                      team='Atlanta Falcons', opponent='Green Bay Packers', market=row['market'], line=row['line'],
+                      side=row['side'], price=row['price'], sportsbook=row['sportsbook'], retrieved_at=10.,
+                      kickoff_utc=100., provider='sportsgameodds', source='fixture://source')
+        db.ex('INSERT INTO nfl_prop_snapshots (' + ','.join(fields) + ') VALUES (' +
+              ','.join('?' for _ in fields) + ')', fields.values())
+    raw = json.dumps({'created_at': 30., 'model_manifest_sha256': 'manifest', 'top_five': {GAME: rows}}).encode()
+    (artifact / 'shadow-fixture.json').write_bytes(raw)
+    (artifact / 'shadow-fixture.sha256').write_text(hashlib.sha256(raw).hexdigest())
+    reader = csv.DictReader(io.StringIO(stats().decode()))
+    fields, current = [*reader.fieldnames, 'player_display_name'], list(reader)
+    prior = []
+    for letter in 'abc':
+        prior.append({**current[0], 'player_id': f'gsis-{letter}', 'player_display_name': f'Player {letter}',
+                      'week': 2, 'game_id': 'prior-game'})
+    for row in current:
+        row['player_display_name'] = 'Player a' if row['player_id'] == 'gsis-a' else 'Player b' if row['player_id'] == 'gsis-b' else 'Other'
+    output = io.StringIO(); writer = csv.DictWriter(output, fieldnames=fields)
+    writer.writeheader(); writer.writerows([*prior, *current])
+    return model, output.getvalue().encode()
+
+
+def test_challenger_grades_saved_picks_without_creating_main_freezes(challenger_setup, monkeypatch):
+    from edgeterminal import nfl_prop_challenger_grading as challenger_grading
+    model, raw_stats = challenger_setup
+    original = db.q('SELECT * FROM nfl_prop_research_freezes')
+    calls = []
+    def fetch(url):
+        calls.append(url)
+        return raw_stats if '.csv' in url else scoreboard()
+    def official(game, quotes, raw, kickoff, score, now):
+        assert {q['gsis_player_id'] for q in quotes} == {'gsis-c'}
+        ref = challenger_grading._archive(b'fixture: official inactive', 'fixture://gamebook', now)
+        return {'players': {'gsis-c': {'active_roster': False, 'snap_played': False, 'official_stats': {}}},
+                'reviewer': 'fixture', 'reviewed_at': now}, {**ref, 'supporting_sources': []}
+    monkeypatch.setattr(challenger_grading.official, 'resolve', official)
+    result = challenger_grading.grade_due(20000., fetcher=fetch)
+    assert result['record'] == {'won': 2, 'void': 1}
+    assert len(calls) == 2
+    assert db.q('SELECT * FROM nfl_prop_research_freezes') == original
+    assert db.q1('SELECT COUNT(*) n FROM nfl_prop_grade_revisions')['n'] == 0
+    assert challenger_grading.grade_due(20001., fetcher=lambda u: pytest.fail('repeat fetch'))['games_checked'] == 0
+    path = next((model.DIRECTORY / 'results').glob('*.json'))
+    path.chmod(0o644); path.write_text('{}')
+    with pytest.raises(ValueError, match='evidence changed'):
+        model.report()
+
+
+def test_challenger_waits_for_final_and_does_not_assume_missing_means_zero(challenger_setup, monkeypatch):
+    from edgeterminal import nfl_prop_challenger_grading as challenger_grading
+    model, raw_stats = challenger_setup
+    assert challenger_grading.grade_due(101., fetcher=lambda u: pytest.fail('before delay'))['record'] == {'pending': 3}
+    result = challenger_grading.grade_due(20000., fetcher=lambda u: scoreboard('STATUS_IN_PROGRESS'))
+    assert result['record'] == {'pending': 3}
+    monkeypatch.setattr(challenger_grading.official, 'resolve', lambda *a: (_ for _ in ()).throw(ValueError('no book')))
+    result = challenger_grading.grade_due(20001., fetcher=lambda u: raw_stats if '.csv' in u else scoreboard())
+    assert result['record'] == {'won': 2, 'pending': 1}
+    assert any(c['status'] == 'needs_review' for c in result['checks'])
+
+
+def test_challenger_rejects_a_pick_that_disagrees_with_its_source_quote(challenger_setup):
+    from edgeterminal import nfl_prop_challenger_grading as challenger_grading
+    model, raw_stats = challenger_setup
+    path = next((model.DIRECTORY / 'model').glob('shadow-*.json'))
+    snapshot = json.loads(path.read_bytes())
+    snapshot['top_five'][GAME][0]['line'] = 99.5
+    raw = json.dumps(snapshot).encode(); path.write_bytes(raw)
+    path.with_suffix('.sha256').write_text(hashlib.sha256(raw).hexdigest())
+    result = challenger_grading.grade_due(20000., fetcher=lambda u: raw_stats if '.csv' in u else scoreboard())
+    assert result['record'] == {'pending': 3}
+    assert any('original quote' in c.get('reason', '') for c in result['checks'])
+    assert not list((model.DIRECTORY / 'results').glob('*.json'))
+
+
 @pytest.mark.parametrize('field', ['receiving_yards', 'rushing_yards', 'passing_yards'])
 def test_signed_official_yardage_is_valid(field):
     raw = edit_stat_bytes(stats(), lambda r: r.update({field: '-3'}) if r['player_id']=='gsis-a' else None)

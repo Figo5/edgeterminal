@@ -303,7 +303,7 @@ def _run_locked(now: float, *, record_tick: bool = True,
         attempt("top_five_grading", lambda: nfl_top_five.grade_due(now))
         from . import nfl_prop_challenger
         if steps['top_five_grading']['ok'] and (nfl_prop_challenger.DIRECTORY / 'active.json').exists():
-            attempt('challenger_grading', nfl_prop_challenger.report)
+            attempt('challenger_grading', nfl_prop_challenger.grade_due)
     if (any(0 < e["kickoff_utc"] - now <= 24 * 3600 for e in events) and
             _due("current_game_odds", now, _game_odds_interval(now, events))):
         attempt("current_game_odds", lambda: nfl_market_capture.capture_current(now=now))

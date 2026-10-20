@@ -19,3 +19,9 @@ The worker appends a new forecast-with-lines snapshot when both fresh ESPN sprea
 Timestamped injury observations are checked before new top-five and challenger rankings. Reported out/inactive and doubtful players are excluded from new selections. Unconfirmed availability remains unconfirmed; missing starter announcements do not prove a quarterback is starting. Existing locked selections remain immutable and display updated availability warnings separately.
 
 The Season record page exposes challenger totals, paired forecast errors, and statistical Brier score. Upcoming challenger picks are not exposed through the public comparison summary. These are separate from the main model's record.
+
+## Result grading
+
+The built-in six-hour grading job also checks finished challenger selections that have no main-model result. It verifies the first sealed pregame selection against its immutable source quote, resolves a unique GSIS identity from prior-game history, and requires ESPN's final scoreboard plus the matching nflverse game stats. Missing participation is checked against official NFL Game Books and club transactions using the shared source cache. The four-hour postgame wait remains in force; missing evidence never becomes zero.
+
+Supplemental result evidence is saved as append-only, content-hashed JSON under `data/research/prop_challenger/results/`, with exact source bytes archived in the existing database. Main freezes, challenger snapshots, model parameters, and selection policy are unchanged. Reports validate these artifacts and merge their results with existing verified grades; conflicting evidence fails closed.

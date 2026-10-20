@@ -235,23 +235,14 @@ def rank(rows):
     return selected
 
 
-def report():
-    """Evaluate the earliest shadow selections using already verified stat grades."""
-    from . import nfl_prop_grading
+def selected_rows():
+    """Read the first sealed pregame challenger selections for each game."""
     if not (DIRECTORY/'active.json').exists():
-        return {'status': 'not_trained'}
+        return []
     ref = json.loads((DIRECTORY/'active.json').read_text())
     directory = Path(ref['path']).resolve()
     if directory.parent != DIRECTORY.resolve():
         raise ValueError('invalid challenger report directory')
-    evidence = {}
-    for frozen in db.q('SELECT freeze_sha FROM nfl_prop_research_freezes'):
-        for grade in nfl_prop_grading._latest(frozen['freeze_sha']):
-            key = grade['canonical_game_id'], grade['player_id'], grade['market']
-            if grade['actual_stat'] is not None or grade.get('research_statistical_result') == 'void':
-                if key in evidence and evidence[key]['actual_stat'] != grade['actual_stat']:
-                    raise ValueError('conflicting challenger result evidence')
-                evidence[key] = grade
     snapshots = []
     for path in directory.glob('shadow-*.json'):
         raw = path.read_bytes()
@@ -260,6 +251,7 @@ def report():
         snapshot = json.loads(raw)
         if snapshot['model_manifest_sha256'] != ref['sha256']:
             raise ValueError('challenger model identity mismatch')
+        snapshot['_sha256'] = hashlib.sha256(raw).hexdigest()
         snapshots.append(snapshot)
     snapshots.sort(key=lambda s: s['created_at'])
     games, rows = set(), []
@@ -269,16 +261,48 @@ def report():
                 continue
             games.add(game)
             for row in selected:
-                grade = evidence.get((game, row['player_id'], row['market']))
-                result = 'pending'
-                if grade:
-                    actual = grade['actual_stat']
-                    if actual is None:
-                        result = 'void'
-                    else:
-                        signed = (actual-row['line'])*(1 if row['side']=='over' else -1)
-                        result = 'won' if signed > 0 else 'lost' if signed < 0 else 'push'
-                rows.append({**row, 'result': result, 'actual_stat': grade['actual_stat'] if grade else None})
+                if row['game_id'] != game:
+                    raise ValueError('challenger selection game mismatch')
+                rows.append({**row, 'selection_sha256': snapshot['_sha256'],
+                             'selected_at': snapshot['created_at']})
+    return rows
+
+
+def result_evidence(selected):
+    from . import nfl_prop_grading, nfl_prop_challenger_grading
+    evidence = {}
+    for frozen in db.q('SELECT freeze_sha FROM nfl_prop_research_freezes'):
+        for grade in nfl_prop_grading._latest(frozen['freeze_sha']):
+            key = grade['canonical_game_id'], grade['player_id'], grade['market']
+            if grade['actual_stat'] is not None or grade.get('research_statistical_result') == 'void':
+                if key in evidence and evidence[key]['actual_stat'] != grade['actual_stat']:
+                    raise ValueError('conflicting challenger result evidence')
+                evidence[key] = grade
+    for key, grade in nfl_prop_challenger_grading.verified_results(selected).items():
+        if key in evidence and evidence[key]['actual_stat'] != grade['actual_stat']:
+            raise ValueError('challenger result conflicts with main result evidence')
+        evidence[key] = grade
+    return evidence
+
+
+def report():
+    """Evaluate sealed selections using verified main and challenger evidence."""
+    if not (DIRECTORY/'active.json').exists():
+        return {'status': 'not_trained'}
+    selected = selected_rows()
+    evidence = result_evidence(selected)
+    rows = []
+    for row in selected:
+        grade = evidence.get((row['game_id'], row['player_id'], row['market']))
+        result = 'pending'
+        if grade:
+            actual = grade['actual_stat']
+            if actual is None:
+                result = 'void'
+            else:
+                signed = (actual-row['line'])*(1 if row['side']=='over' else -1)
+                result = 'won' if signed > 0 else 'lost' if signed < 0 else 'push'
+        rows.append({**row, 'result': result, 'actual_stat': grade['actual_stat'] if grade else None})
     result = {'version': VERSION, 'mode': 'shadow', 'readiness': 'RESEARCH_ONLY', 'designation': 'PASS',
               'checked_at': time.time(), 'record': dict(Counter(r['result'] for r in rows)), 'rows': rows,
               'note': 'Separate challenger record; no changes to the live top-five policy.'}
@@ -305,6 +329,17 @@ def view():
     return {'version': result['version'], 'record': result['record'], 'selections': len(rows),
             'comparison': result.get('same_selections_comparison', {}), 'brier': brier,
             'checked_at': result['checked_at']}
+
+
+def grade_due():
+    """Resolve finished challenger selections on the ordinary grading cadence."""
+    from . import nfl_prop_challenger_grading
+    result = nfl_prop_challenger_grading.grade_due()
+    failures = [r for r in result.get('checks', []) if r['status'] == 'needs_review']
+    if failures:
+        raise ValueError('challenger result sources need review: ' +
+                         '; '.join(r['game_id'] + ': ' + r['reason'] for r in failures))
+    return result
 
 
 def main():
