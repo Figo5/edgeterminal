@@ -95,7 +95,7 @@ def unresolved_failures(steps: list[dict], now: float | None = None) -> list[dic
 
 def update_checks(steps: list[dict], now: float) -> list[dict]:
     """Public, source-safe status for the latest refresh steps."""
-    from .research_refresh import RESULT_INTERVAL
+    from .research_refresh import result_interval
     failed = {r['name'] for r in unresolved_failures(steps, now)}
     labels = {'current_game_odds': 'ESPN game quotes',
               'top_five_capture': 'Five-prop selections',
@@ -125,7 +125,7 @@ def update_checks(steps: list[dict], now: float) -> list[dict]:
             message = 'Official participation evidence is missing, ambiguous, or conflicting. Affected results remain pending; the worker will retry.'
         checks.append({'name': step['name'], 'label': labels[step['name']], 'state': state,
                        'message': message, 'checked_at': step.get('attempted_at'),
-                       'next_retry_at': step['attempted_at'] + RESULT_INTERVAL
+                       'next_retry_at': step['attempted_at'] + result_interval(step)
                        if active and step['name'] in {'top_five_grading', 'game_grading'} else None})
     return checks
 

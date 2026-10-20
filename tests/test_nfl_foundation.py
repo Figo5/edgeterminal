@@ -250,3 +250,32 @@ def test_schedule_keeps_active_week_until_all_games_are_final(isolated_db, monke
                         lambda *a: pytest.fail('advanced an unfinished week'))
     assert engine.refresh_schedule('NFL')['ok']
     assert db.kv_get('nfl_current_schedule')['week'] == 4
+
+
+def test_explicit_week_survives_refresh_without_deleting_earlier_games(isolated_db, monkeypatch):
+    active = dict(_espn('2026-10-22T20:15:00Z'), meta=dict(season=2026, season_type=2, week=7))
+    target = dict(_espn('2026-10-29T20:15:00Z'), id='espn-402',
+                  meta=dict(season=2026, season_type=2, week=8))
+    engine._ingest_nfl_schedule([active], 'espn-events', False)
+    db.kv_set('nfl_schedule_minimum', {'season': 2026, 'week': 8})
+    monkeypatch.setattr(EspnEvents, 'list_events', lambda *a, **k: [active])
+    monkeypatch.setattr(EspnEvents, 'list_events_for_week', lambda self, s, t, w: [target])
+    for _ in range(2):
+        assert engine.refresh_schedule('NFL')['ok']
+        assert db.kv_get('nfl_current_schedule')['week'] == 8
+    assert db.q1("SELECT 1 FROM events WHERE id='nfl-2026-reg-07-atl-gb'")
+    # The preference does not hold the board back when ESPN moves beyond it.
+    later = dict(target, id='espn-403', meta=dict(season=2026, season_type=2, week=9))
+    monkeypatch.setattr(EspnEvents, 'list_events', lambda *a, **k: [later])
+    assert engine.refresh_schedule('NFL')['ok']
+    assert db.kv_get('nfl_current_schedule')['week'] == 9
+
+
+def test_explicit_week_rejects_wrong_source_week(isolated_db, monkeypatch):
+    active = dict(_espn(), meta=dict(season=2026, season_type=2, week=7))
+    engine._ingest_nfl_schedule([active], 'espn-events', False)
+    db.kv_set('nfl_schedule_minimum', {'season': 2026, 'week': 8})
+    monkeypatch.setattr(EspnEvents, 'list_events', lambda *a, **k: [active])
+    monkeypatch.setattr(EspnEvents, 'list_events_for_week', lambda *a: [active])
+    assert not engine.refresh_schedule('NFL')['ok']
+    assert db.kv_get('nfl_current_schedule')['week'] == 7

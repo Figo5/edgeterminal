@@ -36,7 +36,7 @@ def test_expired_kickoff_gap_is_history_but_grading_read_error_stays_current(iso
     checks = {r['name']: r for r in product_insights.update_checks(steps, 1000.)}
     assert checks['near_kickoff_market']['state'] == 'past_window'
     assert checks['top_five_grading']['state'] == 'retry_pending'
-    assert checks['top_five_grading']['next_retry_at'] == 200 + 6 * 3600
+    assert checks['top_five_grading']['next_retry_at'] == 200 + 15 * 60
 
 
 def test_page_warning_does_not_duplicate_step_error_and_recovery_clears_it(isolated):

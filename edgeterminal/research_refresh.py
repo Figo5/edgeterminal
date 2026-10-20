@@ -21,6 +21,7 @@ GAME_DELAY = 4 * 3600
 SCHEDULE_INTERVAL = 6 * 3600
 CONTEXT_INTERVAL = 3 * 3600
 RESULT_INTERVAL = 6 * 3600
+RESULT_RETRY_INTERVAL = 15 * 60
 GAME_ODDS_INTERVAL = 15 * 60
 GAME_ODDS_NEAR_INTERVAL = 5 * 60
 
@@ -77,6 +78,23 @@ def _last_attempt(name: str) -> float | None:
 def _due(name: str, now: float, cadence: float) -> bool:
     prior = _last_attempt(name)
     return prior is None or now >= prior + cadence
+
+
+def result_interval(step: dict | None) -> int:
+    """Retry interrupted public result reads promptly; keep the normal cadence otherwise."""
+    if step and not step['success']:
+        error = json.loads(step.get('detail') or '{}').get('error') or ''
+        if any(kind in error for kind in (
+                'ReadError', 'ReadTimeout', 'ConnectError', 'ConnectTimeout',
+                'RemoteProtocolError', 'PoolTimeout')):
+            return RESULT_RETRY_INTERVAL
+    return RESULT_INTERVAL
+
+
+def _result_due(name: str, now: float) -> bool:
+    step = db.q1('SELECT success,detail,attempted_at FROM research_refresh_steps '
+                  'WHERE name=? ORDER BY attempted_at DESC LIMIT 1', (name,))
+    return step is None or now >= step['attempted_at'] + result_interval(step)
 
 
 def _context(events: list[dict], now: float) -> dict:
@@ -175,7 +193,8 @@ def _game_grading(now: float) -> dict:
     result = nfl_forward_grading.sync_all(now=now)
     failures = [row for row in result.get("sync", []) if "error" in row]
     if failures:
-        raise ValueError(f"game grading failed for {len(failures)} freeze(s)")
+        raise ValueError(f"game grading failed for {len(failures)} freeze(s): " +
+                         '; '.join(row['error'] for row in failures))
     return result
 
 
@@ -278,7 +297,7 @@ def _run_locked(now: float, *, record_tick: bool = True,
             if (nfl_prop_challenger.DIRECTORY / 'active.json').exists():
                 attempt('challenger_capture', lambda: nfl_prop_challenger.shadow(
                     captured['batch_id'], current['season'], current['week']))
-    if _due("top_five_grading", now, RESULT_INTERVAL):
+    if _result_due("top_five_grading", now):
         attempt("top_five_grading", lambda: nfl_top_five.grade_due(now))
         from . import nfl_prop_challenger
         if steps['top_five_grading']['ok'] and (nfl_prop_challenger.DIRECTORY / 'active.json').exists():
@@ -326,7 +345,7 @@ def _run_locked(now: float, *, record_tick: bool = True,
                                                    _availability_interval(now, events))))
     if availability_due and 'availability' not in steps:
         attempt("availability", lambda: _availability(events, now))
-    if any(e["kickoff_utc"] <= now - GAME_DELAY for e in events) and _due("game_grading", now, RESULT_INTERVAL):
+    if any(e["kickoff_utc"] <= now - GAME_DELAY for e in events) and _result_due("game_grading", now):
         attempt("game_grading", lambda: _game_grading(now))
     if paper_research.needs_settlement():
         attempt("paper_settlement", paper_research.settle)

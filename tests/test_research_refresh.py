@@ -50,6 +50,28 @@ def test_idle_refresh_is_idempotent_and_does_not_call_paid_provider(isolated, mo
     assert research_refresh.status(now=1001)["last_successful_research_refresh"] is not None
 
 
+@pytest.mark.parametrize('name', ['top_five_grading', 'game_grading'])
+def test_result_connection_failure_retries_after_fifteen_minutes(isolated, name):
+    def save(stamp, ok, error=''):
+        db.ex('INSERT INTO research_refresh_steps(run_id,name,attempted_at,success,detail) '
+              'VALUES(?,?,?,?,?)', (str(stamp), name, stamp, int(ok), json.dumps({'error': error})))
+    save(1000., False, 'ValueError: freeze: ConnectError')
+    assert not research_refresh._result_due(name, 1899.)
+    assert research_refresh._result_due(name, 1900.)
+    save(1900., True)
+    assert not research_refresh._result_due(name, 2800.)
+    assert research_refresh._result_due(name, 1900. + 6 * 3600)
+    save(24000., False, 'ValueError: source identity mismatch')
+    assert not research_refresh._result_due(name, 24900.)
+
+
+def test_game_grading_keeps_connection_cause_for_retry_policy(monkeypatch):
+    monkeypatch.setattr(research_refresh.nfl_forward_grading, 'sync_all',
+                        lambda **k: {'sync': [{'error': 'ProviderError: ESPN: ConnectTimeout'}]})
+    with pytest.raises(ValueError, match='ConnectTimeout'):
+        research_refresh._game_grading(1000.)
+
+
 def test_prop_capture_waits_for_frozen_projection(isolated, monkeypatch):
     event = {"id": "nfl-2026-reg-04-atl-gb", "kickoff_utc": 100000.0,
              "start_time": "1970-01-02T03:46:40Z", "meta": {}}
