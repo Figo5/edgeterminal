@@ -234,6 +234,33 @@ def test_raw_http_body_is_archived_byte_exact_before_parsing(prop_db):
         db.ex("UPDATE nfl_prop_raw_responses SET body=? WHERE batch_id=?", (b"different", batch_id))
 
 
+def test_delayed_live_response_uses_receipt_time_and_rejects_truly_future_quotes(prop_db, monkeypatch):
+    payload = fixture()
+    offers = payload['data'][0]['odds']['passing_yards-JOSH_ALLEN_1_NFL-game-ou-over']['byBookmaker']
+    offers['draftkings']['lastUpdatedAt'] = nfl_props._utc(STAMP + 3600)
+    offers['fanduel']['lastUpdatedAt'] = nfl_props._utc(STAMP + 4 * 3600)
+    monkeypatch.setattr(nfl_props.time, 'time', lambda: STAMP + 2 * 3600)
+    monkeypatch.setattr(nfl_props, 'get_raw_meta',
+                        lambda *a, **k: (200, json.dumps(payload).encode(), {}))
+    result = nfl_props.capture_week(2026, 4, nfl_props.SportsGameOddsProps(api_key='fixture'), STAMP)
+    rows = db.q('SELECT * FROM nfl_prop_snapshots WHERE market=? AND side=?', ('passing_yards', 'over'))
+    assert any(r['sportsbook'] == 'draftkings' and r['line_type'] == 'main' for r in rows)
+    assert not any(r['sportsbook'] == 'fanduel' for r in rows)
+    assert all(r['retrieved_at'] == STAMP + 2 * 3600 for r in rows)
+    assert db.q1('SELECT retrieved_at FROM nfl_prop_capture_batches')['retrieved_at'] == STAMP + 2 * 3600
+
+
+def test_live_response_arriving_after_kickoff_cannot_create_pregame_quotes(prop_db, monkeypatch):
+    kickoff = nfl_props._time('2026-10-01T00:15:00Z')
+    monkeypatch.setattr(nfl_props.time, 'time', lambda: kickoff + 1)
+    monkeypatch.setattr(nfl_props, 'get_raw_meta',
+                        lambda *a, **k: (200, json.dumps(fixture()).encode(), {}))
+    with pytest.raises(ValueError, match='started before prop response arrived'):
+        nfl_props.capture_week(2026, 4, nfl_props.SportsGameOddsProps(api_key='fixture'), STAMP)
+    assert db.q1('SELECT COUNT(*) n FROM nfl_prop_snapshots')['n'] == 0
+    assert db.q1('SELECT COUNT(*) n FROM nfl_prop_raw_responses')['n'] == 1
+
+
 def test_bad_json_is_preserved_and_no_quotes_are_saved(prop_db):
     def getter(url, **kwargs):
         return 200, b"bad json", {}

@@ -151,6 +151,8 @@ def test_missed_capture_window_is_reported_without_creating_a_quote(lab):
 
 
 def test_scheduler_captures_pairs_evaluates_and_preserves_later_line(lab):
+    lab.setattr(research_refresh.nfl_top_five, 'capture_missing',
+                lambda *a, **k: {'status': 'no_missing_selections'})
     initial = KICKOFF - 3600
     freeze_sha = _freeze_original(initial)
     frozen_payload = db.q1("SELECT payload FROM nfl_prop_research_freezes WHERE freeze_sha=?",

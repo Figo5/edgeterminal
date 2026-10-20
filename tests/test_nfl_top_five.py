@@ -116,6 +116,43 @@ def test_targeted_feed_requests_real_receptions_id_and_bounded_books():
     assert feed.bookmaker_ids == 'draftkings,fanduel,caesars,espnbet,bovada'
 
 
+@pytest.mark.parametrize('manual', [False, True])
+def test_capture_keeps_earlier_upcoming_week_when_board_moves_ahead(isolated, monkeypatch, tmp_path, manual):
+    earlier, later = 'nfl-2026-reg-07-tb-dal', 'nfl-2026-reg-08-atl-gb'
+    for game, kickoff in [(earlier, '1970-01-02T12:00:00Z'), (later, '1970-01-04T12:00:00Z')]:
+        db.upsert_event(dict(id=game, sport='NFL', home_team='Dallas Cowboys',
+                            away_team='Tampa Bay Buccaneers', start_time=kickoff, status='STATUS_SCHEDULED'))
+    db.kv_set('nfl_current_schedule', {'season': 2026, 'week': 8, 'game_ids': [later]})
+    monkeypatch.setattr(settings, 'sportsgameodds_api_key', 'fixture')
+    monkeypatch.setattr(top, 'ROOT', tmp_path)
+    validation = tmp_path / 'data/research/nfl_prop_lab_2026_week3.json'
+    validation.parent.mkdir(parents=True)
+    validation.write_text('{"validation": {}}')
+    inputs, captures = [], []
+    monkeypatch.setattr(top, '_inputs', lambda s, w: inputs.append((s, w)) or ({}, {}, {}))
+    monkeypatch.setattr(top, 'provider', lambda: object())
+    monkeypatch.setattr(top.nfl_prop_capture_ops, 'capture',
+                        lambda s, w, ids, now, **kw: captures.append((s, w, ids)) or {'batch_id': 'captured'})
+    monkeypatch.setattr(top.nfl_prop_lab, 'project_week3', lambda *a, **k: {'projections': []})
+    top.capture_missing(1000., manual=manual)
+    assert inputs == [(2026, 7)]
+    assert captures == [(2026, 7, [earlier])]
+    assert db.kv_get('nfl_current_schedule')['week'] == 8
+
+
+def test_manual_capture_still_enforces_cooldown_and_quota(isolated, monkeypatch):
+    monkeypatch.setattr(settings, 'sportsgameodds_api_key', 'fixture')
+    db.ex('UPDATE events SET start_time=? WHERE id=?', ('1970-01-03T00:00:00Z', GAME))
+    attempt()
+    assert top.capture_missing(1000., manual=True)['status'] == 'awaiting_next_prop_capture'
+    quota_attempt = db.q1('SELECT * FROM nfl_prop_capture_attempts')
+    quota_attempt.update(attempt_id='quota-attempt', batch_id='quota-batch',
+                         attempted_at=40., success=0, error='HTTP 429')
+    db.ex('INSERT INTO nfl_prop_capture_attempts (' + ','.join(quota_attempt) + ') VALUES (' +
+          ','.join('?' for _ in quota_attempt) + ')', quota_attempt.values())
+    assert top.capture_missing(2000., manual=True)['status'] == 'provider_quota_cooldown'
+
+
 def attempt(success=1, error=None):
     db.ex('INSERT INTO nfl_prop_capture_batches VALUES(?,?,?,?,?,?,?,?,?)',
           ('latest-batch', 'sportsgameodds', 30., 'source', '{}', 1, 1, 4, '{}'))

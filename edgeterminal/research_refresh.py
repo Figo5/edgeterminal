@@ -289,11 +289,13 @@ def _run_locked(now: float, *, record_tick: bool = True,
     missing_capture_interval = min((nfl_prop_capture_ops.cadence(e["kickoff_utc"] - now)
                                     or 3600 for e in events if e["kickoff_utc"] > now), default=3600)
     if _due("top_five_capture", now, missing_capture_interval) or force_prop_quotes:
-        attempt("top_five_capture", lambda: nfl_top_five.capture_missing(now))
+        attempt("top_five_capture", lambda: nfl_top_five.capture_missing(now, manual=force_prop_quotes))
         captured = steps['top_five_capture'].get('result', {}).get('capture', {})
         if steps['top_five_capture']['ok'] and captured.get('batch_id'):
             from . import nfl_prop_challenger
-            current = db.kv_get('nfl_current_schedule') or {}
+            batch = db.q1('SELECT audit_json FROM nfl_prop_capture_batches WHERE batch_id=?',
+                           (captured['batch_id'],))
+            current = json.loads(batch['audit_json'])
             if (nfl_prop_challenger.DIRECTORY / 'active.json').exists():
                 attempt('challenger_capture', lambda: nfl_prop_challenger.shadow(
                     captured['batch_id'], current['season'], current['week']))

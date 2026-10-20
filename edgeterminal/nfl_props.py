@@ -399,6 +399,16 @@ def capture_week(season: int, week: int, provider: SportsGameOddsProps | None = 
     else:
         payload = client.fetch(min(kickoffs) - padding, max(kickoffs) + padding,
                                batch_id=batch_id)
+    if isinstance(client, SportsGameOddsProps) and client.getter is None:
+        # A suspended Mac can resume a request hours after the worker started.
+        # Validate live quotes against their archived receipt time.
+        receipt = db.q1('SELECT MAX(fetched_at) at FROM nfl_prop_raw_responses WHERE batch_id=?',
+                         (batch_id,))
+        if not receipt or receipt['at'] is None:
+            raise ValueError('live prop response lacks archived receipt time')
+        stamp = max(stamp, receipt['at'])
+        if stamp >= min(kickoffs):
+            raise ValueError('target game started before prop response arrived')
     if not isinstance(payload, dict) or payload.get("success") is not True or not isinstance(payload.get("data"), list):
         raise ValueError("malformed SportsGameOdds response")
     raw = json.dumps({key: value for key, value in payload.items() if not key.startswith("_")},

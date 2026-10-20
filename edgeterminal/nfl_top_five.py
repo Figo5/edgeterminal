@@ -217,13 +217,15 @@ def _inputs(season: int, week: int) -> tuple[dict, dict, dict]:
                             **{"features:" + k: v for k, v in feature_hashes.items()}}
 
 
-def capture_missing(now: float | None = None) -> dict:
+def capture_missing(now: float | None = None, *, manual: bool = False) -> dict:
     stamp = time.time() if now is None else now
     current = db.kv_get("nfl_current_schedule") or {}
     targets = []
-    for game in current.get("game_ids", []):
-        event = db.q1("SELECT start_time,status FROM events WHERE id=?", (game,))
-        kickoff = parse_time(event["start_time"]) if event else None
+    events = db.q("SELECT id,start_time,status FROM events WHERE sport='NFL' AND id LIKE ? "
+                  "ORDER BY start_time,id", (f"nfl-{current.get('season', 2026)}-reg-%",))
+    for event in events:
+        game = event['id']
+        kickoff = parse_time(event["start_time"])
         if kickoff and 0 < kickoff - stamp <= 7 * 86400 and event["status"] not in nfl_prop_capture_ops.INACTIVE:
             if not db.q1("SELECT 1 FROM nfl_top_five_selections WHERE game_id=?", (game,)):
                 targets.append(game)
@@ -241,11 +243,18 @@ def capture_missing(now: float | None = None) -> dict:
     def due(game):
         event = db.q1("SELECT start_time,status FROM events WHERE id=?", (game,))
         candidate = next_capture(event, recent.get(game), stamp)
+        if manual and candidate is not None and recent.get(game):
+            # Same bounded manual cooldown used by near-game capture.
+            candidate = min(candidate, recent[game]['attempted_at'] + 30 * 60)
         return candidate is not None and stamp >= candidate
     targets = [g for g in targets if due(g)]
     if not targets:
         return {"status": "awaiting_next_prop_capture"}
-    season, week = int(current["season"]), int(current["week"])
+    # Prioritize the nearest due week. A later board week must never stop
+    # capture for earlier games that are still awaiting kickoff.
+    parts = targets[0].split('-')
+    season, week = int(parts[1]), int(parts[3])
+    targets = [g for g in targets if g.split('-')[1:4] == parts[1:4]]
     train, history, hashes = _inputs(season, week)
     validation_path = ROOT / "data/research/nfl_prop_lab_2026_week3.json"
     validation = json.loads(validation_path.read_text())["validation"]
