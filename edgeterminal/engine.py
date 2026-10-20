@@ -269,22 +269,6 @@ def refresh_schedule(sport: str = "NFL", *, force: bool = False) -> Dict:
             from .providers.espn import EspnEvents
             provider = EspnEvents()
             events = provider.list_events("NFL", force=True) if force else provider.list_events("NFL")
-            # An explicitly requested week remains the board's minimum until
-            # ESPN catches up. Older stored games still receive result checks.
-            minimum = db.kv_get("nfl_schedule_minimum") or {}
-            if events and minimum:
-                meta = events[0].get('meta') or {}
-                season, week = int(meta.get('season', 0)), int(meta.get('week', 0))
-                target = minimum.get('week')
-                if (minimum.get('season') == season and type(target) is int and
-                        1 <= target <= 18 and week < target and
-                        meta.get('season_type') in (2, '2', 'reg', 'REG')):
-                    requested = provider.list_events_for_week(season, 2, target)
-                    prefix = f'nfl-{season}-reg-{target:02d}-'
-                    if not requested or any(not (NI.canonical_id(e) or '').startswith(prefix)
-                                            for e in requested):
-                        raise ValueError('requested NFL week unavailable or identity mismatch')
-                    events = requested
             # ESPN keeps the completed week on its default scoreboard until
             # Thursday. Advance the product as soon as every game is final.
             if events and all(str(e.get("status", "")).upper() in

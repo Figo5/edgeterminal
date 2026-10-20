@@ -26,7 +26,9 @@ def test_weekly_board_uses_stored_pregame_quotes_and_marks_stale(monkeypatch):
             ("moneyline", game["home_team"], None, -245),
             ("spread", game["home_team"], -4.5, -115),
             ("total", "Over", 42.5, -118)], 1)]
-    monkeypatch.setattr(product_views.db, "q", lambda sql, *a, **k: rows if "FROM odds" in sql else [])
+    monkeypatch.setattr(product_views.db, "q", lambda sql, *a, **k: rows if "FROM odds" in sql else
+                        [{'id': game['id']}, {'id': 'nfl-2026-reg-08-car-gb'}]
+                        if 'SELECT id FROM events' in sql else [])
     monkeypatch.setattr(product_views.db, "q1", lambda *a, **k: None)
     monkeypatch.setattr(product_views.db, "kv_get", lambda *a: {"season": 2026, "week": 3})
     monkeypatch.setattr(product_views.engine, "schedule_meta", lambda: {"retrieved_at": kickoff - 1800})
@@ -35,6 +37,7 @@ def test_weekly_board_uses_stored_pregame_quotes_and_marks_stale(monkeypatch):
     board = product_views.weekly_board()
     item = board["games"][0]
     assert board["readiness"] == "RESEARCH_ONLY"
+    assert board['weeks'] == [3]  # A stored future week is not a current board option.
     assert item["designation"] == "PASS"
     assert item["projection"]["home_win_probability"] == 0.6254
     assert item["market"]["spread"]["home"]["line"] == -4.5

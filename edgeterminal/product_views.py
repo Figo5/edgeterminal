@@ -119,7 +119,8 @@ def weekly_board(week: int | None = None) -> dict:
         game['prop_coverage'] = coverage.get(game['id'])
     available = sorted({int(r["id"].split("-")[3]) for r in db.q(
         "SELECT id FROM events WHERE id LIKE ?", (f"nfl-{current.get('season', 2026)}-reg-%",))
-                        if len(r["id"].split("-")) == 6})
+                        if len(r["id"].split("-")) == 6 and
+                        int(r['id'].split('-')[3]) <= (current.get('week') or 18)})
     step = db.q1("SELECT detail,attempted_at FROM research_refresh_steps WHERE name='top_five_capture' ORDER BY rowid DESC LIMIT 1")
     prop_health = json.loads(step["detail"]) if step else {}
     return {"readiness": "RESEARCH_ONLY", "designation": "PASS", "as_of": time.time(),
