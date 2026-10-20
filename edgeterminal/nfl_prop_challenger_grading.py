@@ -99,7 +99,7 @@ def verified_results(selected, now=None):
     return output
 
 
-def grade_due(now=None, *, fetcher=None):
+def grade_due(now=None, *, fetcher=None, participation_reviews=None):
     stamp = time.time() if now is None else now
     selected = challenger.selected_rows()
     known = challenger.result_evidence(selected)
@@ -133,8 +133,19 @@ def grade_due(now=None, *, fetcher=None):
             schedule_id = ingest._schedule_ids({game: quotes})[game]
             stats = ingest._stats(stats_raw, schedule_id, game)
             players, _ = ingest._player_evidence(quotes, stats, stat_source, None, None)
+            review = (participation_reviews or {}).get(game)
+            if review is not None:
+                validated, part = ingest._participation(review, game, {q['gsis_player_id'] for q in quotes})
+                if not state['kickoff'] <= validated['reviewed_at'] <= stamp:
+                    raise ValueError('challenger participation review is outside completed game')
+                source = _archive(part['source_bytes'], validated['source_url'], stamp)
+                manifest = _archive(review, 'local:challenger-reviewed-participation', stamp)
+                source['supporting_sources'] = [manifest]
+                part['manifest_sha256'] = manifest['sha256']
+                players, _ = ingest._player_evidence(quotes, stats, stat_source, part, source)
             unresolved = {p['gsis_player_id'] for p in players if p['status'] == 'unknown' or
-                          any(q['market'] not in p['stats'] for q in quotes if q['gsis_player_id'] == p['gsis_player_id'])}
+                          (p['status'] == 'active' and any(q['market'] not in p['stats'] for q in quotes
+                                                        if q['gsis_player_id'] == p['gsis_player_id']))}
             if unresolved:
                 try:
                     part, source = official.resolve(game, [q for q in quotes if q['gsis_player_id'] in unresolved],

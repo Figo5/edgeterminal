@@ -1,0 +1,14 @@
+{
+  "game_page": {
+    "file": "db:nfl_prop_grade_source_artifacts:3cf53efae13b666f9e9aea64c7d32e040785aceb74ce7cd1c444141718d12e81",
+    "retrieved_at": 1792499783.725546,
+    "sha256": "3cf53efae13b666f9e9aea64c7d32e040785aceb74ce7cd1c444141718d12e81",
+    "source": "https://www.nfl.com/games/cardinals-at-rams-2026-reg-6"
+  },
+  "gamebook": {
+    "file": "db:nfl_prop_grade_source_artifacts:afd2e4e76b89c5eefa24687d583cec6846e5968aaa8ebd35e09ff1ea94c490a4",
+    "retrieved_at": 1792499783.984256,
+    "sha256": "afd2e4e76b89c5eefa24687d583cec6846e5968aaa8ebd35e09ff1ea94c490a4",
+    "source": "https://static.www.nfl.com/image/upload/v1792409927/gamecenter/aab58f7e-4feb-11f1-abca-2c54536568a9.pdf"
+  }
+}

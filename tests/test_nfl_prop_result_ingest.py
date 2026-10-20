@@ -184,6 +184,19 @@ def test_challenger_rejects_a_pick_that_disagrees_with_its_source_quote(challeng
     assert not list((model.DIRECTORY / 'results').glob('*.json'))
 
 
+def test_challenger_accepts_audited_manual_participation_review(challenger_setup, setup, monkeypatch):
+    from edgeterminal import nfl_prop_challenger_grading as challenger_grading
+    model, raw_stats = challenger_setup
+    data = json.loads(manifest(setup[1]))
+    data['players'] = data['players'][:1]
+    monkeypatch.setattr(challenger_grading.official, 'resolve', lambda *a: pytest.fail('reviewed player needs no lookup'))
+    result = challenger_grading.grade_due(20001.,
+        fetcher=lambda u: raw_stats if '.csv' in u else scoreboard(),
+        participation_reviews={GAME: json.dumps(data).encode()})
+    assert result['record'] == {'won': 2, 'void': 1}
+    assert all(c['status'] == 'checked' for c in result['checks'])
+
+
 @pytest.mark.parametrize('field', ['receiving_yards', 'rushing_yards', 'passing_yards'])
 def test_signed_official_yardage_is_valid(field):
     raw = edit_stat_bytes(stats(), lambda r: r.update({field: '-3'}) if r['player_id']=='gsis-a' else None)

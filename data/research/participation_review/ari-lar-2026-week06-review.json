@@ -1,0 +1,20 @@
+{
+  "canonical_game_id": "nfl-2026-reg-06-ari-lar",
+  "notes": "NFL Game Summary for Arizona at Los Angeles Rams on 2026-10-18, final 18-16. Page 1 explicitly lists RB 4 J.Love under Arizona Not Active. Exact-week roster identifies Jeremiyah Love as GSIS 00-0041027, ESPN 4870808, Arizona RB 4, status INA; prior-week full-name and GSIS history agree. Roster also assigns number 4 to WR Shedrick Jackson, a different name/position not confused with RB J.Love. Automatic jersey-uniqueness guard retained; exception reviewed against the official game-day roster.",
+  "pages_reviewed": [
+    1
+  ],
+  "players": [
+    {
+      "active_roster": false,
+      "certified_no_stats": true,
+      "gsis_player_id": "00-0041027",
+      "snap_played": false
+    }
+  ],
+  "reviewed_at": 1792499851.4005618,
+  "reviewer": "Codex official Game Book review",
+  "source_file": "/Users/giofiore/edgeterminal/data/research/participation_review/ari-lar-2026-week06.pdf",
+  "source_sha256": "afd2e4e76b89c5eefa24687d583cec6846e5968aaa8ebd35e09ff1ea94c490a4",
+  "source_url": "https://static.www.nfl.com/image/upload/v1792409927/gamecenter/aab58f7e-4feb-11f1-abca-2c54536568a9.pdf"
+}
