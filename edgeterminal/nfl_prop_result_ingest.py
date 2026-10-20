@@ -19,7 +19,7 @@ from urllib.parse import urlencode, urlparse
 
 import httpx
 
-from . import db, nfl_identity, nfl_prop_grading, nfl_prop_lab
+from . import db, nfl_identity, nfl_prop_grading, nfl_prop_lab, nfl_result_cache
 from .integrity import parse_time
 from .providers.base import client
 from .providers.espn import SCOREBOARD_URL
@@ -372,8 +372,8 @@ def status_view(freeze_sha: str, now: float | None = None) -> dict:
             label = state["status"]
         elif not state or state.get("status") != "final":
             label = "not_started" if now < kickoff else "in_progress"
-        elif now < kickoff + nfl_prop_grading.POSTGAME_DELAY_S:
-            label = "final_wait"
+        elif now < kickoff:
+            label = "not_started"
         elif not stat_source:
             label = "source_review" if _latest_source(freeze_sha, game_id, 'player_stats_incomplete') else "awaiting_player_stats"
         else:
@@ -396,9 +396,17 @@ def status_view(freeze_sha: str, now: float | None = None) -> dict:
 def sync(freeze_sha: str, *, scoreboard_bytes: bytes | None = None,
          stats_bytes: bytes | None = None, participation_bytes: bytes | None = None,
          scoreboard_source: str | None = None, stats_source: str | None = None,
-         now: float | None = None, automatic_participation: bool = False) -> dict:
+         now: float | None = None, automatic_participation: bool = False,
+         game_ids: list[str] | None = None) -> dict:
     now = time.time() if now is None else now
     games = _games(freeze_sha)
+    if game_ids is not None:
+        if not set(game_ids) <= set(games):
+            raise ValueError('requested game is not in prop freeze')
+        games = {game: quotes for game, quotes in games.items() if game in game_ids}
+        if not games:
+            return {"grade_counts": [], "status": status_view(freeze_sha, now),
+                    "network_requests": 0}
     first = next(iter(games))
     season, week = int(first.split("-")[1]), int(first.split("-")[3])
     if not all(q["canonical_game_id"].split("-")[1:4] == first.split("-")[1:4]
@@ -410,6 +418,12 @@ def sync(freeze_sha: str, *, scoreboard_bytes: bytes | None = None,
         return {"grade_counts": [], "status": status_view(freeze_sha, now),
                 "network_requests": 0}
     requests = 0
+    def read(url):
+        def fetch(source_url):
+            nonlocal requests
+            requests += 1
+            return _fetch(source_url)
+        return nfl_result_cache.read(url, fetch, now=now)
     official_score_url = SCOREBOARD_URL + "?" + urlencode({"dates": season, "seasontype": 2,
                                                              "week": week, "limit": 100})
     score_url = scoreboard_source or official_score_url
@@ -417,9 +431,9 @@ def sync(freeze_sha: str, *, scoreboard_bytes: bytes | None = None,
         raise ValueError("supplied scoreboard bytes require an explicit source URL")
     if scoreboard_bytes is None and scoreboard_source:
         raise ValueError("scoreboard source override requires supplied bytes")
+    score_retrieved = now
     if scoreboard_bytes is None:
-        scoreboard_bytes = _fetch(official_score_url)
-        requests += 1
+        scoreboard_bytes, score_retrieved = read(official_score_url)
     events = _scoreboard(scoreboard_bytes, games)
     missing = set(due) - set(events)
     if missing:
@@ -427,10 +441,10 @@ def sync(freeze_sha: str, *, scoreboard_bytes: bytes | None = None,
     for game, state in events.items():
         if game in due:
             _archive(freeze_sha, game, "scoreboard", scoreboard_bytes, score_url,
-                     now, state)
+                     score_retrieved, state)
     final_due = {game: state for game, state in events.items()
                  if game in due and state["status"] == "final" and
-                 now >= state["kickoff"] + nfl_prop_grading.POSTGAME_DELAY_S}
+                 now >= state["kickoff"]}
     if not final_due:
         return {"grade_counts": [], "status": status_view(freeze_sha, now),
                 "network_requests": requests}
@@ -440,9 +454,9 @@ def sync(freeze_sha: str, *, scoreboard_bytes: bytes | None = None,
         raise ValueError("supplied player-stat bytes require an explicit source URL")
     if stats_bytes is None and stats_source:
         raise ValueError("player-stat source override requires supplied bytes")
+    stats_retrieved = now
     if stats_bytes is None:
-        stats_bytes = _fetch(official_stats_url)
-        requests += 1
+        stats_bytes, stats_retrieved = read(official_stats_url)
     schedule = _schedule_ids(games)
     participation_data = None
     if participation_bytes is not None:
@@ -461,10 +475,10 @@ def sync(freeze_sha: str, *, scoreboard_bytes: bytes | None = None,
         except ValueError as exc:
             # Archive the exact received bytes, but keep the game pending.
             _archive(freeze_sha, game, "player_stats_incomplete", stats_bytes,
-                     stats_url, now, {"status": "incomplete", "reason": str(exc)})
+                     stats_url, stats_retrieved, {"status": "incomplete", "reason": str(exc)})
             continue
         stat_source = _archive(freeze_sha, game, "player_stats", stats_bytes,
-                               stats_url, now, {"nflverse_game_id": schedule[game],
+                               stats_url, stats_retrieved, {"nflverse_game_id": schedule[game],
                                                 "player_rows": len(stats)})
         part, part_source = None, None
         review_bytes = participation_bytes if participation_data and participation_data.get('canonical_game_id') == game else None
@@ -534,6 +548,7 @@ def sync(freeze_sha: str, *, scoreboard_bytes: bytes | None = None,
             sources.extend([part_source, *part_source.get('supporting_sources', [])])
         retrieved = max(ref['retrieved_at'] for ref in sources)
         evidence = {"game_id": game, "game_status": "final",
+                    "verified_final": True,
                     "final_score": state["score"],
                     "actual_kickoff_utc": state["kickoff"],
                     "final_game_source": score_source,

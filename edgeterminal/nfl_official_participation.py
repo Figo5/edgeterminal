@@ -17,7 +17,7 @@ from . import db, nfl_identity
 from .providers.base import client
 
 VERSION = 'official-participation-v1'
-CACHE_SECONDS = 6 * 3600
+CACHE_SECONDS = 5 * 60
 CLUBS = dict(zip(
     'ari atl bal buf car chi cin cle dal den det gb hou ind jax kc lac lar lv mia min ne no nyg nyj phi pit sea sf tb ten wsh'.split(),
     ('azcardinals.com atlantafalcons.com baltimoreravens.com buffalobills.com panthers.com '

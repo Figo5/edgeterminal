@@ -490,22 +490,31 @@ def _saved_markets(forecast,game):
 def grade_due(now):
     ensure_schema()
     games=db.q('SELECT DISTINCT g.* FROM nba_games g JOIN nba_forecasts f ON f.game_id=g.game_id '
-               'WHERE g.tipoff_ts<=? ORDER BY g.tipoff_ts DESC',(now-4*3600,))
+               "WHERE g.tipoff_ts<=? OR (g.status IN ('final','canceled') AND g.tipoff_ts<=?) "
+               'ORDER BY g.tipoff_ts DESC',(now-4*3600,now))
     count=0;pending=0;corrections=0;errors=[]
     for game in games:
+        graded_at=now
         try:
             last=db.kv_get('nba_grade_checked_'+game['game_id']) or 0
             lock=nba_store.get_lock('top5-'+game['game_id'])
             grades=nba_store.latest_grades(lock['lock_id']) if lock else {}
+            forecast=_forecast(game['game_id'],'game')
+            prior=db.q1('SELECT id,payload FROM nba_game_grade_revisions WHERE game_id=? ORDER BY id DESC LIMIT 1',(game['game_id'],))
             waiting=any((grades.get(i['rank']) or {}).get('result','pending')=='pending' for i in (lock or {}).get('items',[]))
-            # Retry unresolved results hourly; recheck completed results daily for a week.
-            seconds=3600 if (waiting or game['status']!='final') and now-game['tipoff_ts']<=7*86400 else 86400
-            if now-last<seconds or (not waiting and game['status']=='final' and now-game['tipoff_ts']>7*86400):continue
-            obs=nba_sources.fetch('summary',{'event':game['espn_event_id']},ttl=seconds,now=now)
+            waiting=waiting or bool(forecast and (not prior or 'pending' in json.loads(prior['payload']).values()))
+            terminal=game['status'] in {'final','canceled'}
+            first_final=terminal and waiting and db.kv_get('nba_grade_checked_status_'+game['game_id'])!=game['status']
+            # New finals bypass a previous live check; unresolved evidence retries every five minutes.
+            seconds=300 if (waiting or not terminal) and now-game['tipoff_ts']<=7*86400 else 86400
+            if (now-last<seconds and not first_final) or (not waiting and terminal and now-game['tipoff_ts']>7*86400):continue
+            db.kv_set('nba_grade_checked_status_'+game['game_id'],game['status'])
+            obs=nba_sources.fetch('summary',{'event':game['espn_event_id']},ttl=0 if first_final else seconds,now=now)
+            graded_at=max(now,obs['observed_at'])
             source=artifact(obs,'final-boxscore');parsed=nba_data.parse_summary(obs['data']);actual_game=parsed['game']
             if actual_game['game_id']!=game['game_id'] or (actual_game['home_team'],actual_game['away_team'])!=(game['home_team'],game['away_team']):
                 raise ValueError('NBA final result identity conflict')
-            if actual_game['status'] not in {'final','canceled'}:pending+=1;db.kv_set('nba_grade_checked_'+game['game_id'],now);continue
+            if actual_game['status'] not in {'final','canceled'}:pending+=1;db.kv_set('nba_grade_checked_'+game['game_id'],graded_at);continue
             if actual_game['status']=='final' and not parsed['box_complete']:
                 raise ValueError('NBA final box score does not reconcile to team totals')
             if game['status']!='final':
@@ -520,34 +529,32 @@ def grade_due(now):
                     'stats':p.get('stats'),'minutes':stats.get('minutes'),
                     'participation':{'played':True} if p['status']=='played' else None})
             official={'game_id':game['game_id'],'game_status':actual_game['status'],'home_score':actual_game['home_score'],
-                      'away_score':actual_game['away_score'],'players':players}
-            forecast=_forecast(game['game_id'],'game')
+                      'away_score':actual_game['away_score'],'players':players,'verified_final':True}
             if forecast:
-                graded=nba_grading.grade_game(_saved_markets(forecast,game),official,now)
+                graded=nba_grading.grade_game(_saved_markets(forecast,game),official,graded_at)
                 payload={ {'moneyline':'winners','spread':'spread','total':'total'}[r['market']]:r['result'] for r in graded['grades']}
                 payload.update(home_score=official['home_score'],away_score=official['away_score'])
                 encoded=json.dumps(payload,sort_keys=True)
-                prior=db.q1('SELECT id,payload FROM nba_game_grade_revisions WHERE game_id=? ORDER BY id DESC LIMIT 1',(game['game_id'],))
                 sha=hashlib.sha256((encoded+':'+str(prior['id'] if prior else 0)).encode()).hexdigest()
                 if not prior or prior['payload']!=encoded:
                     db.ex('INSERT INTO nba_game_grade_revisions(game_id,source_artifact_id,graded_at,payload,sha256) VALUES(?,?,?,?,?)',
-                          (game['game_id'],source,now,encoded,sha));count+=1
+                          (game['game_id'],source,graded_at,encoded,sha));count+=1
             if lock:
                 for item in lock['items']:
                     saved={'game_id':item['game_id'],'tipoff':game['tipoff_utc'],'player_id':item['espn_player_id'],
                            'market':item['prop'],'side':item['side'],'line':item['line']}
-                    graded=nba_grading.grade_prop(saved,official,now)
+                    graded=nba_grading.grade_prop(saved,official,graded_at)
                     grade_result={'won':'win','lost':'loss'}.get(graded['result'],graded['result'])
                     old=grades.get(item['rank']) or {}
                     if old.get('result')==grade_result and old.get('actual_value')==graded['actual']:continue
                     nba_store.add_grade_revision(lock['lock_id'],item['rank'],grade_result,graded['actual'],source,
-                        detail={'reason':graded['reason'],'source':'ESPN final box score','box_complete':True},now=now)
+                        detail={'reason':graded['reason'],'source':'ESPN final box score','box_complete':True},now=graded_at)
                     count+=1
                     pending+=graded['result']=='pending'
-            db.kv_set('nba_grade_checked_'+game['game_id'],now)
+            db.kv_set('nba_grade_checked_'+game['game_id'],graded_at)
         except Exception as exc:
-            db.kv_set('nba_grade_checked_'+game['game_id'],now)
-            db.kv_set('nba_grade_error_'+game['game_id'],{'checked_at':now,'error':type(exc).__name__})
+            db.kv_set('nba_grade_checked_'+game['game_id'],graded_at)
+            db.kv_set('nba_grade_error_'+game['game_id'],{'checked_at':graded_at,'error':type(exc).__name__})
             errors.append(game['game_id'])
     return {'ok':not errors,'source_errors':errors,'message':f'{count} new statistical grades recorded; {pending} completed-game results still pending; {len(errors)} source errors.'+
                        (f' {corrections} final-score corrections retained as new evidence.' if corrections else ''),
@@ -599,7 +606,7 @@ def run(now=None):
     # History loading should not consume the paid-capture cadence.
     if results['props'].get('result',{}).get('status')=='history_loading':
         nba_store.set_cadence('props',300,now=stamp)
-    results['grading']=step('grading',stamp,900,lambda:grade_due(stamp))
+    results['grading']=step('grading',stamp,300,lambda:grade_due(stamp))
     # Refresh the descriptive report as source coverage grows, without fitting parameters.
     coverage=db.kv_get('nba_evaluation') or {}
     current_players=sum(bool(db.kv_get('nba_player_history_'+p['player_id'])) for code in nba_identity.TEAMS

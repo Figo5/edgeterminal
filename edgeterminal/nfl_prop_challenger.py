@@ -331,10 +331,10 @@ def view():
             'checked_at': result['checked_at']}
 
 
-def grade_due():
+def grade_due(now=None):
     """Resolve finished challenger selections on the ordinary grading cadence."""
     from . import nfl_prop_challenger_grading
-    result = nfl_prop_challenger_grading.grade_due()
+    result = nfl_prop_challenger_grading.grade_due(now=now)
     failures = [r for r in result.get('checks', []) if r['status'] == 'needs_review']
     if failures:
         raise ValueError('challenger result sources need review: ' +

@@ -18,6 +18,9 @@ from .providers.normalize import normalize_book
 from .nfl_repro_bundle import verify_bundle
 
 RESULT_WAIT_S = 4 * 3600
+RESULT_POLL_S = 300
+COMPLETED_AUDIT_S = 86400
+RECENT_GAME_WINDOW_S = 7 * 86400
 BUCKETS = ((0, 1), (1, 3), (3, 6), (6, float("inf")))
 
 
@@ -194,6 +197,8 @@ def register_freeze(path, now=None):
 
 
 def _score(value):
+    if isinstance(value, bool):
+        return None
     try:
         number = float(value)
     except (TypeError, ValueError):
@@ -228,17 +233,19 @@ def _validate_result(freeze, game, result, now):
     kickoff = parse_time(game["kickoff_et"])
     result_kickoff = parse_time(result.get("start_time"))
     if (result_kickoff is None or abs(result_kickoff-kickoff) > 4*3600 or
-            now < result_kickoff + RESULT_WAIT_S):
+            now < result_kickoff):
         return None
     meta = result.get("meta") or {}
     if not isinstance(meta, dict):
         return None
     home, away = _score(meta.get("home_score")), _score(meta.get("away_score"))
     retrieved = parse_time(meta.get("retrieved_at"))
+    source = meta.get("source_url")
     if (home is None or away is None or retrieved is None or
-            retrieved < result_kickoff or retrieved > now + 60):
+            retrieved < result_kickoff or retrieved > now + 60 or
+            not isinstance(source, str) or not source.strip()):
         return None
-    return home, away, retrieved, str(meta.get("source_url") or "ESPN scoreboard")
+    return home, away, retrieved, source
 
 
 def _grade_payload(freeze, game, digest, result, validated):
@@ -304,7 +311,7 @@ def sync_freeze(path, provider=None, now=None):
     stamp = time.time() if now is None else now
     digest = register_freeze(path, now=stamp)
     freeze, _ = _read(path)
-    due = [g for g in freeze["games"] if stamp >= parse_time(g["kickoff_et"])+RESULT_WAIT_S]
+    due = [g for g in freeze["games"] if stamp >= parse_time(g["kickoff_et"])]
     counts = {"freeze_sha256":digest,"due":len(due),"graded":0,"corrected":0,"unmatched":0}
     if not due:
         return counts
@@ -517,10 +524,33 @@ def write_report(season=2026, freeze_dir="reports/nfl_model_v2"):
 
 
 def sync_all(season=2026, freeze_dir="reports/nfl_model_v2", provider=None, now=None):
+    stamp = time.time() if now is None else now
     results=[]
     for path in sorted(Path(freeze_dir).glob(f"forward_{season}_week*.json")):
         try:
-            results.append(sync_freeze(path,provider=provider,now=now))
+            digest = register_freeze(path, now=stamp)
+            freeze, _ = _read(path)
+            started = [g for g in freeze['games'] if stamp >= parse_time(g['kickoff_et'])]
+            grades = {r['game_id']: r for r in db.q(
+                'SELECT game_id,MAX(graded_at) graded_at FROM nfl_research_grades '
+                'WHERE freeze_sha=? GROUP BY game_id', (digest,))}
+            pending = any(g['game_id'] not in grades for g in started)
+            recent_pending = any(g['game_id'] not in grades and
+                                 stamp-parse_time(g['kickoff_et']) <= RECENT_GAME_WINDOW_S
+                                 for g in started)
+            cadence = RESULT_POLL_S if recent_pending else COMPLETED_AUDIT_S
+            key = 'nfl_forward_result_check:' + digest
+            last = db.kv_get(key)
+            if last is None and started and not pending:
+                last = max(grades[g['game_id']]['graded_at'] for g in started)
+            if started and last is not None and stamp < float(last) + cadence:
+                results.append({'freeze_sha256': digest, 'due': 0, 'graded': 0,
+                                'corrected': 0, 'unmatched': 0, 'status': 'cadence_wait'})
+                continue
+            result = sync_freeze(path,provider=provider,now=now)
+            results.append(result)
+            if started:
+                db.kv_set(key, stamp)
         except Exception as exc:
             results.append({"freeze":str(path),"error":f"{type(exc).__name__}: {exc}"})
     return {"sync":results,**write_report(season,freeze_dir)}

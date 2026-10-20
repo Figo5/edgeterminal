@@ -68,7 +68,7 @@ any forward record.
 | `selections` / `max_markets_per_player` | 5 / 2 | cadence: exactly five or wait; per-player cap |
 | `quote_staleness_s` | 3600 | quotes older than this at `now` are rejected |
 | `feature_lag_s` | 14400 | rows enter inputs only once the game could be final |
-| `postgame_delay_s` | 14400 | grading waits this long after tipoff |
+| `postgame_delay_s` | 14400 | legacy wait for results without a verified final box score |
 | `blocked_availability` | doubtful, inactive, out | injury statuses that block selection |
 | `prop_sd_floor` | points 5.5, rebounds 2.2, assists 1.8, threes 1.3, pra 7.0 | variance floors (from `analytics/nba.py`) |
 | `probability` | continuity correction on integer lines; push mass excluded from both sides; Poisson/NB counts; normal points/pra | probability settings |
@@ -175,9 +175,16 @@ Markets: `points`, `rebounds`, `assists`, `threes`, `pra`.
 `grade_prop(saved_selection, official_result, now)` — pure functions; the
 parent owns persistence.
 
-- Final-only with a four-hour postgame wait (`postgame_wait`).
-  Postponed/suspended stay `pending`; canceled is `void` once the wait has
-  passed. A missing final score is `pending`, never zero. **Contradictory
+- The built-in worker checks grading every five minutes. It grades after
+  tipoff as soon as the saved game identity matches an ESPN final summary and
+  both player point totals reconcile to the final team scores. This verified
+  final bypasses the legacy four-hour wait; callers without that verification
+  retain `postgame_wait`. The fixed forecast parameters, fingerprint, training
+  cutoff and four-hour input feature lag remain unchanged.
+  Postponed/suspended stay `pending`; a verified cancellation is `void` after
+  tipoff. Missing or incomplete results retry automatically, every five minutes
+  for seven days, then daily. Completed results are rechecked daily for a week
+  for corrections. A missing final score is `pending`, never zero. **Contradictory
   NBA finals fail closed:** a tied or scoreless final is `pending`
   (`inconsistent_final`) for every market.
 - Game markets: `spread` (home/away handicap), `total` (over/under),

@@ -124,6 +124,61 @@ def test_wait_delay_postponement_cancellation_and_no_fabricated_zero(frozen):
     assert {json.loads(x["payload"])["result"] for x in db.q("SELECT payload FROM nfl_prop_grade_revisions")}=={"void"}
 
 
+def _early_evidence(**kwargs):
+    evidence = _evidence(**kwargs)
+    evidence['result_retrieved_at'] = 200.
+    evidence['final_game_source']['retrieved_at'] = 200.
+    evidence['player_stat_source']['retrieved_at'] = 200.
+    for player in evidence['players']:
+        if 'participation_evidence' in player:
+            player['participation_evidence']['retrieved_at'] = 200.
+    return evidence
+
+
+def test_verified_final_grades_before_legacy_wait_without_changing_the_freeze(frozen):
+    before = db.q1('SELECT payload FROM nfl_prop_research_freezes')['payload']
+    evidence = _early_evidence()
+    assert grade_freeze(frozen, [evidence], now=200.)['pending_delay'] == 8
+    evidence['verified_final'] = True
+    result = grade_freeze(frozen, [evidence], now=200.)
+    assert result['new_revisions'] == 6 and result['pending_missing_stat'] == 2
+    assert result['pending_delay'] == 0
+    assert grade_freeze(frozen, [evidence], now=201.)['new_revisions'] == 0
+    assert db.q1('SELECT payload FROM nfl_prop_research_freezes')['payload'] == before
+    report = forward_report(frozen)
+    assert report['readiness'] == 'RESEARCH_ONLY' and report['designation'] == 'PASS'
+
+
+@pytest.mark.parametrize('flag', [1, 'true', False])
+def test_only_explicit_verified_final_bypasses_the_legacy_wait(frozen, flag):
+    evidence = {**_early_evidence(), 'verified_final': flag}
+    assert grade_freeze(frozen, [evidence], now=200.)['pending_delay'] == 8
+
+
+@pytest.mark.parametrize('change,error', [
+    ('bad_hash', 'hash mismatch'), ('future_kickoff', 'future'),
+    ('source_before_kickoff', 'predates kickoff'), ('missing_score', 'final score')])
+def test_verified_final_still_validates_all_final_evidence(frozen, change, error):
+    evidence = {**_early_evidence(), 'verified_final': True}
+    if change == 'bad_hash':
+        evidence['player_stat_source']['sha256'] = '0' * 64
+    elif change == 'future_kickoff':
+        evidence['actual_kickoff_utc'] = 201.
+    elif change == 'source_before_kickoff':
+        evidence['player_stat_source']['retrieved_at'] = 99.
+    else:
+        evidence['final_score'] = None
+    with pytest.raises(ValueError, match=error):
+        grade_freeze(frozen, [evidence], now=200.)
+    assert db.q1('SELECT COUNT(*) n FROM nfl_prop_grade_revisions')['n'] == 0
+
+
+@pytest.mark.parametrize('status', ['postponed', 'suspended', 'canceled'])
+def test_verified_final_does_not_bypass_other_game_statuses(frozen, status):
+    evidence = {**_early_evidence(status=status), 'verified_final': True}
+    assert grade_freeze(frozen, [evidence], now=200.)['new_revisions'] == 0
+
+
 def test_missing_or_changed_provenance_fails_closed(frozen):
     evidence=_evidence()
     evidence["player_stat_source"]["sha256"]="0"*64

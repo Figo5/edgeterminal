@@ -97,6 +97,36 @@ def test_grade_game_postgame_wait(forecast, final_result):
     assert all(g["reason"] == "postgame_wait" for g in out["grades"])
 
 
+def test_verified_final_grades_before_legacy_delay(forecast, final_result, selection):
+    final_result['verified_final'] = True
+    out = nba_grading.grade_game(forecast, final_result, TIP + 3 * 3600)
+    assert out['status'] == 'graded'
+    players = [{'player_id': 'p1', 'status': 'active', 'minutes': 30,
+                'stats': {'points': 25}}]
+    official = _prop_result(players, verified_final=True)
+    assert nba_grading.grade_prop(selection, official, TIP + 3 * 3600)['result'] == 'won'
+
+
+@pytest.mark.parametrize('verified', [False, 'true', 1])
+def test_verified_final_bypass_requires_literal_true(forecast, final_result, verified):
+    final_result['verified_final'] = verified
+    assert nba_grading.grade_game(forecast, final_result, BEFORE_DELAY)['status'] == 'pending'
+
+
+def test_verified_final_does_not_bypass_saved_tipoff_or_nonfinal_state(forecast, final_result):
+    final_result['verified_final'] = True
+    assert nba_grading.grade_game(forecast, final_result, TIP - 1)['status'] == 'pending'
+    for status in ('postponed', 'suspended'):
+        final_result['game_status'] = status
+        assert nba_grading.grade_game(forecast, final_result, BEFORE_DELAY)['status'] == 'pending'
+
+
+def test_verified_cancellation_voids_before_legacy_delay(forecast, selection):
+    official = {'game_id': 'g1', 'game_status': 'canceled', 'verified_final': True}
+    assert nba_grading.grade_game(forecast, official, BEFORE_DELAY)['status'] == 'void'
+    assert nba_grading.grade_prop(selection, official, BEFORE_DELAY)['result'] == 'void'
+
+
 def test_grade_game_missing_score_never_zero(forecast):
     result = {"game_id": "g1", "game_status": "final", "home_score": 112,
               "away_score": None, "retrieved_at": TIP + 3 * 3600}

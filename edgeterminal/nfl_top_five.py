@@ -19,6 +19,9 @@ from .integrity import parse_time
 
 POLICY = "top-five-confidence-v1"
 BOOKS = 'draftkings,fanduel,caesars,espnbet,bovada'
+GRADE_POLL_S = 5 * 60
+GRADE_AUDIT_S = 24 * 3600
+GRADE_PENDING_WINDOW_S = 7 * 86400
 
 
 def provider():
@@ -274,12 +277,34 @@ def capture_missing(now: float | None = None, *, manual: bool = False) -> dict:
 
 def grade_due(now: float) -> dict:
     results, failures = [], []
+    # The visible five determine fast retries even when a game occurs in other
+    # research freezes. view() verifies their saved selection and source freeze.
+    selected_settled = {game['game_id']: all(row['result'] in {'won', 'lost', 'push', 'void'}
+                        for row in game['rows']) for game in view()['games']}
     for row in db.q("SELECT freeze_sha FROM nfl_prop_research_freezes ORDER BY frozen_at"):
         sha = row["freeze_sha"]
         try:
-            frozen = nfl_prop_grading._freeze(sha)
-            if any(q["kickoff_utc"] + nfl_prop_grading.POSTGAME_DELAY_S <= now for q in frozen["projections"]):
-                results.append(nfl_prop_result_ingest.sync(sha, now=now, automatic_participation=True))
+            games = nfl_prop_result_ingest._games(sha)
+            graded = {r['quote_id'] for r in nfl_prop_grading._latest(sha)}
+            poll_key = 'nfl_prop_grade_poll:' + sha
+            checked_at = db.kv_get(poll_key) or {}
+            due = []
+            for game, quotes in games.items():
+                kickoff = nfl_prop_result_ingest._expected_kickoff(game, quotes)
+                if now < kickoff:
+                    continue
+                settled = selected_settled.get(game, all(q['quote_id'] in graded for q in quotes))
+                interval = (GRADE_AUDIT_S if settled or now - kickoff > GRADE_PENDING_WINDOW_S
+                            else GRADE_POLL_S)
+                if game not in checked_at or now >= checked_at[game] + interval:
+                    due.append(game)
+            if due:
+                # Record attempts too: a source failure must not cause an
+                # immediate repeat request from another refresh in this window.
+                checked_at.update({game: now for game in due})
+                db.kv_set(poll_key, checked_at)
+                results.append(nfl_prop_result_ingest.sync(
+                    sha, now=now, automatic_participation=True, game_ids=due))
         except Exception as exc:
             failures.append(f"{sha}: {type(exc).__name__}")
     if failures:

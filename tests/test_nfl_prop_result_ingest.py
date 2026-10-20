@@ -161,7 +161,7 @@ def test_challenger_grades_saved_picks_without_creating_main_freezes(challenger_
 def test_challenger_waits_for_final_and_does_not_assume_missing_means_zero(challenger_setup, monkeypatch):
     from edgeterminal import nfl_prop_challenger_grading as challenger_grading
     model, raw_stats = challenger_setup
-    assert challenger_grading.grade_due(101., fetcher=lambda u: pytest.fail('before delay'))['record'] == {'pending': 3}
+    assert challenger_grading.grade_due(99., fetcher=lambda u: pytest.fail('before kickoff'))['record'] == {'pending': 3}
     result = challenger_grading.grade_due(20000., fetcher=lambda u: scoreboard('STATUS_IN_PROGRESS'))
     assert result['record'] == {'pending': 3}
     monkeypatch.setattr(challenger_grading.official, 'resolve', lambda *a: (_ for _ in ()).throw(ValueError('no book')))
@@ -276,7 +276,8 @@ def test_review_manifest_cannot_inject_arbitrary_official_stats(tmp_path):
 
 
 @pytest.mark.parametrize('fails', [False, True])
-def test_builtin_official_fallback_grades_without_a_human_manifest_and_repeats_safely(setup, monkeypatch, fails):
+@pytest.mark.parametrize('stamp', [200., 20000.])
+def test_builtin_official_fallback_grades_without_a_human_manifest_and_repeats_safely(setup, monkeypatch, fails, stamp):
     from edgeterminal import nfl_official_participation, nfl_prop_grading
     sha, tmp_path = setup
     frozen_before = db.q1('SELECT payload FROM nfl_prop_research_freezes')['payload']
@@ -286,7 +287,7 @@ def test_builtin_official_fallback_grades_without_a_human_manifest_and_repeats_s
     selected_before = db.q1('SELECT payload FROM nfl_top_five_selections')['payload']
     book = tmp_path / 'automatic.pdf'; book.write_bytes(b'%PDF-1.4 official-source fixture')
     source = {'source': 'https://static.www.nfl.com/official.pdf', 'file': str(book),
-              'sha256': hashlib.sha256(book.read_bytes()).hexdigest(), 'retrieved_at': 20000.,
+              'sha256': hashlib.sha256(book.read_bytes()).hexdigest(), 'retrieved_at': stamp,
               'supporting_sources': []}
     def resolve(*args):
         if fails: raise ValueError('official evidence ambiguous')
@@ -294,7 +295,7 @@ def test_builtin_official_fallback_grades_without_a_human_manifest_and_repeats_s
             'gsis-c': {'active_roster': False, 'snap_played': False, 'official_stats': {}},
             'gsis-d': {'active_roster': True, 'snap_played': True, 'official_stats': {'receptions': 0.}}}}, {**source, 'supporting_sources': []}
     monkeypatch.setattr(nfl_official_participation, 'resolve', resolve)
-    def run(now=20000.):
+    def run(now=stamp):
         return sync(sha, scoreboard_bytes=scoreboard(), stats_bytes=stats(),
                     scoreboard_source='fixture://scoreboard', stats_source='fixture://stats',
                     now=now, automatic_participation=True)
@@ -313,15 +314,66 @@ def test_builtin_official_fallback_grades_without_a_human_manifest_and_repeats_s
     assert db.q1('SELECT payload FROM nfl_top_five_selections')['payload'] == selected_before
 
 
-@pytest.mark.parametrize('status,now', [('STATUS_IN_PROGRESS', 20000.), ('STATUS_FINAL', 200.)])
-def test_official_fallback_never_runs_before_completed_game_delay(setup, monkeypatch, status, now):
+@pytest.mark.parametrize('status,now,kickoff', [
+    ('STATUS_IN_PROGRESS', 20000., '1970-01-01T00:01:40Z'),
+    ('STATUS_FINAL', 200., '1970-01-01T00:05:00Z')])
+def test_official_fallback_never_runs_without_final_after_actual_kickoff(setup, monkeypatch, status, now, kickoff):
     from edgeterminal import nfl_official_participation
     sha, _ = setup
     monkeypatch.setattr(nfl_official_participation, 'resolve', lambda *args: pytest.fail('premature official lookup'))
-    result = sync(sha, scoreboard_bytes=scoreboard(status), scoreboard_source='fixture://scoreboard',
+    result = sync(sha, scoreboard_bytes=scoreboard(status, kickoff=kickoff), scoreboard_source='fixture://scoreboard',
                   stats_bytes=stats(), stats_source='fixture://stats', now=now, automatic_participation=True)
     assert result['grade_counts'] == []
     assert db.q1('SELECT COUNT(*) n FROM nfl_prop_grade_revisions')['n'] == 0
+
+
+def test_early_verified_final_sync_grades_available_stats_and_preserves_pending_players(setup):
+    sha, _ = setup
+    before = db.q1('SELECT payload FROM nfl_prop_research_freezes')['payload']
+    result = sync(sha, scoreboard_bytes=scoreboard(), stats_bytes=stats(),
+                  scoreboard_source='fixture://scoreboard', stats_source='fixture://stats', now=200.)
+    assert result['grade_counts'][0]['new_revisions'] == 2
+    assert result['status']['counts'] == {'participation_pending': 1}
+    assert result['status']['players_pending_participation'] == 2
+    evidence = json.loads(db.q1('SELECT payload FROM nfl_prop_grade_evidence')['payload'])
+    assert evidence['verified_final'] is True
+    assert db.q1('SELECT payload FROM nfl_prop_research_freezes')['payload'] == before
+    assert sync(sha, scoreboard_bytes=scoreboard(), stats_bytes=stats(),
+                scoreboard_source='fixture://scoreboard', stats_source='fixture://stats',
+                now=201.)['grade_counts'][0]['new_revisions'] == 0
+
+
+def test_early_validated_final_status_awaits_stats_instead_of_four_hour_wait(setup):
+    from edgeterminal import nfl_prop_result_ingest as ingest
+    sha, _ = setup
+    state = ingest._scoreboard(scoreboard(), ingest._games(sha))[GAME]
+    ingest._archive(sha, GAME, 'scoreboard', scoreboard(), 'fixture://scoreboard', 200., state)
+    assert status_view(sha, now=200.)['counts'] == {'awaiting_player_stats': 1}
+
+
+def test_targeted_result_sync_rejects_games_outside_the_immutable_freeze(setup):
+    sha, _ = setup
+    with pytest.raises(ValueError, match='not in prop freeze'):
+        sync(sha, game_ids=['nfl-2026-reg-03-tb-dal'], now=200.)
+    assert sync(sha, game_ids=[], now=200.)['network_requests'] == 0
+    assert db.q1('SELECT COUNT(*) n FROM nfl_prop_grade_revisions')['n'] == 0
+
+
+def test_public_result_reads_share_five_minute_cache_and_keep_original_source_times(setup, monkeypatch):
+    from edgeterminal import nfl_prop_result_ingest as ingest
+    sha, _ = setup
+    calls = []
+    monkeypatch.setattr(ingest, '_fetch', lambda url: calls.append(url) or
+                        (stats() if '.csv' in url else scoreboard()))
+    first = sync(sha, now=200.)
+    second = sync(sha, now=201.)
+    assert first['network_requests'] == 2
+    assert second['network_requests'] == 0 and len(calls) == 2
+    assert second['grade_counts'][0]['new_revisions'] == 0
+    assert all(row['retrieved_at'] == 200. for row in db.q(
+        "SELECT retrieved_at FROM nfl_prop_result_ingestions WHERE source_kind IN ('scoreboard','player_stats')"))
+    assert sync(sha, now=500.)['network_requests'] == 2
+    assert len(calls) == 4
 
 
 def test_result_sync_wait_pending_participation_revision_and_idempotency(setup):
@@ -333,13 +385,14 @@ def test_result_sync_wait_pending_participation_revision_and_idempotency(setup):
                    now=101)
     assert in_play["status"]["counts"] == {"in_progress": 1}
     assert in_play["network_requests"] == 0
-    waiting = sync(sha, scoreboard_bytes=scoreboard(),
+    waiting = sync(sha, scoreboard_bytes=scoreboard(), stats_bytes=stats(),
+                   stats_source='fixture://stats',
                    scoreboard_source="fixture://scoreboard", now=200)
-    assert waiting["status"]["counts"] == {"final_wait": 1}
-    assert db.q1("SELECT COUNT(*) n FROM nfl_prop_grade_revisions")["n"] == 0
+    assert waiting["status"]["counts"] == {"participation_pending": 1}
+    assert db.q1("SELECT COUNT(*) n FROM nfl_prop_grade_revisions")["n"] == 2
     first = sync(sha, scoreboard_bytes=scoreboard(), stats_bytes=stats(),
                  scoreboard_source="fixture://scoreboard", stats_source="fixture://stats", now=20000)
-    assert first["grade_counts"][0]["new_revisions"] == 2
+    assert first["grade_counts"][0]["new_revisions"] == 0
     report = json.loads((tmp_path / "forward-report.json").read_text())
     assert report["prospective_2026"]["quote_sides_graded"] == 2
     assert "retrospective_validation" in report

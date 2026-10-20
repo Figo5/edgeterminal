@@ -250,7 +250,7 @@ def _grade_row(quote: dict, evidence: dict, checked: dict, now: float,
 
 def grade_freeze(freeze_sha: str, evidence: list[dict], now: float | None = None,
                  rules_path: str | Path = nfl_prop_rules.DEFAULT_RULES) -> dict:
-    """Append evidence and only changed grades; delay and missing data fail closed."""
+    """Append changed grades; validated final evidence can bypass the legacy wait."""
     now = time.time() if now is None else now
     frozen = _freeze(freeze_sha)
     rules_sha, rules = nfl_prop_rules.load_rules(rules_path)
@@ -285,7 +285,8 @@ def grade_freeze(freeze_sha: str, evidence: list[dict], now: float | None = None
             if state["status"] in {"postponed", "suspended"}:
                 counts["pending_game"] += len(by_game[item["game_id"]])
                 continue
-            if now < state["kickoff"] + POSTGAME_DELAY_S:
+            verified_final = item.get('verified_final') is True and state['status'] == 'final'
+            if now < state["kickoff"] + POSTGAME_DELAY_S and not verified_final:
                 counts["pending_delay"] += len(by_game[item["game_id"]])
                 continue
             for quote in by_game[item["game_id"]]:

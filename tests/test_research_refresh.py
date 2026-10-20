@@ -50,19 +50,20 @@ def test_idle_refresh_is_idempotent_and_does_not_call_paid_provider(isolated, mo
     assert research_refresh.status(now=1001)["last_successful_research_refresh"] is not None
 
 
-@pytest.mark.parametrize('name', ['top_five_grading', 'game_grading'])
-def test_result_connection_failure_retries_after_fifteen_minutes(isolated, name):
+@pytest.mark.parametrize('name', ['top_five_grading', 'challenger_grading', 'game_grading'])
+def test_result_checks_and_source_failures_retry_after_five_minutes(isolated, name):
     def save(stamp, ok, error=''):
         db.ex('INSERT INTO research_refresh_steps(run_id,name,attempted_at,success,detail) '
               'VALUES(?,?,?,?,?)', (str(stamp), name, stamp, int(ok), json.dumps({'error': error})))
     save(1000., False, 'ValueError: freeze: ConnectError')
-    assert not research_refresh._result_due(name, 1899.)
-    assert research_refresh._result_due(name, 1900.)
+    assert not research_refresh._result_due(name, 1299.)
+    assert research_refresh._result_due(name, 1300.)
     save(1900., True)
-    assert not research_refresh._result_due(name, 2800.)
-    assert research_refresh._result_due(name, 1900. + 6 * 3600)
+    assert not research_refresh._result_due(name, 2199.)
+    assert research_refresh._result_due(name, 2200.)
     save(24000., False, 'ValueError: source identity mismatch')
-    assert not research_refresh._result_due(name, 24900.)
+    assert not research_refresh._result_due(name, 24299.)
+    assert research_refresh._result_due(name, 24300.)
 
 
 def test_game_grading_keeps_connection_cause_for_retry_policy(monkeypatch):

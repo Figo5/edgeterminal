@@ -101,11 +101,76 @@ def test_grading_includes_older_freezes_when_new_week_is_current(isolated, monke
     # No top-five selection is needed for the legacy immutable research record.
     calls = []
     monkeypatch.setattr(top.nfl_prop_result_ingest, 'sync',
-                        lambda sha, *, now, automatic_participation: calls.append(sha) or {'status': 'graded'}
+                        lambda sha, *, now, automatic_participation, game_ids: calls.append(sha) or {'status': 'graded'}
                         if automatic_participation else pytest.fail('official fallback disabled'))
     result = top.grade_due(100. + top.nfl_prop_grading.POSTGAME_DELAY_S)
     assert calls == [isolated]
     assert result['freezes_checked'] == 1
+
+
+def test_grading_discovers_started_games_before_four_hours_and_retries_every_five_minutes(isolated, monkeypatch):
+    calls = []
+    monkeypatch.setattr(top.nfl_prop_result_ingest, 'sync',
+                        lambda sha, **kwargs: calls.append((sha, kwargs)) or {'status': 'pending'})
+    assert top.grade_due(99.)['freezes_checked'] == 0
+    assert top.grade_due(101.)['freezes_checked'] == 1
+    assert top.grade_due(400.)['freezes_checked'] == 0
+    assert top.grade_due(401.)['freezes_checked'] == 1
+    assert [kwargs['game_ids'] for _, kwargs in calls] == [[GAME], [GAME]]
+    assert all(kwargs['automatic_participation'] for _, kwargs in calls)
+
+
+def test_grading_started_discovery_uses_current_earlier_kickoff(isolated, monkeypatch):
+    db.ex('UPDATE events SET start_time=? WHERE id=?', ('1970-01-01T00:00:50Z', GAME))
+    calls = []
+    monkeypatch.setattr(top.nfl_prop_result_ingest, 'sync',
+                        lambda sha, **kwargs: calls.append(kwargs['game_ids']) or {})
+    assert top.grade_due(75.)['freezes_checked'] == 1
+    assert calls == [[GAME]]
+
+
+@pytest.mark.parametrize('settled,stamp', [(True, 101.), (False, 8 * 86400.)])
+def test_grading_audits_settled_and_old_pending_games_daily(isolated, monkeypatch, settled, stamp):
+    if settled:
+        monkeypatch.setattr(top.nfl_prop_grading, '_latest',
+                            lambda sha: [{'quote_id': q['quote_id']} for q in quotes()])
+    calls = []
+    monkeypatch.setattr(top.nfl_prop_result_ingest, 'sync', lambda sha, **kwargs: calls.append(sha) or {})
+    assert top.grade_due(stamp)['freezes_checked'] == 1
+    assert top.grade_due(stamp + 300.)['freezes_checked'] == 0
+    assert top.grade_due(stamp + 86400.)['freezes_checked'] == 1
+    assert calls == [isolated, isolated]
+
+
+def test_newly_started_game_does_not_repoll_a_settled_game_in_the_same_freeze(isolated, monkeypatch):
+    later = 'nfl-2026-reg-05-atl-gb'
+    later_quotes = [{**row, 'canonical_game_id': later, 'quote_id': row['quote_id'] + 100,
+                     'kickoff_utc': 500.} for row in quotes()]
+    payload = json.dumps({'projections': quotes() + later_quotes}, sort_keys=True)
+    sha = hashlib.sha256(payload.encode()).hexdigest()
+    db.ex('INSERT INTO nfl_prop_capture_batches VALUES(?,?,?,?,?,?,?,?,?)',
+          ('combined-batch', 'sportsgameodds', 10., 'source', '{}', 1, 1, 24, '{}'))
+    db.ex('INSERT INTO nfl_prop_research_freezes VALUES(?,?,?,?)', (sha, 'combined-batch', 21., payload))
+    calls = []
+    monkeypatch.setattr(top.nfl_prop_result_ingest, 'sync',
+                        lambda freeze, **kwargs: calls.append((freeze, kwargs['game_ids'])) or {})
+    assert top.grade_due(101.)['freezes_checked'] == 2
+    monkeypatch.setattr(top.nfl_prop_grading, '_latest',
+                        lambda freeze: [{'quote_id': q['quote_id']} for q in quotes()])
+    assert top.grade_due(501.)['freezes_checked'] == 1
+    assert calls == [(isolated, [GAME]), (sha, [GAME]), (sha, [later])]
+
+
+def test_settled_visible_five_use_daily_audit_despite_unselected_pending_quotes(isolated, monkeypatch):
+    top.lock(isolated, 50.)
+    monkeypatch.setattr(top.nfl_prop_grading, '_latest', lambda sha: [
+        {'quote_id': i, 'research_statistical_result': 'won'} for i in (0, 2, 4, 6, 8)])
+    calls = []
+    monkeypatch.setattr(top.nfl_prop_result_ingest, 'sync', lambda sha, **kwargs: calls.append(sha) or {})
+    assert top.grade_due(101.)['freezes_checked'] == 1
+    assert top.grade_due(401.)['freezes_checked'] == 0
+    assert top.grade_due(86501.)['freezes_checked'] == 1
+    assert calls == [isolated, isolated]
 
 
 def test_targeted_feed_requests_real_receptions_id_and_bounded_books():

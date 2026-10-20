@@ -226,23 +226,89 @@ def test_nonfinal_status_stays_ungraded(frozen,status):
     assert db.q1("SELECT COUNT(*) n FROM nfl_research_grades")["n"]==0
 
 
-def test_moved_kickoff_waits_after_actual_start(frozen):
+def test_moved_kickoff_does_not_grade_before_actual_start(frozen):
     result=_result(frozen)
     result["start_time"]=datetime.fromtimestamp(frozen["kickoff"]+2*3600,timezone.utc).isoformat()
-    result["meta"]["retrieved_at"]=frozen["kickoff"]+5*3600
+    result["meta"]["retrieved_at"]=frozen["kickoff"]+3600
     assert sync_freeze(frozen["path"],provider=Provider(result),
-                       now=frozen["kickoff"]+5*3600)["graded"]==0
+                       now=frozen["kickoff"]+3600)["graded"]==0
+    result["meta"]["retrieved_at"]=frozen["kickoff"]+3*3600
     assert sync_freeze(frozen["path"],provider=Provider(result),
-                       now=frozen["kickoff"]+6*3600+1)["graded"]==1
+                       now=frozen["kickoff"]+3*3600)["graded"]==1
 
 
-def test_final_score_is_not_graded_before_four_hour_delay(frozen):
+def test_verified_final_score_grades_before_four_hour_delay(frozen):
     result=_result(frozen)
     result["meta"]["retrieved_at"]=frozen["kickoff"]+3*3600
     counts=sync_freeze(frozen["path"],provider=Provider(result),
-                       now=frozen["kickoff"]+4*3600-1)
-    assert counts["due"]==0 and counts["graded"]==0
+                       now=frozen["kickoff"]+3*3600)
+    assert counts["due"]==1 and counts["graded"]==1
+    assert db.q1("SELECT COUNT(*) n FROM nfl_research_grades")["n"]==1
+
+
+def test_result_provider_is_not_called_before_frozen_kickoff(frozen):
+    class BeforeKickoff:
+        def list_events_for_week(self, *args):
+            pytest.fail('result request before kickoff')
+    assert sync_freeze(frozen['path'], provider=BeforeKickoff(),
+                       now=frozen['kickoff']-1)['due'] == 0
     assert db.q1("SELECT COUNT(*) n FROM nfl_research_grades")["n"]==0
+
+
+@pytest.mark.parametrize('field,value', [('home_score', True), ('away_score', '-1'),
+                                       ('home_score', 'nan'), ('away_score', '2.5'),
+                                       ('source_url', None), ('source_url', '')])
+def test_early_final_requires_valid_score_and_explicit_source(frozen, field, value):
+    result = _result(frozen)
+    result['meta'].update(retrieved_at=frozen['kickoff']+3*3600)
+    result['meta'][field] = value
+    counts = sync_freeze(frozen['path'], provider=Provider(result),
+                         now=frozen['kickoff']+3*3600)
+    assert counts['graded'] == 0 and counts['unmatched'] == 1
+    assert db.q1('SELECT COUNT(*) n FROM nfl_research_grades')['n'] == 0
+
+
+def test_sync_all_polls_pending_every_five_minutes_and_settled_daily(frozen):
+    calls = []
+    result = _result(frozen)
+    stamp = frozen['kickoff']+3*3600
+    result['meta']['retrieved_at'] = stamp
+    result['status'] = 'STATUS_IN_PROGRESS'
+    class CountingProvider(Provider):
+        def list_events_for_week(self, *args):
+            calls.append(args)
+            return super().list_events_for_week(*args)
+    provider = CountingProvider(result)
+    assert sync_all(2026, frozen['path'].parent, provider=provider, now=stamp)['sync'][0]['unmatched'] == 1
+    sync_all(2026, frozen['path'].parent, provider=provider, now=stamp+299)
+    assert len(calls) == 1
+    result['status'] = 'STATUS_FINAL'
+    assert sync_all(2026, frozen['path'].parent, provider=provider, now=stamp+300)['sync'][0]['graded'] == 1
+    sync_all(2026, frozen['path'].parent, provider=provider, now=stamp+600)
+    assert len(calls) == 2
+    result['meta']['home_score'] = '28'
+    result['meta']['retrieved_at'] = stamp+300+86400
+    output = sync_all(2026, frozen['path'].parent, provider=provider, now=stamp+300+86400)
+    assert len(calls) == 3 and output['sync'][0]['corrected'] == 1
+    assert db.q1('SELECT COUNT(*) n FROM nfl_research_grades')['n'] == 2
+
+
+def test_sync_all_polls_stale_pending_games_daily(frozen):
+    calls = []
+    result = _result(frozen)
+    result['status'] = 'STATUS_SUSPENDED'
+    stamp = frozen['kickoff']+8*86400
+    class CountingProvider(Provider):
+        def list_events_for_week(self, *args):
+            calls.append(args)
+            return super().list_events_for_week(*args)
+    provider = CountingProvider(result)
+    assert sync_all(2026, frozen['path'].parent, provider=provider, now=stamp)['sync'][0]['unmatched'] == 1
+    sync_all(2026, frozen['path'].parent, provider=provider, now=stamp+300)
+    sync_all(2026, frozen['path'].parent, provider=provider, now=stamp+86399)
+    assert len(calls) == 1
+    sync_all(2026, frozen['path'].parent, provider=provider, now=stamp+86400)
+    assert len(calls) == 2
 
 
 def test_large_reschedule_requires_manual_review(frozen):

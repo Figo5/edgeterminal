@@ -165,3 +165,133 @@ def test_automatic_boxscore_grading_preserves_zero_dnp_push_and_missing(isolated
     assert grades[4]['actual_value'] is None and grades[5]['actual_value'] is None
     # Repeated worker checks cannot add another grade for the same result.
     assert nba_ops.grade_due(after+3601)['new_grades']==0
+
+
+def _grading_case(eid='401810831', status='final', props=True):
+    import copy
+    from test_nba_data import SUMMARY
+    raw=copy.deepcopy(SUMMARY);raw['header']['id']=eid
+    final=nba_data.parse_summary(raw)['game'];tip=nba_ops.parse_time(final['tipoff_utc']);before=tip-3600
+    source=nba_store.save_artifact(nba_data.fetch('https://site.api.espn.com/fixture','fixture',
+        getter=lambda *a:(200,b'{}'),now=before-20))
+    gid=final['game_id']
+    nba_store.upsert_game(dict(final,status='scheduled',home_score=None,away_score=None),source,now=before)
+    nba_store.save_forecast('game-'+gid,gid,'fixture',{'kind':'game',
+        'projection':{'home_margin':5,'total':210},'market':{'home_spread':-2.5,'total':210.5}},[source],now=before)
+    if props:
+        nba_store.save_forecast('props-'+gid,gid,'fixture',{'kind':'props','rows':[]},[source],now=before)
+        items=[]
+        for pid,prop,line in [('3064514','points',31.5),('3064514','rebounds',7),
+                              ('2968436','points',0.5),('3195','assists',0.5),('4433255','points',20.5)]:
+            quote=nba_store.save_quote_observation(gid,nba_store.PROP_MARKETS[prop],pid,'over',line,-110,
+                'fixture',before-10,source_artifact_id=source,now=before)
+            items.append({'forecast_id':'props-'+gid,'espn_player_id':pid,'prop':prop,'side':'over',
+                          'line':line,'quote_id':quote['quote_id']})
+        nba_store.lock_selections('top5-'+gid,items,now=before+10)
+    if status!='scheduled':
+        nba_store.upsert_game(dict(final,status=status,
+            home_score=final['home_score'] if status=='final' else None,
+            away_score=final['away_score'] if status=='final' else None),source,now=tip+3600)
+    return raw,final,source,tip
+
+
+def _summary_feed(monkeypatch, summaries, calls):
+    from urllib.parse import parse_qs, urlparse
+    def get(url, **kwargs):
+        eid=parse_qs(urlparse(url).query)['event'][0];calls.append(eid)
+        return 200,json.dumps(summaries[eid]).encode(),{}
+    fetch=nba_sources.fetch
+    monkeypatch.setattr(nba_sources,'fetch',lambda *a,**kw:fetch(*a,getter=get,**kw))
+
+
+def test_verified_final_before_four_hours_grades_game_and_all_five_props(isolated,monkeypatch):
+    raw,game,_,tip=_grading_case();calls=[]
+    _summary_feed(monkeypatch,{game['espn_event_id']:raw},calls)
+    result=nba_ops.grade_due(tip+3*3600)
+    assert result['ok'] and result['new_grades']==6
+    assert [g['result'] for g in nba_store.latest_grades('top5-'+game['game_id']).values()]==['win','push','loss','void','win']
+    assert json.loads(db.q1('SELECT payload FROM nba_game_grade_revisions')['payload'])['winners']=='won'
+    assert nba_ops.grade_due(tip+3*3600+301)['new_grades']==0
+    assert len(calls)==1
+
+
+def test_fresh_summary_receipt_after_worker_start_grades_every_selection(isolated,monkeypatch):
+    raw,game,_,tip=_grading_case();now=tip+3*3600;receipt=now+2
+    monkeypatch.setattr(nba_sources,'get_raw_meta',lambda *a,**kw:(200,json.dumps(raw).encode(),{}))
+    monkeypatch.setattr(nba_sources.time,'time',lambda:receipt)
+    result=nba_ops.grade_due(now)
+    assert result['ok'] and result['new_grades']==6
+    grades=nba_store.latest_grades('top5-'+game['game_id'])
+    assert len(grades)==5 and all(g['graded_at']==receipt for g in grades.values())
+    assert db.q1('SELECT graded_at FROM nba_game_grade_revisions')['graded_at']==receipt
+    assert db.kv_get('nba_grade_checked_'+game['game_id'])==receipt
+
+
+@pytest.mark.parametrize('checked_status',[None,'scheduled'])
+def test_saved_final_transition_bypasses_old_live_cooldown_and_cache(isolated,monkeypatch,checked_status):
+    import copy
+    raw,game,source,tip=_grading_case(status='scheduled');calls=[]
+    live=copy.deepcopy(raw);live['header']['competitions'][0]['status']['type'].update(
+        state='in',name='STATUS_IN_PROGRESS',completed=False)
+    feed={game['espn_event_id']:live};_summary_feed(monkeypatch,feed,calls)
+    now=tip+4*3600+10
+    assert nba_ops.grade_due(now)['pending']==1
+    db.kv_set('nba_grade_checked_'+game['game_id'],now)
+    db.kv_set('nba_grade_checked_status_'+game['game_id'],checked_status)
+    feed[game['espn_event_id']]=raw
+    nba_store.upsert_game(game,source,now=now+60)
+    assert nba_ops.grade_due(now+60)['new_grades']==6
+    assert len(calls)==2
+
+
+def test_incomplete_final_retries_after_five_minutes(isolated,monkeypatch):
+    import copy
+    raw,game,_,tip=_grading_case();calls=[]
+    incomplete=copy.deepcopy(raw);incomplete['boxscore']['players'][0]['statistics'][0]['totals'][1]='0'
+    feed={game['espn_event_id']:incomplete};_summary_feed(monkeypatch,feed,calls)
+    now=tip+3*3600
+    assert not nba_ops.grade_due(now)['ok']
+    assert nba_store.latest_grades('top5-'+game['game_id'])=={}
+    assert nba_ops.grade_due(now+299)['new_grades']==0
+    assert len(calls)==1
+    feed[game['espn_event_id']]=raw
+    assert nba_ops.grade_due(now+300)['new_grades']==6
+    assert len(calls)==2
+
+
+@pytest.mark.parametrize('nonfinal',['in_progress','suspended'])
+def test_multiple_finals_grade_while_nonfinal_stays_pending(isolated,monkeypatch,nonfinal):
+    summaries={};calls=[]
+    for i in range(3):
+        raw,game,_,tip=_grading_case(str(401810831+i),status='final' if i<2 else nonfinal)
+        if i==2:
+            raw['header']['competitions'][0]['status']['type'].update(
+                state='in',name='STATUS_SUSPENDED' if nonfinal=='suspended' else 'STATUS_IN_PROGRESS',completed=False)
+        summaries[game['espn_event_id']]=raw
+    _summary_feed(monkeypatch,summaries,calls)
+    result=nba_ops.grade_due(tip+5*3600)
+    assert result['ok'] and result['new_grades']==12 and result['pending']==1
+    assert len(calls)==3
+    assert nba_store.latest_grades('top5-'+game['game_id'])=={}
+
+
+def test_canceled_started_game_voids_before_four_hours(isolated,monkeypatch):
+    raw,game,_,tip=_grading_case(status='canceled');calls=[]
+    raw['header']['competitions'][0]['status']['type'].update(name='STATUS_CANCELED',state='pre',completed=False)
+    raw['boxscore']={}
+    _summary_feed(monkeypatch,{game['espn_event_id']:raw},calls)
+    result=nba_ops.grade_due(tip+3600)
+    assert result['ok'] and result['new_grades']==6
+    assert all(g['result']=='void' for g in nba_store.latest_grades('top5-'+game['game_id']).values())
+
+
+def test_worker_checks_grading_every_five_minutes(isolated,monkeypatch):
+    monkeypatch.setattr(nba_ops,'register_model',lambda *a:None)
+    for name in ('refresh_schedule','histories','forecasts','capture_props','evaluate'):
+        monkeypatch.setattr(nba_ops,name,lambda *a:{})
+    calls=[]
+    monkeypatch.setattr(nba_ops,'grade_due',lambda now:calls.append(now) or {})
+    now=1792500000.
+    nba_ops.run(now);nba_ops.run(now+299);nba_ops.run(now+300)
+    assert calls==[now,now+300]
+    assert nba_store.get_cadence('grading')['cadence_seconds']==300

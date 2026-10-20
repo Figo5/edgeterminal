@@ -2,8 +2,9 @@
 
 RESEARCH_ONLY / PASS. Pure functions over caller-supplied saved forecasts and
 official results: no provider calls, no database, no storage, no live picks.
-Grading is final-only with a postgame wait. Missing data is never interpreted
-as zero; a player zero grades only with proof the player actually played.
+Grading is final-only; verified final evidence can bypass the legacy wait.
+Missing data is never interpreted as zero; a player zero grades only with
+proof the player actually played.
 """
 from __future__ import annotations
 
@@ -45,7 +46,8 @@ def _gate(saved: Dict, official_result: Dict, now) -> Optional[str]:
     status = _status(official_result)
     if status in ("postponed", "suspended"):
         return "game_not_final"
-    if now_ts < tip + POSTGAME_DELAY_S:
+    verified = official_result.get('verified_final') is True and now_ts >= tip
+    if now_ts < tip + POSTGAME_DELAY_S and not verified:
         return "postgame_wait"
     if status == "canceled":
         return "game_canceled"
@@ -98,8 +100,8 @@ def _grade_market(entry: Dict, home_score: Optional[float],
 def grade_game(saved_forecast: Dict, official_result: Dict, now) -> Dict:
     """Grade a saved game's frozen markets against an official result.
 
-    won/lost/push on final scores after the postgame wait; postponed or
-    suspended stays pending; canceled is void once the wait has passed.
+    won/lost/push on verified final scores, or after the legacy wait; postponed or
+    suspended stays pending; canceled is void after verification or the wait.
     A missing final score is pending, never zero.
     """
     out = _base()
@@ -185,7 +187,7 @@ def grade_prop(saved_selection: Dict, official_result: Dict, now) -> Dict:
     DNP and inactive are explicit voids. An official stat of zero grades only
     with proof of play (documented minutes or participation evidence); without
     it the selection stays pending. Postponed/suspended stay pending, canceled
-    is void after the postgame wait, and missing stats are never zeros.
+    is void after verification or the legacy wait, and missing stats are never zeros.
     """
     out = _base()
     out.update(game_id=saved_selection.get("game_id"),

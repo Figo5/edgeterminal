@@ -41,8 +41,10 @@ starts on game day within eight hours of the first remaining tipoff. NBA also
 reserves shared request capacity for NFL. No Codex automation is needed.
 
 Final ESPN box scores must reconcile to team totals before statistical grading.
-The worker waits at least four hours after tipoff; missing player rows remain
-pending, explicit DNPs are void, and result corrections append evidence.
+The worker checks grading every five minutes and grades verified finals as soon
+as they are available, including games that finish within four hours of tipoff.
+Missing player rows remain pending and retry automatically; explicit DNPs are
+void, and result corrections append evidence.
 Comparison lines are saved separately if they first arrive after a forecast;
 new prices cannot replace the original comparison. **About & data** shows NBA's
 current checks, coverage limits, model fingerprint and chronological evaluation.
@@ -85,8 +87,11 @@ Research chat has been removed from the interface.
 The existing research LaunchAgent runs every five minutes while this Mac is awake.
 Missing prop boards are fetched in batches every six hours early in the week, with
 more frequent checks near kickoff, subject to the provider's quota guards. The UI
-reads new stored data every minute. Postgame grading uses verified result sources
-and appends corrections. Historical freezes remain intact; the original prop
+reads new stored data every minute. Original-model props, challenger props and
+saved game forecasts check results every five minutes. Verified finals can grade
+as soon as sourced statistics and participation evidence arrive, without a
+four-hour delay. Models share cached result feeds; settled records receive daily correction audits. Missing or conflicting evidence
+remains pending and retries automatically. Historical freezes remain intact; the original prop
 model's training cutoff and parameters stay fixed, while recent completed games
 update the next week's player features. ESPN supplies game odds; SportsGameOdds
 supplies player lines. This flow never calls Odds API.
