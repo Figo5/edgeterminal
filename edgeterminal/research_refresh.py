@@ -43,6 +43,8 @@ def _events(now: float) -> list[dict]:
 
 
 def interval(now: float, events: list[dict]) -> int:
+    if settings.nba_research_enabled:
+        return 300
     """Launchd ticks every five minutes; expensive steps run less often."""
     nearest = min((e["kickoff_utc"] - now for e in events if -6 * 3600 <= e["kickoff_utc"] - now),
                   default=float("inf"))
@@ -357,6 +359,9 @@ def _run_locked(now: float, *, record_tick: bool = True,
             capture_succeeded or paper_research.current_opportunities(now) or
             any(0 < e["kickoff_utc"] - now <= policy["quote_freshness_seconds"] for e in events)))):
         attempt("paper_policy", lambda: paper_research.evaluate(policy, now=now))
+    if settings.nba_research_enabled and _due('nba_research', now, 300):
+        from . import nba_ops
+        attempt('nba_research', lambda: nba_ops.run(now))
     cadence = interval(now, events)
     complete = time.time()
     successful = all(item["ok"] for item in steps.values())

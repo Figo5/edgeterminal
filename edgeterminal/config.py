@@ -72,6 +72,8 @@ class Settings:
     # can be reactivated by adding it here, but only these are fetched,
     # analysed, and served.
     active_sports = ["NFL"]
+    # NBA uses its own research pipeline; the legacy pick engine remains scoped above.
+    nba_research_enabled = _b("NBA_RESEARCH_ENABLED", True)
 
     # ---------------------------------------------------------------- research
     # Web research is a first-class provider, but it is budgeted: a request may

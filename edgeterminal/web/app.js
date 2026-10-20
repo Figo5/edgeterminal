@@ -1,5 +1,5 @@
 "use strict";
-const state={section:"nfl",board:null,match:null,eventId:null,filter:"all",sort:"confidence",config:null,performanceData:null,recordWeek:"all",refreshing:false,week:null,day:"all",account:null,saved:{games:[],props:[]},alerts:[],service:null,onlySaved:false};
+const state={league:"NFL",nbaDate:null,nbaData:null,section:"nfl",board:null,match:null,eventId:null,filter:"all",sort:"confidence",config:null,performanceData:null,recordWeek:"all",refreshing:false,week:null,day:"all",account:null,saved:{games:[],props:[]},alerts:[],service:null,onlySaved:false};
 const $=id=>document.getElementById(id);
 const esc=v=>String(v??"—").replace(/[&<>'"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;","'":"&#39;",'"':"&quot;"}[c]));
 const num=(v,d=1)=>v==null?"—":Number(v).toFixed(d);
@@ -118,7 +118,8 @@ function researchArtifacts(index){
 async function show(section){
  state.section=section;state.eventId=null;state.match=null;nav();$("main").innerHTML='<div class="loading">Loading stored research…</div>';
  try{
-  if(section==="nfl"){state.board=await api(boardUrl());board()}
+  if(state.league==="NBA"&&["nfl","performance","research"].includes(section)){await EdgeNBA.show(section,{state,api,main:$("main")});updateStatus(storedStatus());return}
+  if(section==="nfl"){state.board=await api(boardUrl());board();updateStatus(storedStatus())}
   if(section==="account"){await loadAccountData();accountView()}
   if(section==="performance")performance(await api("/api/product/performance"));
   if(section==="paper")paper(await api("/api/research/paper"));
@@ -129,14 +130,15 @@ async function show(section){
   }
  }catch(e){fail(e)}
 }
-async function openMatchup(id){state.section="nfl";nav();state.eventId=id;$("main").innerHTML='<div class="loading">Loading stored matchup projections…</div>';try{state.match=await api(`/api/product/nfl/${encodeURIComponent(id)}`);matchup();$("main").scrollTop=0}catch(e){fail(e)}}
+async function openMatchup(id){if(id.startsWith("nba-")){state.league="NBA";$("leagueSelect").value="NBA";state.section="nfl";state.eventId=id;nav();updateStatus(storedStatus());try{state.nbaMatch=await api(`/api/product/nba/${encodeURIComponent(id)}`);$("main").innerHTML=EdgeNBA.matchup(state.nbaMatch);$("main").scrollTop=0}catch(e){fail(e)}return}state.league="NFL";$("leagueSelect").value="NFL";state.section="nfl";nav();state.eventId=id;$("main").innerHTML='<div class="loading">Loading stored matchup projections…</div>';try{state.match=await api(`/api/product/nfl/${encodeURIComponent(id)}`);matchup();$("main").scrollTop=0}catch(e){fail(e)}}
 function rerender(){const top=$("main").scrollTop;matchup();$("main").scrollTop=top}
 let refreshNoticeTimer;
 function refreshNotice(message){const toast=$("toast");toast.textContent=message;toast.classList.remove("hidden");clearTimeout(refreshNoticeTimer);refreshNoticeTimer=setTimeout(()=>toast.classList.add("hidden"),4000)}
 function updateStatus(message){$("lastUpdated").textContent=message;$("mobileUpdated").textContent=message}
-function boardWeek(){const game=state.board?.games?.[0];const parts=game?.id?.split("-");return parts?.[3]?`Week ${Number(parts[3])}`:"NFL week"}
-function storedStatus(){return `${boardWeek()} · ${state.board?.latest_market_observed_at?`Prices last observed ${time(state.board.latest_market_observed_at)}`:"No observed prices"}`}
+function boardWeek(){if(state.league==="NBA")return `NBA ${state.nbaDate||"daily slate"}`;const game=state.board?.games?.[0];const parts=game?.id?.split("-");return parts?.[3]?`Week ${Number(parts[3])}`:"NFL week"}
+function storedStatus(){if(state.league==="NBA")return `${boardWeek()} · Saved research`;return `${boardWeek()} · ${state.board?.latest_market_observed_at?`Prices last observed ${time(state.board.latest_market_observed_at)}`:"No observed prices"}`}
 async function reloadStoredProduct(){
+ if(state.league==="NBA"&&["nfl","performance","research"].includes(state.section)){if(state.eventId){const d=await api(`/api/product/nba/${encodeURIComponent(state.eventId)}`);$("main").innerHTML=EdgeNBA.matchup(d)}else await EdgeNBA.show(state.section,{state,api,main:$("main")});return}
  if(state.section==="nfl"){
   const gameId=state.eventId;
   const [boardData,matchData]=await Promise.all([api(boardUrl()),gameId?api(`/api/product/nfl/${encodeURIComponent(gameId)}`):Promise.resolve(null)]);
@@ -159,7 +161,7 @@ async function refreshProduct(announce=true){
  const button=$("refreshButton"),top=$("main").scrollTop,section=state.section,eventId=state.eventId;
  state.refreshing=true;button.disabled=true;button.setAttribute("aria-busy","true");button.textContent="↻ Checking…";
  try{
-  const result=await api("/api/product/nfl/check",{method:"POST"});
+  const result=await api(state.league==="NBA"?"/api/product/nba/check":"/api/product/nfl/check",{method:"POST"});
   state.service=await api("/api/product/status");
   await loadAccountData();const open=openDisclosures();await reloadStoredProduct();restoreDisclosures(open);if(state.section===section&&state.eventId===eventId)$("main").scrollTop=top;
   updateStatus(storedStatus());
@@ -176,10 +178,17 @@ async function refreshProduct(announce=true){
   refreshNotice(`Update check failed · Showing stored ${boardWeek()}`);
  }finally{state.refreshing=false;button.disabled=false;button.removeAttribute("aria-busy");button.textContent="↻ Check updates"}
 }
-function bind(){document.addEventListener("submit",async e=>{if(e.target.id!=="loginForm")return;e.preventDefault();const b=e.target.querySelector("button");b.disabled=true;try{const r=await api("/api/auth/request-link",{method:"POST",body:JSON.stringify({email:$("loginEmail").value})});$("loginMessage").textContent=r.message}catch(error){$("loginMessage").textContent=error.message}finally{b.disabled=false}});document.addEventListener("click",async e=>{const sg=e.target.closest("[data-save-game]");if(sg){sg.disabled=true;await toggleSaved("games",sg.dataset.saveGame);sg.disabled=false;return}const sp=e.target.closest("[data-save-prop]");if(sp){sp.disabled=true;await toggleSaved("props",sp.dataset.saveProp);sp.disabled=false;return}if(e.target.closest("[data-only-saved]")){state.onlySaved=!state.onlySaved;board();return}if(e.target.closest("#readAlerts")){try{await api("/api/account/alerts/read",{method:"POST"});await loadAccountData();accountView()}catch(error){refreshNotice(error.message)}return}if(e.target.closest("#signoutButton")){try{await api("/api/auth/signout",{method:"POST"});await loadAccountData();show("nfl")}catch(error){refreshNotice(error.message)}return}const s=e.target.closest("[data-section]");if(s){show(s.dataset.section);return}const rw=e.target.closest("[data-record-week]");if(rw){state.recordWeek=rw.dataset.recordWeek;performance(state.performanceData);return}const g=e.target.closest("[data-event]");if(g){openMatchup(g.dataset.event);return}if(e.target.closest("#backBtn")){show("nfl");return}const day=e.target.closest("[data-day]");if(day){state.day=day.dataset.day;if(state.day==="all")state.onlySaved=false;board();return}const f=e.target.closest("[data-prop-filter]");if(f){state.filter=f.dataset.propFilter;rerender()}});document.addEventListener("change",e=>{if(e.target.id==="recordWeek"){state.recordWeek=e.target.value;performance(state.performanceData);return}if(e.target.id==="weekSelect"){state.week=Number(e.target.value)===state.board.current_week?null:Number(e.target.value);state.day="all";show("nfl");return}if(e.target.id==="propSort"){state.sort=e.target.value;rerender()}});$("refreshButton").onclick=()=>refreshProduct()}
+function bind(){document.addEventListener("submit",async e=>{if(e.target.id!=="loginForm")return;e.preventDefault();const b=e.target.querySelector("button");b.disabled=true;try{const r=await api("/api/auth/request-link",{method:"POST",body:JSON.stringify({email:$("loginEmail").value})});$("loginMessage").textContent=r.message}catch(error){$("loginMessage").textContent=error.message}finally{b.disabled=false}});document.addEventListener("click",async e=>{const ng=e.target.closest("[data-nba-game]");if(ng){openMatchup(ng.dataset.nbaGame);return}const nd=e.target.closest("[data-nba-date]");if(nd){await changeNbaDate(nd.dataset.nbaDate);return}const sg=e.target.closest("[data-save-game]");if(sg){sg.disabled=true;await toggleSaved("games",sg.dataset.saveGame);sg.disabled=false;return}const sp=e.target.closest("[data-save-prop]");if(sp){sp.disabled=true;await toggleSaved("props",sp.dataset.saveProp);sp.disabled=false;return}if(e.target.closest("[data-only-saved]")){state.onlySaved=!state.onlySaved;board();return}if(e.target.closest("#readAlerts")){try{await api("/api/account/alerts/read",{method:"POST"});await loadAccountData();accountView()}catch(error){refreshNotice(error.message)}return}if(e.target.closest("#signoutButton")){try{await api("/api/auth/signout",{method:"POST"});await loadAccountData();show("nfl")}catch(error){refreshNotice(error.message)}return}const s=e.target.closest("[data-section]");if(s){show(s.dataset.section);return}const rw=e.target.closest("[data-record-week]");if(rw){state.recordWeek=rw.dataset.recordWeek;performance(state.performanceData);return}const g=e.target.closest("[data-event]");if(g){openMatchup(g.dataset.event);return}if(e.target.closest("#backBtn")){show("nfl");return}const day=e.target.closest("[data-day]");if(day){state.day=day.dataset.day;if(state.day==="all")state.onlySaved=false;board();return}const f=e.target.closest("[data-prop-filter]");if(f){state.filter=f.dataset.propFilter;rerender()}});document.addEventListener("change",e=>{if(e.target.id==="leagueSelect"){state.league=e.target.value;state.eventId=null;show("nfl");history.replaceState(null,"",state.league==="NBA"?"?league=NBA":location.pathname);return}if(e.target.id==="nbaDate"){state.nbaDate=e.target.value;show("nfl");return}if(e.target.id==="recordWeek"){state.recordWeek=e.target.value;performance(state.performanceData);return}if(e.target.id==="weekSelect"){state.week=Number(e.target.value)===state.board.current_week?null:Number(e.target.value);state.day="all";show("nfl");return}if(e.target.id==="propSort"){state.sort=e.target.value;rerender()}});$("refreshButton").onclick=()=>refreshProduct()}
 
 async function pollStoredBoard(){
  if(document.hidden||state.refreshing)return;
  await refreshProduct(false);
 }
-async function init(){bind();nav();try{state.config=await api("/api/config");const signInToken=location.hash.startsWith("#signin=")?location.hash.slice(8):null;if(signInToken){history.replaceState(null,"",location.pathname);try{await api("/api/auth/signin",{method:"POST",body:JSON.stringify({token:signInToken})})}catch(error){refreshNotice(error.message)}}await loadAccountData();state.service=await api("/api/product/status");$("refreshButton").textContent="↻ Check updates";state.board=await api(boardUrl());updateStatus(storedStatus());board();void refreshProduct(false);setInterval(pollStoredBoard,60*1000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)pollStoredBoard()})}catch(e){fail(e)}}init();
+async function changeNbaDate(value){
+ const current=state.nbaDate||new Date().toLocaleDateString("en-CA",{timeZone:"America/New_York"});
+ if(value==="today")state.nbaDate=null;
+ else if(value==="previous"||value==="next"){const d=new Date(current+"T12:00:00Z");d.setUTCDate(d.getUTCDate()+(value==="next"?1:-1));state.nbaDate=d.toISOString().slice(0,10)}
+ else state.nbaDate=value;
+ await show("nfl");
+}
+async function init(){state.league=new URLSearchParams(location.search).get("league")==="NBA"?"NBA":"NFL";$("leagueSelect").value=state.league;bind();nav();try{state.config=await api("/api/config");const signInToken=location.hash.startsWith("#signin=")?location.hash.slice(8):null;if(signInToken){history.replaceState(null,"",location.pathname);try{await api("/api/auth/signin",{method:"POST",body:JSON.stringify({token:signInToken})})}catch(error){refreshNotice(error.message)}}await loadAccountData();state.service=await api("/api/product/status");$("refreshButton").textContent="↻ Check updates";state.board=await api(boardUrl());updateStatus(storedStatus());if(state.league==="NBA")await show("nfl");else board();void refreshProduct(false);setInterval(pollStoredBoard,60*1000);document.addEventListener("visibilitychange",()=>{if(!document.hidden)pollStoredBoard()})}catch(e){fail(e)}}init();

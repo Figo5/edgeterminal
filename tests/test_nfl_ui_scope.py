@@ -9,15 +9,16 @@ def _frontend():
             (ROOT / "edgeterminal/web/app.js").read_text())
 
 
-def test_frontend_is_nfl_projection_product_with_secondary_research():
+def test_frontend_supports_nfl_and_daily_nba_with_secondary_research():
     html, js = _frontend()
     visible = html + js
-    assert "NFL projections" in html
+    assert '<option value="NFL">NFL</option>' in html
+    assert '<option value="NBA">NBA</option>' in html
     for section in ('["nfl","Projections"]', '["performance","Season record"]',
                     '["research","About & data"]'):
         assert section in js
     assert '"CFB"' not in visible
-    assert '"NBA"' not in visible
+    assert '/static/nba_ui.js' in html
     assert '"PGA"' not in visible
     assert "Week 3 game and prop freezes" in js
 

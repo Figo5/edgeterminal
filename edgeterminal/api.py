@@ -18,7 +18,7 @@ from . import calibration, db, engine, logs, nfl_forward_grading, nfl_market_cap
 from .agents import llm
 from .config import ROOT, settings
 from .providers import registry as R
-from . import beta_access, beta_api, product_insights, visit_refresh
+from . import beta_access, beta_api, product_insights, visit_refresh, nba_ops
 
 logging.basicConfig(level=logging.INFO,
                     format="%(asctime)s %(levelname)s %(name)s: %(message)s")
@@ -76,10 +76,11 @@ async def beta_boundary(request: Request, call_next):
     if settings.hosted_mode:
         readable = {'/api/health', '/api/config', '/api/product/nfl', '/api/product/performance',
                     '/api/product/status', '/api/product/methodology', '/api/product/nfl/refresh',
-                    '/api/product/nfl/check'}
+                    '/api/product/nfl/check', '/api/product/nba', '/api/product/nba/performance',
+                    '/api/product/nba/status', '/api/product/nba/check'}
         member_path = path.startswith('/api/account') or path in {
             '/api/auth/request-link', '/api/auth/signin', '/api/auth/signout'}
-        matchup_path = path.startswith('/api/product/nfl/nfl-')
+        matchup_path = path.startswith('/api/product/nfl/nfl-') or path.startswith('/api/product/nba/nba-')
         if path.startswith('/api/') and not (member_path or path in readable or matchup_path):
             return JSONResponse({'detail': 'This endpoint is private to the research operator'}, status_code=403)
         if path == '/api/product/nfl/refresh':
@@ -148,13 +149,13 @@ def health() -> Dict:
 @app.get("/api/config")
 def config() -> Dict:
     if settings.hosted_mode:
-        return {'sports': ['NFL'], 'product_scope': 'NFL-only', 'hosted_mode': True,
+        return {'sports': ['NFL']+(['NBA'] if settings.nba_research_enabled else []), 'product_scope': 'NFL and NBA research', 'hosted_mode': True,
                 'model_version': settings.model_version, 'confidence_version': settings.confidence_version,
                 'demo_mode': False, 'llm_enabled': False}
     lr = engine.last_refresh()
     return dict(
         hosted_mode=False,
-        sports=list(settings.active_sports), product_scope="NFL-only",
+        sports=list(settings.active_sports)+(['NBA'] if settings.nba_research_enabled else []), product_scope="NFL and NBA research",
         preferred_books=settings.preferred_books,
         official_pick_confidence=settings.official_pick_confidence,
         lean_confidence=settings.lean_confidence, min_edge_pct=settings.min_edge_pct,
@@ -211,6 +212,41 @@ def product_nfl_board(request: Request, week: Optional[int] = None) -> Dict:
     if week is not None and not 1 <= week <= 18:
         raise HTTPException(422, "Week must be between 1 and 18")
     return beta_access.board(product_views.weekly_board(week), request)
+
+
+@app.get('/api/product/nba')
+def product_nba_board(request: Request, date: Optional[str] = None) -> Dict:
+    try:
+        return beta_access.board(nba_ops.board(date),request)
+    except ValueError as exc:
+        raise HTTPException(422,'NBA slate date must be a valid YYYY-MM-DD date') from exc
+
+
+@app.get('/api/product/nba/performance')
+def product_nba_performance() -> Dict:
+    return nba_ops.performance()
+
+
+@app.get('/api/product/nba/status')
+def product_nba_status() -> Dict:
+    return nba_ops.status()
+
+
+@app.post('/api/product/nba/check')
+def product_nba_check() -> Dict:
+    # The same visit throttle and worker lock cover both sports and all tabs.
+    result=product_visit_check()
+    if any(r['status']=='error' for r in nba_ops.status()['checks']):
+        return dict(result,ok=False,attention='nba_updates')
+    return result
+
+
+@app.get('/api/product/nba/{game_id}')
+def product_nba_matchup(game_id: str,request: Request) -> Dict:
+    try:
+        return beta_access.matchup(nba_ops.matchup(game_id),request)
+    except ValueError as exc:
+        raise HTTPException(404,'Unknown NBA game') from exc
 
 
 @app.post("/api/product/nfl/refresh")

@@ -345,3 +345,12 @@ a:hover{text-decoration-color:var(--text)}
 .coverage-row{display:grid;grid-template-columns:120px minmax(0,1fr) auto;gap:24px;align-items:start;padding:16px 0;border-bottom:1px solid var(--border)}
 .coverage-row p{margin:0 0 4px}.coverage-row small{color:var(--secondary)}
 @media(max-width:680px){.coverage-row{grid-template-columns:minmax(0,1fr) auto;gap:8px}.coverage-row>div{grid-column:1/-1;grid-row:2}}
+
+/* NBA follows the same quiet research board with an Eastern daily slate. */
+.league-label select{font:inherit;color:var(--text,#eee);background:#171717;border:1px solid #3b3b3b;border-radius:5px;padding:7px 10px;min-width:68px}
+.nba-date-controls{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.nba-date-controls input{font:inherit;color:inherit;background:transparent;border:1px solid #444;border-radius:5px;padding:8px;color-scheme:dark;min-height:40px}
+.nba-date-controls .btn{min-width:40px;min-height:40px}
+.nba-fingerprint{overflow-wrap:anywhere;font-family:monospace;font-size:12px}
+.nba-market-summary{margin-bottom:15px}
+@media(max-width:760px){.league-label{margin-left:auto}#topbar .topright{margin-left:0}.nba-date-controls{gap:6px}.nba-date-controls input{max-width:165px}}

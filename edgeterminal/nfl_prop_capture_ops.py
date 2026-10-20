@@ -33,8 +33,10 @@ def cadence(seconds_to_kickoff: float) -> int | None:
 
 
 def _attempts(now: float) -> list[dict]:
-    return db.q("SELECT * FROM nfl_prop_capture_attempts WHERE attempted_at>=? "
+    from .nba_quotes import shared_rows
+    rows = db.q("SELECT * FROM nfl_prop_capture_attempts WHERE attempted_at>=? "
                 "ORDER BY attempted_at DESC", (now - MONTH_SECONDS,))
+    return sorted(rows + shared_rows(now), key=lambda r: r['attempted_at'], reverse=True)
 
 
 def _latest_per_game(rows: list[dict]) -> dict[str, dict]:
@@ -166,7 +168,8 @@ def capture(season: int, week: int, game_ids: list[str], now: float,
 
 def health(now: float | None = None, events: list[dict] | None = None) -> dict:
     stamp = time.time() if now is None else now
-    rows = _attempts(stamp)
+    # Last NFL capture evidence stays NFL-specific; plan() reports the shared budget.
+    rows = [r for r in _attempts(stamp) if 'provider_notices' in r]
     latest = rows[0] if rows else None
     last_success = next((r for r in rows if r["success"]), None)
     events = events or []

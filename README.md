@@ -5,9 +5,9 @@
 > are deliberately disabled (see *Release limits* below). Use it to browse verified
 > prices and research a game, not as a source of betting advice.
 
-EdgeTerminal is a local **NFL-only** betting research and analytics terminal. It compares stored prices with deterministic projections, exposes confidence and risk inputs, records odds history. It does **not** place bets.
+EdgeTerminal is a local **NFL and NBA** research and analytics terminal. It compares stored prices with deterministic projections, exposes confidence and risk inputs, and records source evidence. It does **not** place bets.
 
-The active product and UI are NFL-only. Reusable provider abstractions for other sports remain dormant for future expansion.
+The NFL board follows weekly slates; NBA follows Eastern calendar dates. Each sport has its own statistical record. Other sports remain dormant.
 
 ## Quick start
 
@@ -24,7 +24,37 @@ PORT=8799 .venv/bin/python -m uvicorn edgeterminal.api:app --host 127.0.0.1 --po
 
 Open <http://127.0.0.1:8799>.
 
-## Weekly projections and top-five record
+## NBA daily research
+
+Choose **NBA** in the sport selector, or open `http://127.0.0.1:8799/?league=NBA`.
+The daily board shows saved game forecasts, ESPN game prices and five supported
+player/stat selections per game. Markets are points, rebounds, assists,
+three-pointers made, and points + rebounds + assists. Exactly five distinct
+markets must be available before tipoff; missing lines wait and past games are
+never backfilled. NBA uses its own fixed baseline model and prospective record.
+
+The built-in research worker checks NBA automatically while the Mac is awake.
+Public ESPN responses are cached and archived with URLs, receipt times and
+hashes. SportsGameOdds NBA requests share NFL's quota/cooldown guards, with an
+additional limit of 48 batches per 30 days and two per rolling day. Capture
+starts on game day within eight hours of the first remaining tipoff. NBA also
+reserves shared request capacity for NFL. No Codex automation is needed.
+
+Final ESPN box scores must reconcile to team totals before statistical grading.
+The worker waits at least four hours after tipoff; missing player rows remain
+pending, explicit DNPs are void, and result corrections append evidence.
+Comparison lines are saved separately if they first arrive after a forecast;
+new prices cannot replace the original comparison. **About & data** shows NBA's
+current checks, coverage limits, model fingerprint and chronological evaluation.
+NBA league endpoints were unavailable during integration, so ESPN is explicitly
+identified as the result/statistics source. PASS / RESEARCH_ONLY remains active.
+
+See [model protocol](docs/research/nba_model.md) and
+[data contracts](docs/research/nba_data_contract.md). Historical evaluation uses
+earlier games only and stays separate from the prospective record; the current
+roster sample has survivorship bias and does not establish a betting edge.
+
+## Weekly NFL projections and top-five record
 
 The home screen shows the current NFL week, projected scores, winners, spreads,
 totals, and five player props per game. Once ESPN's default week is entirely final,

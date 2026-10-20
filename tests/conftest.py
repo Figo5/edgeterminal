@@ -5,10 +5,13 @@ from pathlib import Path
 import pytest
 
 from edgeterminal import nfl_forward_grading, nfl_prop_challenger
+from edgeterminal.config import settings
 
 
 @pytest.fixture(autouse=True)
 def isolated_default_research_reports(tmp_path, monkeypatch):
+    # NBA integration tests opt in explicitly. Legacy worker fixtures must not fetch live NBA feeds.
+    monkeypatch.setattr(settings, 'nba_research_enabled', False)
     # Worker tests use temporary databases. Their empty grades must never
     # replace the real challenger's cached performance summary.
     monkeypatch.setattr(nfl_prop_challenger, 'DIRECTORY', tmp_path / 'prop_challenger')
