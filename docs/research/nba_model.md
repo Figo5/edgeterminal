@@ -1,4 +1,10 @@
-# NBA research baseline model and statistical grading
+# NBA research model and statistical grading
+
+Active version: **nba-research-2.0.1** (October 27 upgrade). New prop forecasts
+use a frozen opportunity model and historical probability validation. Existing
+saved forecasts and grades remain immutable. There is no additional challenger
+record. The game projection component remains `nba-game-baseline-1.1.0` because
+the tested game extensions did not improve historical accuracy.
 
 Status: **RESEARCH_ONLY / PASS**. No official picks, no live wagering, no
 provider calls, no database access. `edgeterminal/nba_model.py` and
@@ -44,13 +50,15 @@ Time, eligibility and identity semantics:
 
 ## Fixed parameters and fingerprint
 
-All constants are a-priori structural choices fixed before any forward record
-exists. **None were tuned on outcomes.** Home-court advantage, the margin and
+Structural constants remain fixed. **The v2 prop fit uses only historical games
+before the original October 1, 2026 cutoff; it never trains on running-season
+forward results.** Home-court advantage, the margin and
 total sigmas, the per-market sd floors and the back-to-back penalties are
 carried unchanged from the existing `analytics/nba.py` priors; the remaining
 constants are eligibility, selection, cadence, lag and probability protocol
-settings. The canonical JSON of `PARAMETERS` — including the
-selection/cadence/lag/probability settings — is SHA-256 fingerprinted and
+settings. The canonical JSON of `PARAMETERS` — including the SHA-256 of the
+complete fitted `nba_prop_parameters.json` artifact and all
+selection/cadence/lag/probability settings — is fingerprinted and
 embedded in every output as `parameter_fingerprint`; any parameter change
 changes the fingerprint. The parent registry freezes this fingerprint before
 any forward record.
@@ -71,7 +79,7 @@ any forward record.
 | `postgame_delay_s` | 14400 | legacy wait for results without a verified final box score |
 | `blocked_availability` | doubtful, inactive, out | injury statuses that block selection |
 | `prop_sd_floor` | points 5.5, rebounds 2.2, assists 1.8, threes 1.3, pra 7.0 | variance floors (from `analytics/nba.py`) |
-| `probability` | continuity correction on integer lines; push mass excluded from both sides; Poisson/NB counts; normal points/pra | probability settings |
+| `probability` | historical validation selects empirical standardized residuals or the established parametric distribution per market; explicit push mass | probability settings |
 
 ## Game projection
 
@@ -109,19 +117,37 @@ Markets: `points`, `rebounds`, `assists`, `threes`, `pra`.
   unknown minutes or invalid stats are excluded; sparse identities never
   borrow another player's rows. Fewer than `min_prop_games` rows is
   `unavailable`, never guessed.
-- Projection = mean per-minute rate over the window × mean window minutes
-  (minutes-aware). Uncertainty = sample sd of the stat floored at
-  `prop_sd_floor`. Volatile minutes (`minutes_flag`) are surfaced.
-- Probabilities require an explicit line: normal for points/pra, Poisson or
-  negative binomial for the discrete count markets (`rebounds`, `assists`,
-  `threes`). **Integer lines carry push mass:** count markets take the exact
-  discrete mass, points/pra use a continuity correction (over is
-  X ≥ line+1, under is X ≤ line−1). The output reports `probability_over`,
+- V2 separately forecasts minutes from the previous 15/5/3 games, recent
+  median, latest minutes, volatility, role change and time since last play.
+  A pooled stat-per-minute rate (total stat / total minutes) is multiplied by
+  those forecast minutes. January development selected this opportunity
+  method over the old baseline and a regularized direct-production model for
+  all five markets. Fitted coefficients remain frozen during refresh.
+- Uncertainty starts with the player's sample stat sd floored at
+  `prop_sd_floor`. February validation chooses the empirical standardized
+  residual distribution only when it improves both the full-distribution CRPS
+  and a common synthetic-threshold Brier score; otherwise the parametric law
+  stays. Rebounds use empirical residuals; points/PRA retain a normal law and
+  assists/threes retain Poisson/negative-binomial. Empirical/count distributions
+  exclude negative statistics; points/PRA use a rounded, censored normal that
+  collects negative latent outcomes at zero. This preserves probabilities on
+  positive standard lines and makes an under-zero result impossible.
+  Volatile minutes (`minutes_flag`) remain surfaced.
+- Probabilities require an explicit line. **Integer lines carry push mass**
+  excluded from both sides. The output reports `probability_over`,
   `probability_under` and `probability_push`; push mass is excluded from
   both sides and the three sum to 1. Half lines have zero push mass.
   Without a line only the raw projection is returned.
-- Documented baseline limits (also in the output `limits`): descriptive
-  per-minute baseline; no opponent, pace, matchup or injury adjustment.
+- The exact point/probability methods, calibration count and projected minutes
+  are saved with new selections. Team/opponent/injury usage adjustments are
+  not invented from the current roster; reliable historical role/context data
+  are needed before adding them.
+- Targets before March 1, 2026 retain the unfitted baseline so later fitted
+  calibration data cannot leak into earlier historical forecasts.
+- Canonical artifact SHA and the exact serving source files (`nba_model.py`,
+  `nba_prop_model.py`, `pricing.py`) are pinned in `nba_model_manifest.py` and
+  bound into the artifact fingerprint. Changed coefficients or feature math
+  fail closed until a newly versioned model is built and reviewed.
 
 ## Selection
 
@@ -154,6 +180,29 @@ Markets: `points`, `rebounds`, `assists`, `threes`, `pra`.
   treated as healthy.
 
 ## Historical evaluation
+
+`nba_model.historical_evaluation()` exposes the frozen v2 acceptance report
+embedded in the fitted artifact. The fitting tool (`python -m
+edgeterminal.nba_model_fit`) reads existing source-verified historical rows and
+makes no provider calls. It is never invoked by the automatic refresh.
+
+The procedure uses games before January 1 for initial fitting, January for
+point-method selection, coefficients fitted before February 1, and February
+for probability-method selection/calibration. March–April labels are excluded
+from all coefficient fitting and per-market method selection. The final sample
+contains 6,094 player games per market. Minutes MAE fell from 5.336 to 5.032;
+point forecast MAE improved in every market. Full per-market MAE, CRPS, Brier,
+sample sizes and exact source hashes are in
+`reports/nba/model_upgrade_2026-10-27.json`.
+
+This is **retrospective historical validation**, not independent proof of future
+performance: examining the initial March–April distribution report informed
+addition of the generic February acceptance gate. Current-roster sampling also
+has survivorship bias, and synthetic thresholds are not historical sportsbook
+lines. No retrospective selection win rate or profitability is claimed. New
+saved predictions provide the prospective evidence for v2.
+
+The unchanged team game evaluation remains:
 
 `evaluate_history(team_history, holdout_start, history_complete=True)`
 

@@ -46,3 +46,46 @@ def test_hosted_nba_preview_hides_future_props_and_private_refresh(isolated,monk
     assert 'private player' not in response.text
     assert client.post('/api/product/nba/check').status_code==403
     assert client.post('/api/research/refresh',headers={'Origin':settings.public_url}).status_code==403
+
+
+def test_nba_check_does_not_show_an_unrelated_nfl_snapshot_warning(isolated,monkeypatch):
+    monkeypatch.setattr(visit_refresh,'check',lambda:{'ok':False,'status':'needs_attention',
+        'attention':'weekly_forecast','did_work':False})
+    result=TestClient(app).post('/api/product/nba/check').json()
+    assert result['ok'] and result['attention'] is None
+
+
+@pytest.mark.parametrize('kind',['retuning','integrity'])
+def test_nba_learning_failure_is_still_visible_when_nfl_snapshot_is_blocked(isolated,monkeypatch,kind):
+    monkeypatch.setattr(visit_refresh,'check',lambda:{'ok':False,'status':'needs_attention',
+        'attention':'weekly_forecast'})
+    monkeypatch.setattr(nba_ops,'status',lambda:{'checks':[],
+        'learning':{kind:{'status':'error'}}})
+    result=TestClient(app).post('/api/product/nba/check').json()
+    assert not result['ok'] and result['attention']=='nba_updates'
+
+
+@pytest.mark.parametrize('name',['current_game_odds','top_five_grading','prop_near_game_2026_08'])
+def test_nba_check_ignores_other_nfl_source_failures(isolated,monkeypatch,name):
+    db.ex('INSERT INTO research_refresh_steps(run_id,name,attempted_at,success,detail) VALUES(?,?,?,?,?)',
+          ('nfl-failure',name,900.,0,'{}'))
+    monkeypatch.setattr(visit_refresh,'check',lambda:{'ok':False,'status':'needs_attention',
+        'attention':'updates','did_work':False})
+    result=TestClient(app).post('/api/product/nba/check').json()
+    assert result['ok'] and result.get('attention') is None
+
+
+def test_nfl_check_ignores_other_nba_source_failures(isolated,monkeypatch):
+    db.ex('INSERT INTO research_refresh_steps(run_id,name,attempted_at,success,detail) VALUES(?,?,?,?,?)',
+          ('nba-failure','nba_research',900.,0,'{}'))
+    monkeypatch.setattr(visit_refresh,'check',lambda:{'ok':False,'status':'needs_attention',
+        'attention':'updates','did_work':False})
+    result=TestClient(app).post('/api/product/nfl/check').json()
+    assert result['ok'] and result.get('attention') is None
+
+
+@pytest.mark.parametrize('endpoint',['nfl','nba'])
+def test_shared_page_runtime_failure_stays_visible_in_both_sports(isolated,monkeypatch,endpoint):
+    monkeypatch.setattr(visit_refresh,'check',lambda:{'ok':False,'status':'needs_attention','did_work':False})
+    result=TestClient(app).post('/api/product/'+endpoint+'/check').json()
+    assert not result['ok']

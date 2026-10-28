@@ -1,0 +1,460 @@
+{
+  "activated": false,
+  "calibration_cutoff": 1791504899.0,
+  "candidate_id": "4c1fa0b0f09ea772db854be5370524de9c559bd7abdba8f3c98c712bb6c5b3c3",
+  "fit_boundary_week": [
+    2026,
+    3
+  ],
+  "gate": {
+    "aggregate": {
+      "baseline": {
+        "brier": 0.26416679813411587,
+        "calibration_error": 0.11481202016864275,
+        "log_loss": 0.7327565893972338,
+        "mae": 15.69531181543475
+      },
+      "candidate": {
+        "brier": 0.2844961772014696,
+        "calibration_error": 0.18258732350642348,
+        "log_loss": 0.7876385779334534,
+        "mae": 16.74852682488616
+      }
+    },
+    "game_brier_upper95": 0.03523420368561102,
+    "games": 43,
+    "markets": {
+      "passing_yards": {
+        "baseline": {
+          "brier": 0.27725721903510886,
+          "calibration_error": 0.1342954990215264,
+          "log_loss": 0.765657610860159,
+          "mae": 55.74649105725774
+        },
+        "candidate": {
+          "brier": 0.29381079676245636,
+          "calibration_error": 0.1965174129353234,
+          "log_loss": 0.7946494634404375,
+          "mae": 60.2501418012845
+        },
+        "games": 19,
+        "n": 21
+      },
+      "receiving_yards": {
+        "baseline": {
+          "brier": 0.25753470406926016,
+          "calibration_error": 0.11336089937321107,
+          "log_loss": 0.7090639056715377,
+          "mae": 22.049538819605175
+        },
+        "candidate": {
+          "brier": 0.28009308856265497,
+          "calibration_error": 0.20767879288962388,
+          "log_loss": 0.7628890435354937,
+          "mae": 23.62436166280978
+        },
+        "games": 34,
+        "n": 59
+      },
+      "receptions": {
+        "baseline": {
+          "brier": 0.2499373179819564,
+          "calibration_error": 0.10269964028618248,
+          "log_loss": 0.7021824566405476,
+          "mae": 1.9537113272575903
+        },
+        "candidate": {
+          "brier": 0.2545392195682531,
+          "calibration_error": 0.19577801790676136,
+          "log_loss": 0.7136004810250435,
+          "mae": 1.8423922947141955
+        },
+        "games": 40,
+        "n": 79
+      },
+      "rushing_attempts": {
+        "baseline": {
+          "brier": 0.27698773299374524,
+          "calibration_error": 0.1677020996125737,
+          "log_loss": 0.7751545224900869,
+          "mae": 5.022817779906923
+        },
+        "candidate": {
+          "brier": 0.29769765479021576,
+          "calibration_error": 0.24870689655172415,
+          "log_loss": 0.8535158208692156,
+          "mae": 4.8927188578928975
+        },
+        "games": 30,
+        "n": 35
+      },
+      "rushing_yards": {
+        "baseline": {
+          "brier": 0.30375634427607634,
+          "calibration_error": 0.23821107473247802,
+          "log_loss": 0.814675375328383,
+          "mae": 27.852790439691322
+        },
+        "candidate": {
+          "brier": 0.3829323350178359,
+          "calibration_error": 0.40711206896551727,
+          "log_loss": 1.0304535822757355,
+          "mae": 30.415013664210676
+        },
+        "games": 17,
+        "n": 20
+      }
+    },
+    "passed": false,
+    "reasons": [
+      "market_regression:passing_yards:mae",
+      "market_regression:passing_yards:brier",
+      "market_regression:passing_yards:log_loss",
+      "market_regression:rushing_yards:mae",
+      "market_regression:rushing_yards:brier",
+      "market_regression:rushing_yards:log_loss",
+      "market_regression:rushing_attempts:brier",
+      "market_regression:rushing_attempts:log_loss",
+      "market_regression:receptions:brier",
+      "market_regression:receptions:log_loss",
+      "market_regression:receiving_yards:mae",
+      "market_regression:receiving_yards:brier",
+      "market_regression:receiving_yards:log_loss",
+      "insufficient_probability_improvement",
+      "uncertain_game_group_improvement"
+    ],
+    "rows": 214
+  },
+  "note": "Fixed predeclared Ridge update did not beat the currently active model. Existing forecasts and active NFL baseline remain unchanged. This report compares both models on the exact same frozen pregame inputs and actual main lines; it does not claim the older saved forecast used the current model.",
+  "proposal_version": "nfl-weekly-ridge-1.2026w07-e0db3164a1e50665",
+  "source_pins": {
+    "edgeterminal/nfl_learning.py": "d58a1f193e8beecdf614834ec99f1bafd0082bbd7e3a9706f110f94cab15bc26",
+    "edgeterminal/nfl_prop_lab.py": "de38999593f17308a5031b2fb1aaca3108ec69df228b46c6410e6a6e476d5113",
+    "edgeterminal/nfl_prop_model.py": "a3201ba39e65102903a8f59e4eb8ee0f81d187a0b279ad8610ffe9bb8e8872a6"
+  },
+  "source_receipts": [
+    {
+      "kind": "file",
+      "path": "data/nflverse/player_stats/stats_player_week_2024.csv",
+      "received_at": 1790192330.601986,
+      "role": "calibration",
+      "sha256": "3ddc45a84f759aa348ce465ae001752c530575455717657cdfe1f8abfcdb4759"
+    },
+    {
+      "kind": "file",
+      "path": "data/nflverse/player_stats/stats_player_week_2022.csv",
+      "received_at": 1790192330.601986,
+      "role": "calibration",
+      "sha256": "ad426c3fe5bf1cc30c3f137fdfe96d054e19d400879ee4413129da49fa7b54be"
+    },
+    {
+      "kind": "file",
+      "path": "data/nflverse/player_stats/stats_player_week_2025.csv",
+      "received_at": 1790192330.601986,
+      "role": "calibration",
+      "sha256": "e5e0615b3d96a3eaebfaee91e55afb4a4e7fe0caf057454177bcd7d6ad4bcfc2"
+    },
+    {
+      "kind": "file",
+      "path": "data/nflverse/player_stats/stats_player_week_2023.csv",
+      "received_at": 1790192330.601986,
+      "role": "calibration",
+      "sha256": "f19cb71a5de0dce7fd09376026237c9ee9d5a93fe13815a2ea3ec2d37204cb17"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1791478161.355948,
+      "role": "calibration",
+      "sha256": "7c95b7db99eac0091c6646264ca4a6f4da080a0569935d2e61cbe15a1f4dfa40"
+    },
+    {
+      "kind": "file",
+      "path": "data/nflverse/player_stats/stats_player_week_2024.csv",
+      "received_at": 1790192330.601986,
+      "role": "training",
+      "sha256": "3ddc45a84f759aa348ce465ae001752c530575455717657cdfe1f8abfcdb4759"
+    },
+    {
+      "kind": "file",
+      "path": "data/nflverse/player_stats/stats_player_week_2026.csv",
+      "received_at": 1790192330.601986,
+      "role": "training",
+      "sha256": "736bdddef4779023f7eb1831a1f2c8627181aee60cc280d5f0464cf5f41a8e67"
+    },
+    {
+      "kind": "file",
+      "path": "data/nflverse/player_stats/stats_player_week_2022.csv",
+      "received_at": 1790192330.601986,
+      "role": "training",
+      "sha256": "ad426c3fe5bf1cc30c3f137fdfe96d054e19d400879ee4413129da49fa7b54be"
+    },
+    {
+      "kind": "file",
+      "path": "data/nflverse/pbp/games.csv.gz",
+      "received_at": 1789406102.3236685,
+      "role": "training",
+      "sha256": "d05eddee399d1ef3aea535b9502fbae63e5e5ce2b315cd7d9ecb8ccff25942c0"
+    },
+    {
+      "kind": "file",
+      "path": "data/nflverse/player_stats/stats_player_week_2025.csv",
+      "received_at": 1790192330.601986,
+      "role": "training",
+      "sha256": "e5e0615b3d96a3eaebfaee91e55afb4a4e7fe0caf057454177bcd7d6ad4bcfc2"
+    },
+    {
+      "kind": "file",
+      "path": "data/nflverse/player_stats/stats_player_week_2023.csv",
+      "received_at": 1790192330.601986,
+      "role": "training",
+      "sha256": "f19cb71a5de0dce7fd09376026237c9ee9d5a93fe13815a2ea3ec2d37204cb17"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792367414.711661,
+      "role": "validation",
+      "sha256": "07aefed4d6698395748d79a350c9acfe2f02f3286da9b2d31cbb32bf02dea433"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792482057.1571789,
+      "role": "validation",
+      "sha256": "0d29a199ddecacca64e6290cbb12f68823d05ef271de0f6a3aa768efd60fad76"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1791810551.808533,
+      "role": "validation",
+      "sha256": "124203ff308b2e172710871f71852ca04799c3d5cf178e4a99540232a7489217"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792367414.711661,
+      "role": "validation",
+      "sha256": "13f317760377e3b75d8d483721573ee64f9c3ca8c8960d80919adef9ab3cd5d3"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792414359.989988,
+      "role": "validation",
+      "sha256": "192d155e25686da21eecdbf57bc080320bb15dfdfb21efbc0ba31e41574f3521"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1791882011.67823,
+      "role": "validation",
+      "sha256": "1ae72b48fac0f84d75e352699fdcb1ea88f0c3c73bb520d6c8804585c412452b"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1793102587.832235,
+      "role": "validation",
+      "sha256": "24b95fd79ea1ea96354ccbe444e21cc75df3a7d466b1ccf30a5c93fcf481df37"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792131836.234825,
+      "role": "validation",
+      "sha256": "257921ced03438cf36e9553734286d586ef7888ef794ec75ecb27fcc5e22999f"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792415337.091299,
+      "role": "validation",
+      "sha256": "2bcea4efa11962d6d0f59fbbc708b6c25acf512f7cb58150b793ee5973c19b68"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792586248.826113,
+      "role": "validation",
+      "sha256": "30af4f807cdd01f8efe0b81d67b59eac081e9e59be5a4b9d267cba7212eb628c"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792367414.711661,
+      "role": "validation",
+      "sha256": "3866d4c5022d9216ce01d8a8563684ba6e411caa95b0ea766272724140a8d8c0"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1791810551.808533,
+      "role": "validation",
+      "sha256": "3d2e1b31ef989de0862345e7dcaa97daa1a522b86e1440aa1a9f561cb4d461ef"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792367414.711661,
+      "role": "validation",
+      "sha256": "42237c51fac46a2dc99c089cdcc175a32dfacdb2dd81462748e8262ea7069373"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1791379284.085398,
+      "role": "validation",
+      "sha256": "4783f7c943064e80793d221edfd5db211303a69a32a0bcad9c3176b1e4a8b7cb"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792414359.989988,
+      "role": "validation",
+      "sha256": "4955d954a4205038250201e5b70f6cef96bcb1c1bce4db19408656ac227c98ac"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1791882011.67823,
+      "role": "validation",
+      "sha256": "4d494c8d187e27d135969beebdec3ab95b3f1d072737a79ced222451eb781383"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1791810551.808533,
+      "role": "validation",
+      "sha256": "6a5af9473172be350a2155fb46d1b67ba93098bfd9cccd0348b42f6d0de2f012"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792756855.288696,
+      "role": "validation",
+      "sha256": "6ccbb9b4c897e1e27452a6bbecb8a45b77757af6af9e1101ad4b1c5271437cb4"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1793016296.119798,
+      "role": "validation",
+      "sha256": "7066c3d5c40aa9036c6bb934a74472e3c2a043ee9e7b9577fc69a4f2427cdfb1"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1791810551.808533,
+      "role": "validation",
+      "sha256": "74abb0648aa6e33aa45f0be0760477b3d5e2ab4709f1bce3e6a2116ae30c791b"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1791285873.333727,
+      "role": "validation",
+      "sha256": "74dce52a31ffad854e516886bb16b39f88e02f77f292bca53e134ba5ec041cb4"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1793102587.832235,
+      "role": "validation",
+      "sha256": "7570e4461041a03f5a8949ae9e0a5d5faeef42b15b07752737891ba35fc9275f"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1793016296.119798,
+      "role": "validation",
+      "sha256": "781babc829e8682a9040049a43c8b9780463861f0c579d8ae16d9a78f6fdf93e"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1791311821.892832,
+      "role": "validation",
+      "sha256": "81c5bcc263d7b04289c3bfb19e1ae510c289d91fc626a3a33169c0f073aceb6f"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1791545558.191913,
+      "role": "validation",
+      "sha256": "8304933b6ee2bc2ed132a8932cd579e479ebb5477deb677487544cc51bf67606"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792756855.288696,
+      "role": "validation",
+      "sha256": "83245b93109f91b73e023c7a73ad128f72f214fa1044ee9f339fb0c2d6a772ed"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792367414.711661,
+      "role": "validation",
+      "sha256": "940d43e545fd059a87be96fb92ab5239c664af8de1466e02a32c6a55758dfb5a"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792131836.234825,
+      "role": "validation",
+      "sha256": "982d86fa324694c6934d0d57e1de94261fefb1de745f5985bc2e0b725dd6febb"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792977253.4193668,
+      "role": "validation",
+      "sha256": "a2efb6db8eaa4ce41379138dccd108585c13d58ec7cceaef6b40d608550d656e"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792498103.337012,
+      "role": "validation",
+      "sha256": "ade7744a33b02f161304fabf0fff854e8a32537e77ba698035e928f3a96ee4c4"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1791788890.785357,
+      "role": "validation",
+      "sha256": "ae1a1b8331d7efeebcc574285a260fa5c914abe547ba75a1ed85890df80e7b04"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1791972871.941955,
+      "role": "validation",
+      "sha256": "bbca0279dc333ebc43877d3dc4cf7433cb3d174fda8f04509f86227ef9474619"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1791788890.785357,
+      "role": "validation",
+      "sha256": "be274edeaf5e47c581117a2ac4de165c0ec66f37b7b2cfddfeb739760a5518a9"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792392742.004609,
+      "role": "validation",
+      "sha256": "ddb8f2967b9db32292ad5023ec1e8ebd7270c3b6d7650f796a4f8bbd17924555"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792977253.4193668,
+      "role": "validation",
+      "sha256": "e9e299a84feaf342d7a7523ecccc7b67da3ac0adcc3656be5651e267a07f10f4"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1791545558.191913,
+      "role": "validation",
+      "sha256": "ed0cc84c4b05deaddde3a5ec9474f40112a66e5c542f951ff63d3c6837aa704a"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792392742.004609,
+      "role": "validation",
+      "sha256": "f53f52fb750c64573a1eecd3b017fe904fef0dd20eabb4338543adc30d86ca5b"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1791925466.452269,
+      "role": "validation",
+      "sha256": "fae8bce9fa4c6dd47c8dfbf1db1e6497e634b051956fe8ce3d921535203741e2"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792964153.93875,
+      "role": "validation",
+      "sha256": "fb7bf0d44b76c90f2726a36757b4dbc29d602a716b0e47188f0a024823f49080"
+    },
+    {
+      "kind": "nfl_prop_grade_source_artifact",
+      "received_at": 1792964153.93875,
+      "role": "validation",
+      "sha256": "fb92c3d4fcfde4fbfac7377a0b0a297078720d299f6eacaec4f59885d2183019"
+    }
+  ],
+  "status": "rejected_by_dry_gate",
+  "training_cutoff": 1790295299.0,
+  "validation_weeks": [
+    5,
+    6,
+    7
+  ]
+}

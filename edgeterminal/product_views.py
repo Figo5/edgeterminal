@@ -280,11 +280,16 @@ RESEARCH_DOCUMENTS = {
     "settlement-rules": "docs/research/nfl_prop_settlement_rules.md",
     "paper-policy": "docs/research/experimental_paper_v1.md",
     "paper-operations": "docs/research/paper_refresh_operations.md",
+    "active-prop-model": "docs/research/nfl_active_prop_model_v2.md",
+    "active-model-upgrade": "docs/research/active_model_upgrade_2026_10_27.md",
+    "continuous-learning": "docs/research/continuous_learning_plan.md",
+    "automatic-learning-operations": "docs/research/continuous_learning_operations.md",
 }
 
 
 def research_index() -> dict:
     """Artifact pointers and recorded freeze hashes; never refresh or repair."""
+    from . import model_learning
     integrity_path = ROOT / "reports/nfl_model_v2/week03_integrity_2026.json"
     integrity = json.loads(integrity_path.read_text()) if integrity_path.exists() else {}
     artifact_path = ROOT / "reports/nfl_model_v2/forward_2026_week03.json"
@@ -292,6 +297,8 @@ def research_index() -> dict:
     prop_shas = [row["freeze_sha"] for row in db.q(
         "SELECT freeze_sha FROM nfl_prop_research_freezes ORDER BY frozen_at")]
     return {
+        "active_prop_model": nfl_top_five.nfl_prop_model.model_info(),
+        "learning": model_learning.status('NFL'),
         "week3_game_freeze": {
             "recorded_sha256": integrity.get("freeze_sha256"),
             "current_sha256": actual_sha,

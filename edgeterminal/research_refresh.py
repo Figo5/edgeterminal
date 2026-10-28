@@ -69,6 +69,11 @@ def _last_attempt(name: str) -> float | None:
 
 def _due(name: str, now: float, cadence: float) -> bool:
     prior = _last_attempt(name)
+    if prior is not None and name in {'schedule', 'availability'}:
+        step = db.q1('SELECT success FROM research_refresh_steps WHERE name=? '
+                      'ORDER BY attempted_at DESC LIMIT 1', (name,))
+        if not step['success']:
+            cadence = min(cadence, RESULT_INTERVAL)
     return prior is None or now >= prior + cadence
 
 
@@ -158,6 +163,47 @@ def _week_due(events: list[dict], now: float) -> tuple[int, int] | None:
 def _latest_prop_freeze() -> str | None:
     row = db.q1("SELECT freeze_sha FROM nfl_prop_research_freezes ORDER BY frozen_at DESC LIMIT 1")
     return row["freeze_sha"] if row else None
+
+
+def _pair_prop_batch(batch_id: str, now: float) -> dict:
+    batch = db.q1('SELECT retrieved_at FROM nfl_prop_capture_batches WHERE batch_id=?', (batch_id,))
+    # A live receipt can follow worker start. Only advance to a receipt the
+    # processing clock has reached; pair_batch still rejects future or missing batches.
+    if batch and batch['retrieved_at'] <= max(now, time.time()):
+        now = max(now, batch['retrieved_at'])
+    return paper_research.pair_batch(batch_id, now=now)
+
+
+def _failed_prop_pair_batches(now: float) -> list[tuple[str, str, str]]:
+    retries = []
+    for failed in db.q("SELECT * FROM research_refresh_steps WHERE success=0 AND name LIKE 'prop_pair_%' "
+                       "AND id IN (SELECT MAX(id) FROM research_refresh_steps GROUP BY name)"):
+        name = failed['name']
+        parts = name.split('_')
+        if (len(parts) != 4 or parts[:2] != ['prop', 'pair'] or
+                len(parts[2]) != 4 or len(parts[3]) != 2 or
+                not parts[2].isdigit() or not parts[3].isdigit() or not _result_due(name, now)):
+            continue
+        try:
+            detail = json.loads(failed['detail'])
+            if not isinstance(detail, dict):
+                continue
+            capture_run_id = detail.get('capture_run_id', failed['run_id'])
+            if not isinstance(capture_run_id, str) or not capture_run_id:
+                continue
+            capture = db.q1('SELECT detail FROM research_refresh_steps WHERE run_id=? AND name=? '
+                            'AND success=1 ORDER BY id DESC LIMIT 1',
+                            (capture_run_id, f'prop_near_game_{parts[2]}_{parts[3]}'))
+            source = json.loads(capture['detail']) if capture else {}
+            if not isinstance(source, dict) or source.get('ok') is not True:
+                continue
+            batch_id = source['result']['batch_id']
+            if not isinstance(batch_id, str) or not batch_id or detail.get('batch_id', batch_id) != batch_id:
+                continue
+        except (KeyError, TypeError, json.JSONDecodeError):
+            continue
+        retries.append((name, batch_id, capture_run_id))
+    return retries
 
 
 def _weekly(season: int, now: float) -> dict:
@@ -252,7 +298,7 @@ def _run_locked(now: float, *, record_tick: bool = True,
                 force_prop_quotes: bool = False) -> dict:
     run_id = uuid.uuid4().hex
     steps: dict[str, dict] = {}
-    def attempt(name: str, action) -> None:
+    def attempt(name: str, action, *, context: dict | None = None) -> None:
         try:
             result = action()
             if isinstance(result, dict) and result.get("ok") is False:
@@ -260,6 +306,8 @@ def _run_locked(now: float, *, record_tick: bool = True,
             steps[name] = {"ok": True, "result": result}
         except Exception as exc:
             steps[name] = {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+        if context:
+            steps[name] = {**context, **steps[name]}
         db.ex("INSERT INTO research_refresh_steps(run_id,name,attempted_at,success,detail) "
               "VALUES(?,?,?,?,?)", (run_id, name, now, int(steps[name]["ok"]),
                                      json.dumps(steps[name], sort_keys=True, default=str)))
@@ -276,17 +324,10 @@ def _run_locked(now: float, *, record_tick: bool = True,
                                     or 3600 for e in events if e["kickoff_utc"] > now), default=3600)
     if _due("top_five_capture", now, missing_capture_interval) or force_prop_quotes:
         attempt("top_five_capture", lambda: nfl_top_five.capture_missing(now, manual=force_prop_quotes))
-        captured = steps['top_five_capture'].get('result', {}).get('capture', {})
-        if steps['top_five_capture']['ok'] and captured.get('batch_id'):
-            from . import nfl_prop_challenger
-            batch = db.q1('SELECT audit_json FROM nfl_prop_capture_batches WHERE batch_id=?',
-                           (captured['batch_id'],))
-            current = json.loads(batch['audit_json'])
-            if (nfl_prop_challenger.DIRECTORY / 'active.json').exists():
-                attempt('challenger_capture', lambda: nfl_prop_challenger.shadow(
-                    captured['batch_id'], current['season'], current['week']))
     if _result_due("top_five_grading", now):
         attempt("top_five_grading", lambda: nfl_top_five.grade_due(now))
+    # Previously saved comparison forecasts still receive sourced final grades.
+    # New captures use only the active production research model.
     from . import nfl_prop_challenger
     if ((nfl_prop_challenger.DIRECTORY / 'active.json').exists() and
             _result_due('challenger_grading', now)):
@@ -320,11 +361,12 @@ def _run_locked(now: float, *, record_tick: bool = True,
             capture_succeeded = True
             batch_id = steps[name]["result"]["batch_id"]
             attempt(f"prop_pair_{season}_{number:02d}",
-                    lambda bid=batch_id: paper_research.pair_batch(bid, now=now))
-            from . import nfl_prop_challenger
-            if (nfl_prop_challenger.DIRECTORY / 'active.json').exists():
-                attempt(f"challenger_{season}_{number:02d}",
-                        lambda bid=batch_id, s=season, w=number: nfl_prop_challenger.shadow(bid, s, w))
+                    lambda bid=batch_id: _pair_prop_batch(bid, now),
+                    context={'batch_id': batch_id, 'capture_run_id': run_id})
+    for name, batch_id, capture_run_id in _failed_prop_pair_batches(now):
+        if name not in steps:
+            attempt(name, lambda bid=batch_id: _pair_prop_batch(bid, now),
+                    context={'batch_id': batch_id, 'capture_run_id': capture_run_id})
     if any(0 < e["kickoff_utc"] - now <= nfl_market_capture.WINDOW_S for e in events):
         attempt("near_kickoff_market", lambda: _market(now))
     if any(0 < e["kickoff_utc"] - now <= 6 * 3600 for e in events) and _due("context", now, CONTEXT_INTERVAL):
@@ -347,6 +389,9 @@ def _run_locked(now: float, *, record_tick: bool = True,
     if settings.nba_research_enabled and _due('nba_research', now, 300):
         from . import nba_ops
         attempt('nba_research', lambda: nba_ops.run(now))
+    if _due('model_learning', now, 300):
+        from . import model_learning
+        attempt('model_learning', lambda: model_learning.run(now))
     cadence = interval(now, events)
     complete = time.time()
     successful = all(item["ok"] for item in steps.values())

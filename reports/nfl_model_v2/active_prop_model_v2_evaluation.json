@@ -1,0 +1,241 @@
+{
+  "version": "nfl-opportunity-empirical-2.0.0",
+  "parameters": {
+    "version": "nfl-opportunity-empirical-2.0.0",
+    "training_cutoff": [
+      2026,
+      3
+    ],
+    "features": [
+      "targets_last3",
+      "receptions_last3",
+      "receiving_yards_last3",
+      "carries_last3",
+      "rushing_yards_last3",
+      "attempts_last3",
+      "passing_yards_last3",
+      "targets_last5",
+      "receptions_last5",
+      "receiving_yards_last5",
+      "carries_last5",
+      "rushing_yards_last5",
+      "attempts_last5",
+      "passing_yards_last5",
+      "prior_games",
+      "target_share_last3",
+      "carry_share_last3",
+      "team_pass_attempts_last3",
+      "team_carries_last3",
+      "opponent_allowed_last3",
+      "home",
+      "rest_days",
+      "days_since_played",
+      "week",
+      "position_qb",
+      "position_rb",
+      "position_wr",
+      "position_te",
+      "opportunity_change",
+      "stat_change",
+      "efficiency_last3",
+      "efficiency_last5",
+      "usage_projection",
+      "opportunity_ratio",
+      "log_prior_games"
+    ],
+    "selection": "top-five-confidence-v1",
+    "families": [
+      "baseline",
+      "ridge_role",
+      "boosted_role",
+      "median_role"
+    ],
+    "ridge_alpha": 100.0,
+    "boosting": {
+      "iterations": 90,
+      "leaves": 15,
+      "min_leaf": 40,
+      "l2": 10.0,
+      "learning_rate": 0.06,
+      "random_state": 13
+    },
+    "development": "2024 weeks 1-9; fitted before 2024",
+    "calibration": "2024 weeks 10-18; fitted before week 10",
+    "calibration_method_selection": "2024 weeks 15-18; residuals weeks 10-14",
+    "acceptance": "2025; per-market baseline fallback on MAE regression",
+    "residual_minimum": 100,
+    "local_minimum": 60,
+    "local_shrinkage": 100.0,
+    "tail_pseudocount_each_side": 0.5,
+    "thresholds": "half-integers around previous-three-game average",
+    "counts": "nonnegative integer outcomes with explicit push mass"
+  },
+  "markets": {
+    "passing_yards": {
+      "development_mae": {
+        "baseline": 63.52959124317202,
+        "ridge_role": 63.4509543005741,
+        "boosted_role": 62.978621323839405,
+        "median_role": 63.370169494961864
+      },
+      "development_selected": "boosted_role",
+      "deployed_family": "boosted_role",
+      "point_acceptance_passed": true,
+      "empirical_acceptance_passed": true,
+      "calibration_method_scores": {
+        "False": 0.19626367341344153,
+        "True": 0.19626367341344153
+      },
+      "conditional_residuals": false,
+      "baseline_2025": {
+        "n": 591,
+        "mae": 67.47799271991666,
+        "rmse": 84.03749580557965,
+        "bias": 17.278597551205053,
+        "synthetic_brier": 0.18396509986466095
+      },
+      "candidate_2025": {
+        "n": 591,
+        "mae": 66.66108573986196,
+        "rmse": 82.6962986672236,
+        "bias": 13.130575770203327,
+        "synthetic_brier": 0.1801225740123876
+      },
+      "training_rows": 2329,
+      "calibration_rows": 291
+    },
+    "rushing_yards": {
+      "development_mae": {
+        "baseline": 18.626842681921477,
+        "ridge_role": 18.562445421072383,
+        "boosted_role": 18.818078448331814,
+        "median_role": 18.32694722879477
+      },
+      "development_selected": "median_role",
+      "deployed_family": "median_role",
+      "point_acceptance_passed": true,
+      "empirical_acceptance_passed": true,
+      "calibration_method_scores": {
+        "False": 0.19906801188311576,
+        "True": 0.19679883799667008
+      },
+      "conditional_residuals": true,
+      "baseline_2025": {
+        "n": 2084,
+        "mae": 17.8958633199632,
+        "rmse": 25.641000096051823,
+        "bias": 0.8494868034884904,
+        "synthetic_brier": 0.18777156159655087
+      },
+      "candidate_2025": {
+        "n": 2084,
+        "mae": 16.95726101926158,
+        "rmse": 26.209688037721207,
+        "bias": -4.740691405617095,
+        "synthetic_brier": 0.18408142684699969
+      },
+      "training_rows": 8338,
+      "calibration_rows": 1016
+    },
+    "rushing_attempts": {
+      "development_mae": {
+        "baseline": 3.0579498454659824,
+        "ridge_role": 3.0619184741810375,
+        "boosted_role": 3.058196357124065,
+        "median_role": 3.0335357214783243
+      },
+      "development_selected": "median_role",
+      "deployed_family": "median_role",
+      "point_acceptance_passed": true,
+      "empirical_acceptance_passed": true,
+      "calibration_method_scores": {
+        "False": 0.19253122833391745,
+        "True": 0.1892012560573639
+      },
+      "conditional_residuals": true,
+      "baseline_2025": {
+        "n": 2084,
+        "mae": 2.939626670239665,
+        "rmse": 4.046818570475759,
+        "bias": 0.1336850491126016,
+        "synthetic_brier": 0.18109688807011093
+      },
+      "candidate_2025": {
+        "n": 2084,
+        "mae": 2.8488083053411164,
+        "rmse": 4.053568055925186,
+        "bias": -0.3210494732605642,
+        "synthetic_brier": 0.17363326400243143
+      },
+      "training_rows": 8338,
+      "calibration_rows": 1016
+    },
+    "receptions": {
+      "development_mae": {
+        "baseline": 1.4779158986370144,
+        "ridge_role": 1.4800264617270622,
+        "boosted_role": 1.4909033459936156,
+        "median_role": 1.4571443766024992
+      },
+      "development_selected": "median_role",
+      "deployed_family": "median_role",
+      "point_acceptance_passed": true,
+      "empirical_acceptance_passed": true,
+      "calibration_method_scores": {
+        "False": 0.19792025574421682,
+        "True": 0.19646082593899994
+      },
+      "conditional_residuals": true,
+      "baseline_2025": {
+        "n": 4190,
+        "mae": 1.4076239799705592,
+        "rmse": 1.822364044365429,
+        "bias": 0.1638774434811661,
+        "synthetic_brier": 0.19279569501412724
+      },
+      "candidate_2025": {
+        "n": 4190,
+        "mae": 1.3632092388574832,
+        "rmse": 1.834374132321348,
+        "bias": -0.17771959066089374,
+        "synthetic_brier": 0.19131866514944854
+      },
+      "training_rows": 16950,
+      "calibration_rows": 2033
+    },
+    "receiving_yards": {
+      "development_mae": {
+        "baseline": 19.502953956109845,
+        "ridge_role": 19.502736050934644,
+        "boosted_role": 19.49459054170127,
+        "median_role": 18.754046690379642
+      },
+      "development_selected": "median_role",
+      "deployed_family": "median_role",
+      "point_acceptance_passed": true,
+      "empirical_acceptance_passed": true,
+      "calibration_method_scores": {
+        "False": 0.182771945421545,
+        "True": 0.18188226698132026
+      },
+      "conditional_residuals": true,
+      "baseline_2025": {
+        "n": 4190,
+        "mae": 18.69624353088168,
+        "rmse": 25.201220578895196,
+        "bias": 2.052674806170394,
+        "synthetic_brier": 0.1927650857755111
+      },
+      "candidate_2025": {
+        "n": 4190,
+        "mae": 17.797665129856316,
+        "rmse": 25.521159504060712,
+        "bias": -3.9803407375440485,
+        "synthetic_brier": 0.1874986429127978
+      },
+      "training_rows": 16950,
+      "calibration_rows": 2033
+    }
+  },
+  "note": "2025 is acceptance validation. Synthetic thresholds are not sportsbook lines; no forward outcomes enter fitting. This does not establish future accuracy or profitability."
+}

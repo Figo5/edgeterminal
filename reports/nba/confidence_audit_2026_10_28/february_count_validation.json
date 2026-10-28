@@ -1,0 +1,239 @@
+{
+  "rebounds": {
+    "active": {
+      "n": 1319,
+      "brier": 0.24289924165168042,
+      "mean_selected_confidence": 0.5970817570431852,
+      "selected_win_rate": 0.5754359363153905
+    },
+    "all_empirical": {
+      "n": 1319,
+      "brier": 0.240703247678682,
+      "mean_selected_confidence": 0.5854658432817667,
+      "selected_win_rate": 0.5943896891584534
+    },
+    "zero_mu": {
+      "active": {
+        "n": 0,
+        "brier": null,
+        "mean_selected_confidence": null,
+        "selected_win_rate": null
+      },
+      "empirical": {
+        "n": 0,
+        "brier": null,
+        "mean_selected_confidence": null,
+        "selected_win_rate": null
+      },
+      "following_nonzero": 0,
+      "gamma_poisson": {
+        "n": 0,
+        "brier": null,
+        "mean_selected_confidence": null,
+        "selected_win_rate": null
+      }
+    },
+    "near_zero_mu": {
+      "active": {
+        "n": 2,
+        "brier": 0.49344351314325113,
+        "mean_selected_confidence": 0.9840447904700407,
+        "selected_win_rate": 0.5
+      },
+      "empirical": {
+        "n": 2,
+        "brier": 0.2820447916180781,
+        "mean_selected_confidence": 0.667851502898757,
+        "selected_win_rate": 0.5
+      },
+      "gamma_poisson": {
+        "n": 2,
+        "brier": 0.42732426755429215,
+        "mean_selected_confidence": 0.8636913353438819,
+        "selected_win_rate": 0.5
+      }
+    },
+    "extreme_confidence": {
+      "n": 2,
+      "brier": 0.49344351314325113,
+      "mean_selected_confidence": 0.9840447904700407,
+      "selected_win_rate": 0.5
+    },
+    "gamma_poisson": {
+      "n": 1319,
+      "brier": 0.23929242050231764,
+      "mean_selected_confidence": 0.5927393307885371,
+      "selected_win_rate": 0.5966641394996209
+    },
+    "mae": {
+      "parametric_active_mean": 2.0058751103208037,
+      "gamma_poisson_mean": 2.008614280711841
+    },
+    "crps": {
+      "active": 1.4126948786943632,
+      "gamma_poisson": 1.4096875492420424
+    },
+    "synthetic_logloss": {
+      "active": 0.6819053639861784,
+      "gamma_poisson": 0.6716439674260135
+    }
+  },
+  "assists": {
+    "active": {
+      "n": 1319,
+      "brier": 0.2507892458796704,
+      "mean_selected_confidence": 0.6232948336942872,
+      "selected_win_rate": 0.5784685367702805
+    },
+    "all_empirical": {
+      "n": 1319,
+      "brier": 0.24219215032234268,
+      "mean_selected_confidence": 0.5924534593519953,
+      "selected_win_rate": 0.576194086429113
+    },
+    "zero_mu": {
+      "active": {
+        "n": 1,
+        "brier": 2.1407782148913206e-23,
+        "mean_selected_confidence": 0.9999999999953731,
+        "selected_win_rate": 1
+      },
+      "empirical": {
+        "n": 1,
+        "brier": 0.3229539413863865,
+        "mean_selected_confidence": 0.5682903671419977,
+        "selected_win_rate": 0
+      },
+      "following_nonzero": 0,
+      "gamma_poisson": {
+        "n": 1,
+        "brier": 0.0010022704697159092,
+        "mean_selected_confidence": 0.9683413444739688,
+        "selected_win_rate": 1
+      }
+    },
+    "near_zero_mu": {
+      "active": {
+        "n": 16,
+        "brier": 0.3530614808536113,
+        "mean_selected_confidence": 0.9741347093860688,
+        "selected_win_rate": 0.625
+      },
+      "empirical": {
+        "n": 16,
+        "brier": 0.2762337368742415,
+        "mean_selected_confidence": 0.5827783345400762,
+        "selected_win_rate": 0.375
+      },
+      "gamma_poisson": {
+        "n": 16,
+        "brier": 0.2679749596751923,
+        "mean_selected_confidence": 0.8357340719292898,
+        "selected_win_rate": 0.625
+      }
+    },
+    "extreme_confidence": {
+      "n": 15,
+      "brier": 0.31658580924782326,
+      "mean_selected_confidence": 0.9758245642821675,
+      "selected_win_rate": 0.6666666666666666
+    },
+    "gamma_poisson": {
+      "n": 1319,
+      "brier": 0.2384948467900214,
+      "mean_selected_confidence": 0.5898764454770251,
+      "selected_win_rate": 0.5898407884761183
+    },
+    "mae": {
+      "parametric_active_mean": 1.4294512582374646,
+      "gamma_poisson_mean": 1.4341920973902937
+    },
+    "crps": {
+      "active": 0.9970938157501251,
+      "gamma_poisson": 0.9814957496861784
+    },
+    "synthetic_logloss": {
+      "active": 0.7057028717420746,
+      "gamma_poisson": 0.6701650459088084
+    }
+  },
+  "threes": {
+    "active": {
+      "n": 1319,
+      "brier": 0.22404944038313226,
+      "mean_selected_confidence": 0.6693186755493131,
+      "selected_win_rate": 0.620166793025019
+    },
+    "all_empirical": {
+      "n": 1319,
+      "brier": 0.23913631203359148,
+      "mean_selected_confidence": 0.615575134822493,
+      "selected_win_rate": 0.6095526914329037
+    },
+    "zero_mu": {
+      "active": {
+        "n": 83,
+        "brier": 0.03614457831263961,
+        "mean_selected_confidence": 0.9999999999915147,
+        "selected_win_rate": 0.963855421686747
+      },
+      "empirical": {
+        "n": 83,
+        "brier": 0.17552561156203522,
+        "mean_selected_confidence": 0.5887721458795936,
+        "selected_win_rate": 0.963855421686747
+      },
+      "following_nonzero": 3,
+      "gamma_poisson": {
+        "n": 83,
+        "brier": 0.03372158521087203,
+        "mean_selected_confidence": 0.9665024512333013,
+        "selected_win_rate": 0.963855421686747
+      }
+    },
+    "near_zero_mu": {
+      "active": {
+        "n": 163,
+        "brier": 0.10266328871403888,
+        "mean_selected_confidence": 0.9836701371105879,
+        "selected_win_rate": 0.8895705521472392
+      },
+      "empirical": {
+        "n": 163,
+        "brier": 0.19100999897164733,
+        "mean_selected_confidence": 0.5816248962548835,
+        "selected_win_rate": 0.8895705521472392
+      },
+      "gamma_poisson": {
+        "n": 163,
+        "brier": 0.08800972889647367,
+        "mean_selected_confidence": 0.9084166935120032,
+        "selected_win_rate": 0.8895705521472392
+      }
+    },
+    "extreme_confidence": {
+      "n": 138,
+      "brier": 0.0829968544853441,
+      "mean_selected_confidence": 0.9921501468093771,
+      "selected_win_rate": 0.9130434782608695
+    },
+    "gamma_poisson": {
+      "n": 1319,
+      "brier": 0.2191860877496341,
+      "mean_selected_confidence": 0.634819191966604,
+      "selected_win_rate": 0.6269901440485216
+    },
+    "mae": {
+      "parametric_active_mean": 0.9556833430027241,
+      "gamma_poisson_mean": 0.965022626923597
+    },
+    "crps": {
+      "active": 0.639477934235356,
+      "gamma_poisson": 0.6331496526176684
+    },
+    "synthetic_logloss": {
+      "active": 0.6890897072171414,
+      "gamma_poisson": 0.6216763721627463
+    }
+  }
+}

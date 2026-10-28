@@ -167,7 +167,7 @@ def test_automatic_boxscore_grading_preserves_zero_dnp_push_and_missing(isolated
     assert nba_ops.grade_due(after+3601)['new_grades']==0
 
 
-def _grading_case(eid='401810831', status='final', props=True):
+def _grading_case(eid='401810831', status='final', props=True, roster_artifact=None):
     import copy
     from test_nba_data import SUMMARY
     raw=copy.deepcopy(SUMMARY);raw['header']['id']=eid
@@ -175,11 +175,12 @@ def _grading_case(eid='401810831', status='final', props=True):
     source=nba_store.save_artifact(nba_data.fetch('https://site.api.espn.com/fixture','fixture',
         getter=lambda *a:(200,b'{}'),now=before-20))
     gid=final['game_id']
+    sources=[source]+([roster_artifact] if roster_artifact is not None else [])
     nba_store.upsert_game(dict(final,status='scheduled',home_score=None,away_score=None),source,now=before)
     nba_store.save_forecast('game-'+gid,gid,'fixture',{'kind':'game',
-        'projection':{'home_margin':5,'total':210},'market':{'home_spread':-2.5,'total':210.5}},[source],now=before)
+        'projection':{'home_margin':5,'total':210},'market':{'home_spread':-2.5,'total':210.5}},sources,now=before)
     if props:
-        nba_store.save_forecast('props-'+gid,gid,'fixture',{'kind':'props','rows':[]},[source],now=before)
+        nba_store.save_forecast('props-'+gid,gid,'fixture',{'kind':'props','rows':[]},sources,now=before)
         items=[]
         for pid,prop,line in [('3064514','points',31.5),('3064514','rebounds',7),
                               ('2968436','points',0.5),('3195','assists',0.5),('4433255','points',20.5)]:
@@ -275,6 +276,56 @@ def test_multiple_finals_grade_while_nonfinal_stays_pending(isolated,monkeypatch
     assert nba_store.latest_grades('top5-'+game['game_id'])=={}
 
 
+def test_pending_count_includes_unchanged_results_across_finished_games(isolated,monkeypatch):
+    first,game,_,tip=_grading_case()
+    second,later,source,_=_grading_case('401810832',status='scheduled')
+    # Keep reconciled team totals while selected identities are absent from the box.
+    for raw,missing in [(first,'3064514'),(second,'4433255')]:
+        for team in raw['boxscore']['players']:
+            for row in team['statistics'][0]['athletes']:
+                if row['athlete']['id']==missing:row['athlete']['id']='999999'
+    calls=[];_summary_feed(monkeypatch,{game['espn_event_id']:first,later['espn_event_id']:second},calls)
+    now=tip+3*3600
+    assert nba_ops.grade_due(now)['pending']==2
+    nba_store.upsert_game(later,source,now=now+300)
+    updated=nba_ops.grade_due(now+300)
+    assert updated['new_grades']==6 and updated['pending']==3
+    repeated=nba_ops.grade_due(now+600)
+    assert repeated['new_grades']==0 and repeated['pending']==3
+    cached=nba_ops.grade_due(now+601)
+    assert cached['new_grades']==0 and cached['pending']==3
+    assert len(calls)==5
+    assert db.q1('SELECT COUNT(*) n FROM nba_grade_revisions')['n']==10
+    assert db.q1('SELECT COUNT(*) n FROM nba_game_grade_revisions')['n']==2
+
+
+def test_pending_report_separates_completed_props_from_live_games(isolated,monkeypatch):
+    final,game,_,tip=_grading_case()
+    for team in final['boxscore']['players']:
+        for row in team['statistics'][0]['athletes']:
+            if row['athlete']['id']=='3064514':row['athlete']['id']='999999'
+    live,later,_,_=_grading_case('401810832',status='in_progress')
+    live['header']['competitions'][0]['status']['type'].update(
+        state='in',name='STATUS_IN_PROGRESS',completed=False)
+    _summary_feed(monkeypatch,{game['espn_event_id']:final,later['espn_event_id']:live},[])
+    report=nba_ops.grade_due(tip+5*3600)
+    assert report['pending']==3
+    assert report.get('pending_props')==2 and report.get('pending_games')==1
+    assert '2 completed-game props still pending; 1 games awaiting final results' in report['message']
+
+
+@pytest.mark.parametrize('status',['final','canceled'])
+def test_regressed_terminal_summary_is_not_counted_again_as_a_live_game(isolated,monkeypatch,status):
+    raw,game,_,tip=_grading_case(status=status)
+    raw['header']['competitions'][0]['status']['type'].update(
+        state='in',name='STATUS_IN_PROGRESS',completed=False)
+    _summary_feed(monkeypatch,{game['espn_event_id']:raw},[])
+    report=nba_ops.grade_due(tip+5*3600)
+    assert report['new_grades']==0 and report['pending']==5
+    assert report.get('pending_props')==5 and report.get('pending_games')==0
+    assert nba_store.latest_grades('top5-'+game['game_id'])=={}
+
+
 def test_canceled_started_game_voids_before_four_hours(isolated,monkeypatch):
     raw,game,_,tip=_grading_case(status='canceled');calls=[]
     raw['header']['competitions'][0]['status']['type'].update(name='STATUS_CANCELED',state='pre',completed=False)
@@ -283,6 +334,19 @@ def test_canceled_started_game_voids_before_four_hours(isolated,monkeypatch):
     result=nba_ops.grade_due(tip+3600)
     assert result['ok'] and result['new_grades']==6
     assert all(g['result']=='void' for g in nba_store.latest_grades('top5-'+game['game_id']).values())
+
+
+def test_canceled_unresolved_props_remain_counted_after_failed_and_cached_checks(isolated,monkeypatch):
+    _,game,_,tip=_grading_case(status='canceled');calls=[]
+    def unavailable(*a,**kw):
+        calls.append(1)
+        raise ValueError('result source unavailable')
+    monkeypatch.setattr(nba_sources,'fetch',unavailable)
+    failed=nba_ops.grade_due(tip+3600)
+    assert failed['ok'] is False and failed['new_grades']==0 and failed['pending']==5
+    cached=nba_ops.grade_due(tip+3601)
+    assert cached['new_grades']==0 and cached['pending']==5
+    assert calls==[1] and nba_store.latest_grades('top5-'+game['game_id'])=={}
 
 
 def test_worker_checks_grading_every_five_minutes(isolated,monkeypatch):
@@ -295,3 +359,107 @@ def test_worker_checks_grading_every_five_minutes(isolated,monkeypatch):
     nba_ops.run(now);nba_ops.run(now+299);nba_ops.run(now+300)
     assert calls==[now,now+300]
     assert nba_store.get_cadence('grading')['cadence_seconds']==300
+
+
+def _stub_worker(monkeypatch, games=()):
+    monkeypatch.setattr(nba_ops,'register_model',lambda *a:None)
+    for name in ('refresh_schedule','histories','forecasts','grade_due','evaluate'):
+        monkeypatch.setattr(nba_ops,name,lambda *a:{})
+    monkeypatch.setattr(nba_store,'list_games',lambda day:[g for g in games if g['game_date_et']==day])
+    monkeypatch.setattr(nba_store,'get_game_lock',lambda *a:None)
+    monkeypatch.setattr(nba_ops,'_forecast',lambda *a:{'saved':True})
+    monkeypatch.setattr(nba_sources,'fetch',lambda *a,**kw:pytest.fail('unexpected provider call'))
+
+
+@pytest.mark.parametrize('status,prior_hours',[
+    ('outside_capture_window',98/60),('no_targets',98/60),('captured',9)])
+def test_capture_clock_opens_for_new_targets_and_new_eastern_day(isolated,monkeypatch,status,prior_hours):
+    tip=nba_ops.parse_time('2026-10-23T20:00:00Z');window=tip-8*3600
+    games=[{'game_id':'g1','game_date_et':'2026-10-23','tipoff_ts':tip,'status':'scheduled'}]
+    _stub_worker(monkeypatch,games);calls=[]
+    monkeypatch.setattr(nba_ops,'capture_props',lambda now:calls.append(now) or {'status':'captured'})
+    nba_ops.step('props',window-prior_hours*3600,10800,lambda:{'status':status})
+    nba_ops.run(window-300)
+    assert calls==[]
+    assert nba_store.get_cadence('props')['next_due_at']==window
+    nba_ops.run(window-1)
+    assert calls==[]
+    nba_ops.run(window)
+    assert calls==[window]
+
+
+def test_paid_capture_keeps_retry_toward_forty_five_minutes_before_tip(isolated,monkeypatch):
+    tip=nba_ops.parse_time('2026-10-23T20:00:00Z');last=tip-8*3600
+    _stub_worker(monkeypatch,[{'game_id':'g1','game_date_et':'2026-10-23','tipoff_ts':tip,'status':'scheduled'}])
+    calls=[]
+    monkeypatch.setattr(nba_ops,'capture_props',lambda now:calls.append(now) or {'status':'captured'})
+    nba_ops.step('props',last,10800,lambda:{'status':'captured'})
+    nba_ops.run(last+300)
+    assert calls==[]
+    assert nba_store.get_cadence('props')['next_due_at']==tip-45*60
+    nba_ops.run(tip-45*60)
+    assert calls==[tip-45*60]
+
+
+def test_paid_capture_without_remaining_targets_keeps_three_hour_cadence(isolated,monkeypatch):
+    now=nba_ops.parse_time('2026-10-23T12:00:00Z');_stub_worker(monkeypatch)
+    calls=[]
+    monkeypatch.setattr(nba_ops,'capture_props',lambda stamp:calls.append(stamp) or {'status':'no_targets'})
+    nba_ops.step('props',now,10800,lambda:{'status':'captured'})
+    nba_ops.run(now+10799)
+    assert calls==[]
+    nba_ops.run(now+10800)
+    assert calls==[now+10800]
+
+
+@pytest.mark.parametrize('status',['nfl_capacity_reserved','nba_daily_budget','provider_quota_cooldown',
+                                   'local_per_minute_request_guard'])
+def test_budget_wait_rechecks_without_a_three_hour_delay(isolated,monkeypatch,status):
+    now=nba_ops.parse_time('2026-10-23T12:00:00Z');_stub_worker(monkeypatch)
+    calls=[]
+    monkeypatch.setattr(nba_ops,'capture_props',lambda stamp:calls.append(stamp) or {'status':status})
+    nba_ops.step('props',now,10800,lambda:{'status':status})
+    nba_ops.run(now+299)
+    assert calls==[]
+    nba_ops.run(now+300)
+    assert calls==[now+300]
+    assert nba_store.get_cadence('props')['next_due_at']==now+600
+
+
+@pytest.mark.parametrize('name',['histories','grade_due','refresh_schedule'])
+def test_worker_health_keeps_failures_until_a_real_success(isolated,monkeypatch,name):
+    now=nba_ops.parse_time('2026-10-23T12:00:00Z');_stub_worker(monkeypatch)
+    monkeypatch.setattr(nba_ops,'capture_props',lambda *a:{'status':'no_targets'})
+    monkeypatch.setattr(nba_ops,name,lambda *a:{'ok':False,'message':'source unavailable'})
+    failed=nba_ops.run(now)
+    assert failed['ok'] is False and failed['needs_attention'] is True
+    monkeypatch.setattr(nba_ops,name,lambda *a:{})
+    cached=nba_ops.run(now+1)
+    assert cached['ok'] is False and cached['needs_attention'] is True
+    recovered=nba_ops.run(now+901)
+    assert recovered['ok'] is True and recovered['needs_attention'] is False
+
+
+def test_today_waiting_props_explain_reserved_capacity_and_automatic_recheck(isolated,monkeypatch):
+    _,game,_,tip=_grading_case(status='scheduled',props=False)
+    monkeypatch.setattr(nba_ops.time,'time',lambda:tip-3600)
+    monkeypatch.setattr(nba_ops.nba_quotes,'budget',lambda *a:{'blocked_reason':'nfl_capacity_reserved',
+        'shared_remaining':38,'nfl_reserved_requests':40})
+    monkeypatch.setattr(nba_sources,'fetch',lambda *a,**kw:pytest.fail('read called a provider'))
+    board=nba_ops.board(game['game_date_et'])
+    assert 'NFL' in board['notice'] and '38' in board['notice'] and '40' in board['notice']
+    assert 'automatically' in board['games'][0]['prop_message']
+    assert 'paused' in nba_ops.matchup(game['game_id'])['game']['prop_message']
+    nba_ops.step('history',tip-3600,300,lambda:{'ok':False,'message':'source unavailable'})
+    assert 'source check needs attention' in nba_ops.board(game['game_date_et'])['notice']
+    monkeypatch.setattr(nba_ops.time,'time',lambda:tip+3600)
+    assert 'will not be backfilled' in nba_ops.board(game['game_date_et'])['games'][0]['prop_message']
+
+
+@pytest.mark.parametrize('status',['scheduled','final'])
+def test_budget_notice_does_not_change_locked_games(isolated,monkeypatch,status):
+    _,game,_,tip=_grading_case(status=status)
+    monkeypatch.setattr(nba_ops.time,'time',lambda:tip-3600 if status=='scheduled' else tip+3600)
+    monkeypatch.setattr(nba_ops.nba_quotes,'budget',lambda *a:pytest.fail('locked game needs no capture budget'))
+    shown=nba_ops.board(game['game_date_et'])['games'][0]
+    assert shown['props_state']=='locked' and 'paused' not in shown['prop_message']

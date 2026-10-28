@@ -1,4 +1,4 @@
-"""Honest baseline NBA research model on sourced historical boxscore rows.
+"""Frozen NBA research model on sourced historical boxscore rows.
 
 RESEARCH_ONLY / PASS. Nothing here calls a provider, the Odds API, a database,
 or an LLM, and nothing here enables official picks. Every number comes from
@@ -7,10 +7,10 @@ old enough to have finished (tipoff minus a fixed feature lag). When sourced
 inputs are missing or thin the functions return an explicit ``unavailable``
 status — never an invented league-mean forecast.
 
-All fixed parameters live in ``PARAMETERS`` and are fingerprinted into every
-output, including the selection, cadence, lag and probability settings. They
-are a-priori structural constants chosen before any forward record exists;
-none were tuned on outcomes. See docs/research/nba_model.md.
+All fixed parameters and the historical prop fit are fingerprinted into every
+output. Opportunity and uncertainty parameters use only games before the
+original October 1 training cutoff. No running-season outcomes are fitted.
+The team game component retains its previous fixed baseline.
 
 Unlike the legacy analytics/nba.py path, this research path applies no
 arbitrary injury point or usage bumps: injuries only gate or annotate
@@ -27,13 +27,17 @@ import json
 import math
 import statistics
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Dict, List, Optional, Sequence, Tuple
 
 from .analytics.nba import HFA, PROP_SD_FLOOR, SD_MARGIN, SD_TOTAL
 from .pricing import (american_to_decimal, american_to_prob, norm_cdf,
                       prob_over, prob_over_count)
+from . import nba_prop_model
+from .nba_model_manifest import ARTIFACT_SHA256, SERVING_SOURCE_SHA256
 
-MODEL_VERSION = "nba-research-1.1.0"
+MODEL_VERSION = "nba-research-2.0.1"
+GAME_COMPONENT_VERSION = "nba-game-baseline-1.1.0"
 READINESS = "RESEARCH_ONLY"
 DESIGNATION = "PASS"
 
@@ -63,8 +67,15 @@ FEATURE_LAG_S = 4 * 3600   # a game row is input-eligible once it could be final
 POSTGAME_DELAY_S = 4 * 3600
 BLOCKED_AVAILABILITY = ("out", "doubtful", "inactive")
 
+PROP_PARAMETERS = nba_prop_model.load_parameters(
+    Path(__file__).with_name('nba_prop_parameters.json'),ARTIFACT_SHA256,SERVING_SOURCE_SHA256)
+PROP_FIT_SHA256 = hashlib.sha256(json.dumps(
+    PROP_PARAMETERS, sort_keys=True, separators=(',', ':')).encode()).hexdigest()
+
 PARAMETERS = {
     "model_version": MODEL_VERSION,
+    "game_component_version": GAME_COMPONENT_VERSION,
+    "prop_fit_sha256": PROP_FIT_SHA256,
     "hfa": HFA, "sd_margin": SD_MARGIN, "sd_total": SD_TOTAL,
     "min_team_games": MIN_TEAM_GAMES, "team_window": TEAM_WINDOW,
     "min_prop_games": MIN_PROP_GAMES, "prop_window": PROP_WINDOW,
@@ -83,8 +94,9 @@ PARAMETERS = {
     "probability": {
         "integer_line_continuity_correction": True,
         "push_mass_excluded_from_over_under": True,
-        "count_model": "poisson_or_negative_binomial",
-        "continuous_model": "normal",
+        "active_prop_model": "historical_standardized_residual_cdf",
+        "historical_fallback": "poisson_or_negative_binomial_and_normal",
+        "fit_eligible_from": PROP_PARAMETERS['eligible_from'],
     },
     "selection_rule": "rank_by_model_probability_implied_descriptive_only",
     "main_line_rule": "explicit_line_type_main_or_is_main_true_only",
@@ -151,6 +163,15 @@ def _base(**extra) -> Dict:
            "readiness": READINESS, "designation": DESIGNATION}
     out.update(extra)
     return out
+
+
+def historical_evaluation() -> Dict:
+    """Frozen historical acceptance report; no fitting or database access."""
+    report = json.loads(json.dumps(PROP_PARAMETERS['historical_validation']))
+    report.update(model_version=MODEL_VERSION,parameter_fingerprint=PARAMETER_FINGERPRINT,
+                  artifact_sha256=PROP_FIT_SHA256,
+                  source_catalog=PROP_PARAMETERS['source_catalog'])
+    return report
 
 
 # -------------------------------------------------------------- team histories
@@ -227,7 +248,8 @@ def project_game(home: str, away: str, team_history: Sequence[Dict], tipoff,
     MIN_TEAM_GAMES sourced rows for either team the projection is
     unavailable — it is never replaced by a league-mean guess.
     """
-    base = _base(sport="NBA", home=home, away=away)
+    base = _base(sport="NBA", home=home, away=away,
+                 game_component_version=GAME_COMPONENT_VERSION)
     tip = parse_time(tipoff)
     if tip is None:
         return dict(base, status="unavailable", reason="invalid_tipoff")
@@ -400,14 +422,11 @@ def probabilities(market: str, mu: float, sd: float, line: float
 
 def project_prop(player_id: str, market: str, player_history: Sequence[Dict],
                  tipoff, line: Optional[float] = None) -> Dict:
-    """Minutes-aware baseline projection for one player/market.
+    """Opportunity projection with frozen historical error calibration.
 
-    The projection is the mean per-minute rate over the sourced window times
-    the window's mean minutes. Requires MIN_PROP_GAMES valid eligible rows;
-    sparse identities or unknown minutes make it unavailable, never guessed.
-    Probabilities need an explicit line and exclude integer-line push mass.
-    This is a descriptive baseline — no opponent, pace, matchup or injury
-    adjustment.
+    Older historical targets before the fitted calibration end retain the
+    unfitted baseline, preventing future calibration data from leaking into
+    historical evaluations. Live parameters never refit during refresh.
     """
     if market not in MARKETS:
         raise ValueError(f"unsupported market {market!r}")
@@ -426,6 +445,9 @@ def project_prop(player_id: str, market: str, player_history: Sequence[Dict],
     stats = [r["stat"] for r in rows]
     proj_minutes = statistics.mean(minutes)
     mu = statistics.mean(s / m for s, m in zip(stats, minutes)) * proj_minutes
+    upgraded = tip >= PROP_PARAMETERS['eligible_from']
+    if upgraded:
+        mu, proj_minutes = nba_prop_model.predict(rows, tip, market, PROP_PARAMETERS)
     sd_raw = statistics.stdev(stats) if len(stats) > 1 else 0.0
     sd = max(sd_raw, PROP_SD_FLOOR[market])
     minutes_sd = statistics.stdev(minutes) if len(minutes) > 1 else 0.0
@@ -433,27 +455,43 @@ def project_prop(player_id: str, market: str, player_history: Sequence[Dict],
                     minutes_sd / proj_minutes > MINUTES_CV_FLAG else "stable")
 
     out = dict(base, status="ok", projection=round(mu, 2),
-               raw_projection=mu, sd=round(sd, 2), n=len(rows),
+               raw_projection=mu, raw_sd=sd, sd=round(sd, 2), n=len(rows),
                projected_minutes=round(proj_minutes, 1),
                minutes_sd=round(minutes_sd, 2), minutes_flag=minutes_flag,
                probability_over=None, probability_under=None,
                probability_push=None,
-               limits=["descriptive per-minute baseline",
+               probability_method=(('historical_standardized_residual_cdf' if
+                                    PROP_PARAMETERS['markets'][market]['probability_method']=='empirical'
+                                    else 'historical_validated_parametric') if upgraded
+                                   else 'historical_unfitted_baseline'),
+               point_method=(PROP_PARAMETERS['markets'][market]['point_method'] if upgraded
+                             else 'baseline'),
+               calibration_n=(PROP_PARAMETERS['markets'][market]['calibration_n'] if upgraded else 0),
+               limits=["historical current-roster sample has survivorship bias",
                        "no opponent, pace, matchup or injury adjustment",
-                       "count markets use Poisson/negative-binomial; "
-                       "points and pra use a normal approximation",
+                       "historical distribution evaluation uses no sportsbook lines",
                        "integer lines carry push mass excluded from both "
-                       "sides (continuity correction for points/pra)"])
+                       "sides"])
     if line is not None:
         number = valid_number(line)
         if number is None:
             raise ValueError("invalid prop line")
-        p_over, p_under, p_push = probabilities(market, mu, sd, number)
+        p_over, p_under, p_push = forecast_probabilities(out, number)
         out["line"] = number
         out["probability_over"] = round(p_over, 4)
         out["probability_under"] = round(p_under, 4)
         out["probability_push"] = round(p_push, 4)
     return out
+
+
+def forecast_probabilities(projection: Dict, line: float) -> Tuple[float, float, float]:
+    """Use the saved projection's own distribution for both display and rank."""
+    market = projection['market']
+    mu, sd = projection['raw_projection'], projection.get('raw_sd', projection['sd'])
+    if projection.get('probability_method') in {
+            'historical_standardized_residual_cdf','historical_validated_parametric'}:
+        return nba_prop_model.probabilities(market, mu, sd, line, PROP_PARAMETERS)
+    return probabilities(market, mu, sd, line)
 
 
 # ------------------------------------------------------------------ selection
@@ -583,8 +621,7 @@ def select_props(quotes: Sequence[Dict], player_history: Sequence[Dict],
             continue
         best = None
         for q in group:
-            p_over, p_under, p_push = probabilities(
-                market, proj["raw_projection"], proj["sd"], q["_line"])
+            p_over, p_under, p_push = forecast_probabilities(proj, q["_line"])
             # The strongest side is chosen by model probability among the
             # actually-quoted sides, each with its own real price.
             p_side = p_over if q["side"] == "over" else p_under
@@ -607,6 +644,10 @@ def select_props(quotes: Sequence[Dict], player_history: Sequence[Dict],
             "price": quote["_price"], "sportsbook": quote.get("sportsbook"),
             "observed_at": quote["_observed"], "identity_verified": True,
             "projection": proj["projection"], "sd": proj["sd"], "n": proj["n"],
+            "point_method": proj['point_method'],
+            "probability_method": proj['probability_method'],
+            "calibration_n": proj['calibration_n'],
+            "projected_minutes": proj['projected_minutes'],
             "probability": round(p_side, 4),
             "probability_push": round(p_push, 4),
             "implied_probability": round(implied, 4),

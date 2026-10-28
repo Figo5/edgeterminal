@@ -151,8 +151,13 @@ class SportsGameOddsProps:
                 params["bookmakerID"] = self.bookmaker_ids
             if cursor:
                 params["cursor"] = cursor
-            db.ex("INSERT INTO nfl_prop_api_request_attempts VALUES(?,?,?,?)",
-                  (batch_id, page_number, time.time(), json.dumps(params, sort_keys=True)))
+            from .nfl_prop_capture_ops import request_slot_available
+            with db.tx() as conn:
+                requested_at = time.time()
+                if not request_slot_available(conn, requested_at):
+                    raise ProviderError(PROVIDER, 'local per-minute request limit reached')
+                conn.execute("INSERT INTO nfl_prop_api_request_attempts VALUES(?,?,?,?)",
+                             (batch_id, page_number, requested_at, json.dumps(params, sort_keys=True)))
             try:
                 if self.getter is None:
                     status, body, headers = get_raw_meta(

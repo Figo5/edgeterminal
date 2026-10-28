@@ -86,6 +86,20 @@ def test_snapshot_warning_clears_after_successful_retry(isolated, monkeypatch):
     assert db.kv_get(visit_refresh.KEY) == result
 
 
+def test_sport_views_preserve_the_shared_failure_cache_and_one_cooldown(isolated, monkeypatch):
+    db.ex('INSERT INTO research_refresh_steps(run_id,name,attempted_at,success,detail) '
+          'VALUES(?,?,?,?,?)', ('nba-failed', 'nba_research', 900., 0, '{}'))
+    db.kv_set(visit_refresh.KEY, {'ok': False, 'status': 'needs_attention',
+                                'attention': 'updates', 'started_at': 900.})
+    monkeypatch.setattr(research_refresh, 'run', lambda **kw: pytest.fail('sport view bypassed shared cooldown'))
+    shared = visit_refresh.check(1000.)
+    assert visit_refresh.for_sport(shared, 'NFL', 1000.)['ok']
+    assert not visit_refresh.for_sport(shared, 'NBA', 1000.)['ok']
+    assert not db.kv_get(visit_refresh.KEY)['ok']
+    assert db.q1('SELECT COUNT(*) AS n FROM research_refresh_steps')['n'] == 1
+    assert not visit_refresh.check(1001.)['did_work']
+
+
 def test_concurrent_request_observes_claim(isolated, monkeypatch):
     def worker(**kwargs):
         assert visit_refresh.check(1001)['status'] == 'busy'

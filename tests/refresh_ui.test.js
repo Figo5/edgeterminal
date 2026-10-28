@@ -175,13 +175,13 @@ test('Linear research results render in a separate model table', () => {
   assert.match(elements.main.innerHTML,/33.3% win rate/);
 });
 
-test('Challenger comparison shows separate record and pending evidence', () => {
+test('Archived comparison keeps saved results while new selections use active model', () => {
   const {elements,performance}=harness(()=>{throw Error('no fetch');});
   const empty={count:0,record:{},win_rate:null};
   performance({season_record:{season:2026,props:{...empty,games:[]},games:{rows:[],winner:empty,spread:empty,total:empty},weekly:[],
     challenger:{record:{won:38,lost:23,void:5,pending:20},selections:86,comparison:{n:5,baseline_mae:2,challenger_mae:1.5},brier:.2}}});
-  assert.match(elements.main.innerHTML,/Challenger comparison/);
-  assert.match(elements.main.innerHTML,/separate research record/);
+  assert.match(elements.main.innerHTML,/Archived comparison model/);
+  assert.match(elements.main.innerHTML,/New selections use the active model/);
   assert.match(elements.main.innerHTML,/<small>Challenger record<\/small><strong>38–23<\/strong>/);
   assert.match(elements.main.innerHTML,/86 saved · 20 pending · 5 void/);
   assert.match(elements.main.innerHTML,/Brier score/);

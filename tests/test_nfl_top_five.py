@@ -198,7 +198,9 @@ def test_capture_keeps_earlier_upcoming_week_when_board_moves_ahead(isolated, mo
     monkeypatch.setattr(top, 'provider', lambda: object())
     monkeypatch.setattr(top.nfl_prop_capture_ops, 'capture',
                         lambda s, w, ids, now, **kw: captures.append((s, w, ids)) or {'batch_id': 'captured'})
-    monkeypatch.setattr(top.nfl_prop_lab, 'project_week3', lambda *a, **k: {'projections': []})
+    monkeypatch.setattr(top.nfl_prop_model, 'load_artifact', lambda: ({}, {}))
+    monkeypatch.setattr(top.nfl_prop_lab, 'project_week3', lambda *a, **k: pytest.fail('legacy model served new capture'))
+    monkeypatch.setattr(top.nfl_prop_model, 'project_current', lambda *a, **k: {'projections': []})
     top.capture_missing(1000., manual=manual)
     assert inputs == [(2026, 7)]
     assert captures == [(2026, 7, [earlier])]
@@ -218,12 +220,87 @@ def test_manual_capture_still_enforces_cooldown_and_quota(isolated, monkeypatch)
     assert top.capture_missing(2000., manual=True)['status'] == 'provider_quota_cooldown'
 
 
-def attempt(success=1, error=None):
+def attempt(success=1, error=None, *, events_returned=1, quotes_stored=4):
     db.ex('INSERT INTO nfl_prop_capture_batches VALUES(?,?,?,?,?,?,?,?,?)',
           ('latest-batch', 'sportsgameodds', 30., 'source', '{}', 1, 1, 4, '{}'))
     db.ex('INSERT INTO nfl_prop_capture_attempts VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
           ('attempt', 'latest-batch', 2026, 5, json.dumps([GAME]), 30., 31., success,
-           1, 1, 1, 4, '[]', '[]', None, error))
+           1, 1, events_returned, quotes_stored, '[]', '[]', None, error))
+
+
+def empty_attempt(*, http_status=200, body=None, valid_hash=True, retrieved_at=31.):
+    attempt(0, 'ValueError: target event missing or unmapped in SportsGameOdds response',
+            events_returned=0, quotes_stored=0)
+    raw = json.dumps(body if body is not None else {'success': True, 'data': []}).encode()
+    digest = hashlib.sha256(raw).hexdigest() if valid_hash else '0' * 64
+    db.ex('INSERT INTO nfl_prop_raw_responses VALUES(?,?,?,?,?,?,?,?)',
+          ('latest-batch', 1, retrieved_at, http_status, '{}', '{}', digest, raw))
+    return db.q1('SELECT * FROM nfl_prop_capture_attempts')
+
+
+def test_empty_early_provider_listing_retries_daily_and_keeps_initial_capture(isolated):
+    last = empty_attempt()
+    event = {'start_time': '1970-01-04T00:00:00Z', 'status': 'STATUS_SCHEDULED'}
+    assert top.next_capture(event, None, 1000.) == 1000.
+    assert top.next_capture(event, last, 1000.) == 31. + 86400.
+
+
+def test_empty_early_retry_enters_final_day_without_an_extra_wait(isolated):
+    last = empty_attempt()
+    event = {'start_time': '1970-01-02T01:00:31Z', 'status': 'STATUS_SCHEDULED'}
+    final_day = 3631.
+    assert top.next_capture(event, last, 1000.) == final_day
+    assert top.next_capture(event, last, final_day + 1) == final_day
+
+
+@pytest.mark.parametrize('options', [
+    {'http_status': 429}, {'body': {'success': False, 'data': []}},
+    {'body': {'success': True, 'data': [{'eventID': 'different-game'}]}},
+    {'body': {'success': True, 'data': [], 'nextCursor': 'more'}},
+    {'valid_hash': False}, {'retrieved_at': 1001.}])
+def test_daily_empty_retry_requires_verified_successful_empty_source(isolated, options):
+    last = empty_attempt(**options)
+    event = {'start_time': '1970-01-04T00:00:00Z', 'status': 'STATUS_SCHEDULED'}
+    assert top.next_capture(event, last, 1000.) == 30. + 6 * 3600.
+
+
+def test_empty_listing_inside_final_day_keeps_normal_capture_cadence(isolated):
+    last = empty_attempt()
+    event = {'start_time': '1970-01-01T01:00:00Z', 'status': 'STATUS_SCHEDULED'}
+    assert top.next_capture(event, last, 1000.) == 30. + top.nfl_prop_capture_ops.FAILURE_BACKOFF
+
+
+def test_local_minute_limit_deferral_keeps_five_minute_near_kickoff_retry():
+    event = {'start_time': '1970-01-01T00:15:00Z', 'status': 'STATUS_SCHEDULED'}
+    last = {'success': 0, 'attempted_at': 30.,
+            'error': 'RuntimeError: local per-minute request limit reached'}
+    assert top.next_capture(event, last, 100.) == 330.
+
+
+def test_empty_future_listing_coverage_explains_wait_and_saved_next_retry(isolated, monkeypatch):
+    monkeypatch.setattr(settings, 'sportsgameodds_api_key', 'fixture')
+    db.ex('UPDATE events SET start_time=? WHERE id=?', ('1970-01-04T00:00:00Z', GAME))
+    empty_attempt()
+    before = db.q('SELECT * FROM nfl_top_five_selections')
+    item = top.coverage([GAME], 1000.)[0]
+    assert item['status'] == 'waiting_provider_listing'
+    assert 'no available prop listing' in item['message']
+    assert item['next_capture_at'] == 31. + 86400.
+    assert db.q('SELECT * FROM nfl_top_five_selections') == before
+
+
+@pytest.mark.parametrize('manual', [False, True])
+def test_empty_future_wait_keeps_cooldown_without_fetching_inputs_or_quotes(isolated, monkeypatch, manual):
+    monkeypatch.setattr(settings, 'sportsgameodds_api_key', 'fixture')
+    db.ex('UPDATE events SET start_time=? WHERE id=?', ('1970-01-04T00:00:00Z', GAME))
+    empty_attempt()
+    monkeypatch.setattr(top, '_inputs', lambda *args: pytest.fail('inputs requested during cooldown'))
+    monkeypatch.setattr(top.nfl_prop_capture_ops, 'capture',
+                        lambda *args, **kwargs: pytest.fail('paid quotes requested during cooldown'))
+    stamp = 1000. if manual else 30. + 6 * 3600.
+    assert top.capture_missing(stamp, manual=manual)['status'] == 'awaiting_next_prop_capture'
+    assert db.q1('SELECT COUNT(*) n FROM nfl_prop_capture_attempts')['n'] == 1
+    assert db.q1('SELECT COUNT(*) n FROM nfl_top_five_selections')['n'] == 0
 
 
 def test_coverage_explains_partial_lines_without_fetch_or_mutation(isolated, monkeypatch):

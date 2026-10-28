@@ -14,6 +14,7 @@ import time
 from collections import Counter, defaultdict
 
 from . import db, nfl_props, nfl_prop_capture_ops, nfl_prop_grading, nfl_prop_lab, nfl_prop_result_ingest
+from . import nfl_learning as nfl_prop_model
 from .config import ROOT, settings
 from .integrity import parse_time
 
@@ -22,6 +23,7 @@ BOOKS = 'draftkings,fanduel,caesars,espnbet,bovada'
 GRADE_POLL_S = 5 * 60
 GRADE_AUDIT_S = 24 * 3600
 GRADE_PENDING_WINDOW_S = 7 * 86400
+EMPTY_LISTING_RETRY_S = 24 * 3600
 
 
 def provider():
@@ -33,15 +35,42 @@ def provider():
     return nfl_props.SportsGameOddsProps(odd_ids=ids, bookmaker_ids=BOOKS)
 
 
+def _empty_provider_listing(last: dict | None, now: float) -> bool:
+    if not last or last.get('success') != 0 or last.get('events_returned') != 0:
+        return False
+    pages = db.q('SELECT * FROM nfl_prop_raw_responses WHERE batch_id=? ORDER BY page_number',
+                 (last['batch_id'],))
+    if (len(pages) != 1 or pages[0]['page_number'] != 1 or pages[0]['http_status'] != 200 or
+            pages[0]['fetched_at'] > now):
+        return False
+    raw = bytes(pages[0]['body'])
+    if hashlib.sha256(raw).hexdigest() != pages[0]['body_sha256']:
+        return False
+    try:
+        payload = json.loads(raw)
+    except (ValueError, UnicodeDecodeError):
+        return False
+    return (isinstance(payload, dict) and payload.get('success') is True and
+            payload.get('data') == [] and not payload.get('nextCursor'))
+
+
 def next_capture(event: dict, last: dict | None, now: float) -> float | None:
     kickoff = parse_time(event['start_time'])
     if (not kickoff or now >= kickoff or
             str(event.get('status') or '').upper() in nfl_prop_capture_ops.INACTIVE):
         return None
     frequency = nfl_prop_capture_ops.cadence(kickoff - now) or 6 * 3600
-    if last and not last['success']:
+    if (last and not last['success'] and
+            'local per-minute request limit reached' not in (last.get('error') or '')):
         frequency = max(frequency, nfl_prop_capture_ops.FAILURE_BACKOFF)
-    return max(kickoff - 7 * 86400, last['attempted_at'] + frequency if last else now)
+    next_at = last['attempted_at'] + frequency if last else now
+    if last:
+        observed = max(last['attempted_at'], last.get('completed_at', last['attempted_at']))
+        if observed < kickoff - 86400 and _empty_provider_listing(last, now):
+            # Empty early listings need fewer paid checks. Re-enter the normal
+            # capture window as soon as the final day starts.
+            next_at = min(observed + EMPTY_LISTING_RETRY_S, kickoff - 86400)
+    return max(kickoff - 7 * 86400, next_at)
 
 
 def coverage(game_ids: list[str], now: float | None = None) -> list[dict]:
@@ -77,6 +106,8 @@ def coverage(game_ids: list[str], now: float | None = None) -> list[dict]:
             status, message = 'missing_source', 'Player prop source is not configured.'
         elif blocked:
             status, message = 'source_paused', 'Prop updates are paused by the source quota guard.'
+        elif _empty_provider_listing(last, stamp):
+            status, message = 'waiting_provider_listing', 'The provider returned no available prop listing for this game. A scheduled retry is pending.'
         elif last and not last['success']:
             status, message = 'capture_failed', 'The last prop capture failed. A bounded retry is scheduled.'
         elif not last:
@@ -258,19 +289,21 @@ def capture_missing(now: float | None = None, *, manual: bool = False) -> dict:
     parts = targets[0].split('-')
     season, week = int(parts[1]), int(parts[3])
     targets = [g for g in targets if g.split('-')[1:4] == parts[1:4]]
+    # Verify the reviewed frozen model before spending provider quota.
+    nfl_prop_model.load_artifact()
     train, history, hashes = _inputs(season, week)
     validation_path = ROOT / "data/research/nfl_prop_lab_2026_week3.json"
     validation = json.loads(validation_path.read_text())["validation"]
     hashes["model_selection"] = hashlib.sha256(validation_path.read_bytes()).hexdigest()
     capture = nfl_prop_capture_ops.capture(season, week, targets, stamp, provider=provider())
-    report = nfl_prop_lab.project_week3(train, history, validation, capture["batch_id"],
-                                       season=season, week=week, stats_dir=ROOT / "data/nflverse/prop_live")
+    report = nfl_prop_model.project_current(train, history, validation, capture["batch_id"],
+                                           season=season, week=week, stats_dir=ROOT / "data/nflverse/prop_live")
     # Keep complete pairs for grading and provenance; choose only five strongest
     # sides for the visible research record.
     if not report["projections"]:
         return {"status": "no_projectable_props", "games_without_five": targets,
                 "capture": capture}
-    sealed = nfl_prop_lab.seal_forward(report, hashes)
+    sealed = nfl_prop_model.seal_forward(report, hashes)
     selected = lock(sealed["freeze_sha"], time.time())
     return {"status": "captured", **selected, "capture": capture, "freeze": sealed}
 

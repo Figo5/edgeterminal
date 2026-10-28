@@ -397,6 +397,25 @@ def seal_forward(report: dict, dataset_hashes: dict[str, str], created_at: float
                 "feature_names": FEATURES, "input_sha256": dataset_hashes,
                 "selection_basis": "2024 development MAE", "validation_holdout": "2025",
                 "source_batch_id": report["batch_id"], "created_at": created_at}
+    if report.get("model_metadata") is not None:
+        active = report["model_metadata"]
+        fields = {"model_version", "feature_version", "feature_names", "parameter_fingerprint",
+                  "model_manifest_sha256", "training_cutoff", "selection_basis", "validation_holdout"}
+        if (not isinstance(active, dict) or
+                set(active) != fields or
+                any(not isinstance(active[key], str) or not active[key]
+                    for key in ("model_version", "feature_version", "selection_basis", "validation_holdout")) or
+                not isinstance(active["feature_names"], (list, tuple)) or not active["feature_names"] or
+                any(not isinstance(feature, str) or not feature for feature in active["feature_names"]) or
+                active["training_cutoff"] != [2026, 3] or
+                any(not isinstance(active[key], str) or len(active[key]) != 64 or
+                    any(char not in "0123456789abcdef" for char in active[key])
+                    for key in ("parameter_fingerprint", "model_manifest_sha256")) or
+                any(not row.get("model_version", "").startswith(active["model_version"] + ":") or
+                    row.get("parameter_fingerprint") != active["parameter_fingerprint"] or
+                    row.get("model_manifest_sha256") != active["model_manifest_sha256"] for row in rows)):
+            raise ValueError("active model metadata does not match forecast rows")
+        metadata.update(active)
     body = json.dumps({"metadata": metadata, "projections": rows}, sort_keys=True, separators=(",", ":"))
     freeze_sha = hashlib.sha256(body.encode()).hexdigest()
     with db.tx() as c:

@@ -12,12 +12,27 @@ from . import db, nfl_props
 from .config import settings
 
 MONTH_SECONDS = 30 * 86400
-MAX_LOCAL_REQUESTS_30D = 180
+# The Amateur account has unlimited monthly requests (verified 2026-10-23).
+# Keep a finite local budget alongside the stricter object and minute guards.
+MAX_LOCAL_REQUESTS_30D = 600
 MAX_LOCAL_OBJECTS_30D = 1200
+MAX_REQUESTS_PER_MINUTE = 10
 FAILURE_BACKOFF = 30 * 60
 QUOTA_BACKOFF = 24 * 3600
 INACTIVE = {"POSTPONED", "CANCELED", "CANCELLED", "FINAL", "STATUS_POSTPONED",
             "STATUS_CANCELED", "STATUS_CANCELLED", "STATUS_FINAL", "STATUS_IN_PROGRESS"}
+
+
+def request_slot_available(conn, now: float) -> bool:
+    """Check both HTTP ledgers while holding the transaction used to reserve a slot."""
+    if not conn.in_transaction:
+        conn.execute('BEGIN IMMEDIATE')
+    used = conn.execute('SELECT COUNT(*) FROM nfl_prop_api_request_attempts WHERE attempted_at>?',
+                        (now-60,)).fetchone()[0]
+    if conn.execute("SELECT 1 FROM sqlite_master WHERE type='table' AND name='nba_prop_requests'").fetchone():
+        used += conn.execute('SELECT COUNT(*) FROM nba_prop_requests WHERE attempted_at>?',
+                             (now-60,)).fetchone()[0]
+    return used < MAX_REQUESTS_PER_MINUTE
 
 
 def cadence(seconds_to_kickoff: float) -> int | None:
@@ -107,7 +122,8 @@ def plan(events: list[dict], now: float, *, key_configured: bool | None = None,
             continue
         last = last_by_game.get(game_id)
         wait = min(frequency, 30 * 60) if manual else frequency
-        if last and not last["success"]:
+        if (last and not last["success"] and
+                'local per-minute request limit reached' not in (last.get('error') or '')):
             wait = max(wait, FAILURE_BACKOFF)
         candidate = last["attempted_at"] + wait if last else kickoff - 24 * 3600
         next_at = min(next_at, candidate) if next_at is not None else candidate

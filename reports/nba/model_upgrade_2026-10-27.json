@@ -1,0 +1,171 @@
+{
+  "activation_note": "Version 2.0.0 was registered by a worker during offline construction before final pinning; no 2.0.0 forecasts were saved. Final model uses a separate immutable 2.0.1 registration; fitted coefficients and historical evaluation are unchanged.",
+  "active_model_version": "nba-research-2.0.1",
+  "artifact_sha256": "16026a8ae369bd66805e1ad7ea5a9d58e867cac142a2027b471c9a4c1a0a772f",
+  "design": "Point-method selection: Jan 2026 only. Final coefficient fit: before Feb 1. Probability-method selection: first-half February residual fit, second-half February validation; empirical law must improve both CRPS and synthetic-threshold Brier. Residual calibration: all February. March\u2013April labels excluded from fitting and per-market selection. This is retrospective historical validation: the initial March\u2013April report informed addition of the generic probability gate; it is not independent proof of future performance. Current-roster sample has survivorship bias. No historical sportsbook lines or selection hit-rate claim.",
+  "distribution": {
+    "assists": {
+      "baseline_brier": 0.265808390745816,
+      "baseline_crps": 1.0353248521807594,
+      "upgraded_brier": 0.25620560910303797,
+      "upgraded_crps": 1.0131678370967623
+    },
+    "points": {
+      "baseline_brier": 0.24959150295287372,
+      "baseline_crps": 3.4970858962673304,
+      "upgraded_brier": 0.2441599116639744,
+      "upgraded_crps": 3.437511499373046
+    },
+    "pra": {
+      "baseline_brier": 0.2496109895225349,
+      "baseline_crps": 4.590848498038195,
+      "upgraded_brier": 0.24291753686007125,
+      "upgraded_crps": 4.4821942242911685
+    },
+    "rebounds": {
+      "baseline_brier": 0.25455938068872336,
+      "baseline_crps": 1.3897302408072916,
+      "upgraded_brier": 0.24479446623889736,
+      "upgraded_crps": 1.3672096196348926
+    },
+    "threes": {
+      "baseline_brier": 0.22609965248531433,
+      "baseline_crps": 0.6439894436091508,
+      "upgraded_brier": 0.22101126303474317,
+      "upgraded_crps": 0.6359060432470649
+    }
+  },
+  "markets": {
+    "assists": {
+      "baseline_mae": 1.455290062094754,
+      "baseline_minutes_mae": 5.335890773431797,
+      "calibration_n": 3007,
+      "development_mae": {
+        "baseline": 1.371479692593138,
+        "opportunity": 1.3561437764046982,
+        "ridge": 1.3593605707490362
+      },
+      "development_n": 4235,
+      "holdout_n": 6094,
+      "point_method": "opportunity",
+      "probability_method": "parametric",
+      "probability_validation": {
+        "empirical_brier": 0.2429717528111003,
+        "empirical_crps": 1.0037344086580373,
+        "fit_n": 1688,
+        "parametric_brier": 0.25078924587967044,
+        "parametric_crps": 0.9970938157501255,
+        "validation_n": 1319
+      },
+      "train_n": 7141,
+      "upgraded_mae": 1.4333358610427003,
+      "upgraded_minutes_mae": 5.032100576236871
+    },
+    "points": {
+      "baseline_mae": 4.932870480444292,
+      "baseline_minutes_mae": 5.335890773431797,
+      "calibration_n": 3007,
+      "development_mae": {
+        "baseline": 4.597234057410349,
+        "opportunity": 4.5446954388581,
+        "ridge": 4.58498950796557
+      },
+      "development_n": 4235,
+      "holdout_n": 6094,
+      "point_method": "opportunity",
+      "probability_method": "parametric",
+      "probability_validation": {
+        "empirical_brier": 0.25318534279190386,
+        "empirical_crps": 3.3853027837024756,
+        "fit_n": 1688,
+        "parametric_brier": 0.2466225631447438,
+        "parametric_crps": 3.3331422683252745,
+        "validation_n": 1319
+      },
+      "train_n": 7141,
+      "upgraded_mae": 4.842443237646751,
+      "upgraded_minutes_mae": 5.032100576236871
+    },
+    "pra": {
+      "baseline_mae": 6.445448913494887,
+      "baseline_minutes_mae": 5.335890773431797,
+      "calibration_n": 3007,
+      "development_mae": {
+        "baseline": 6.049140492642048,
+        "opportunity": 5.93418732948427,
+        "ridge": 5.981255151862365
+      },
+      "development_n": 4235,
+      "holdout_n": 6094,
+      "point_method": "opportunity",
+      "probability_method": "parametric",
+      "probability_validation": {
+        "empirical_brier": 0.24594127567600307,
+        "empirical_crps": 4.391151762121282,
+        "fit_n": 1688,
+        "parametric_brier": 0.24216031874196725,
+        "parametric_crps": 4.358488320981389,
+        "validation_n": 1319
+      },
+      "train_n": 7141,
+      "upgraded_mae": 6.294441642708773,
+      "upgraded_minutes_mae": 5.032100576236871
+    },
+    "rebounds": {
+      "baseline_mae": 1.9589032181264847,
+      "baseline_minutes_mae": 5.335890773431797,
+      "calibration_n": 3007,
+      "development_mae": {
+        "baseline": 1.9338005950146013,
+        "opportunity": 1.9148342209114757,
+        "ridge": 1.9316370653363784
+      },
+      "development_n": 4235,
+      "holdout_n": 6094,
+      "point_method": "opportunity",
+      "probability_method": "empirical",
+      "probability_validation": {
+        "empirical_brier": 0.24072633154947218,
+        "empirical_crps": 1.4061378236405446,
+        "fit_n": 1688,
+        "parametric_brier": 0.24289924165168067,
+        "parametric_crps": 1.4126948786943638,
+        "validation_n": 1319
+      },
+      "train_n": 7141,
+      "upgraded_mae": 1.9378275840778134,
+      "upgraded_minutes_mae": 5.032100576236871
+    },
+    "threes": {
+      "baseline_mae": 0.9345664524638304,
+      "baseline_minutes_mae": 5.335890773431797,
+      "calibration_n": 3007,
+      "development_mae": {
+        "baseline": 0.9389332211980257,
+        "opportunity": 0.9311523756126567,
+        "ridge": 0.9504823582175389
+      },
+      "development_n": 4235,
+      "holdout_n": 6094,
+      "point_method": "opportunity",
+      "probability_method": "parametric",
+      "probability_validation": {
+        "empirical_brier": 0.24163185540667612,
+        "empirical_crps": 0.6686888042642466,
+        "fit_n": 1688,
+        "parametric_brier": 0.22404944038313251,
+        "parametric_crps": 0.6394779342353549,
+        "validation_n": 1319
+      },
+      "train_n": 7141,
+      "upgraded_mae": 0.9319538273573379,
+      "upgraded_minutes_mae": 5.032100576236871
+    }
+  },
+  "serving_source_sha256": {
+    "nba_model.py": "9a288425344b5da066cbc882bc53b1703053c0d243006dbaabcfe72a675bee4b",
+    "nba_prop_model.py": "d52be87491504b85b7bad17f6f9ec7d50d1bdc0f6df11a53e179f8a4b103aa37",
+    "pricing.py": "500b6f372f85e3e39607d83c2dc6dd157af699fa5f4286df01bc6078dc15c1f2"
+  },
+  "training_cutoff": "2026-10-01T00:00:00Z"
+}

@@ -9,13 +9,23 @@ from collections import Counter
 from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
-from . import db, nba_data, nba_identity, nba_model, nba_grading, nba_quotes, nba_sources, nba_store
+from . import db, nba_data, nba_identity, nba_model, nba_learning, nba_grading, nba_quotes, nba_sources, nba_store, nba_participation
 from .integrity import parse_time
 
 ET = ZoneInfo('America/New_York')
 LABELS = {'schedule': 'Schedule & game prices', 'history': 'Historical inputs',
           'forecasts': 'Pregame forecasts', 'props': 'Player-prop capture', 'grading': 'Final results & grading',
           'evaluation': 'Chronological evaluation'}
+PROP_BUDGET_REASONS = {
+    'nba_monthly_budget':'the NBA monthly request allowance is exhausted',
+    'nba_daily_budget':'the NBA daily request allowance is exhausted',
+    'nba_object_budget':'the NBA monthly data allowance is exhausted',
+    'local_30_day_quota_guard':'the shared monthly allowance is exhausted',
+    'provider_quota_cooldown':'the provider quota cooldown is active',
+    'provider_remaining_low':'the provider reports little remaining capacity',
+    'nfl_capacity_reserved':'remaining shared requests are reserved for NFL',
+    'local_per_minute_request_guard':'the shared request limit for this minute is active',
+}
 
 
 def ensure_schema():
@@ -55,13 +65,13 @@ def _season(day):
     return year, f'{year}-{(year+1)%100:02d}'
 
 
-def step(name,now,seconds,action):
+def step(name,now,seconds,action,*,force=False):
     previous=nba_store.get_cadence(name)
     if name=='props' and previous and (previous['last_detail'] or {}).get('status')=='history_loading':
         seconds=300
     nba_store.set_cadence(name,seconds,now=now)
     previous=nba_store.get_cadence(name)
-    if previous['last_run_at'] is not None and now < previous['next_due_at']:
+    if not force and previous['last_run_at'] is not None and now < previous['next_due_at']:
         return {'ok': previous['last_status']!='error','status':'cached'}
     try:
         result=action()
@@ -287,7 +297,20 @@ def comparison_market(game_id,saved):
     return market
 
 
-def _public_game(g):
+def _prop_pause_message(now,checks=None):
+    checks=nba_store.list_cadences() if checks is None else checks
+    if any(r['last_status']=='error' for r in checks):
+        return 'A source check needs attention; saved research remains visible. The built-in refresh retries automatically.'
+    budget=nba_quotes.budget(now);reason=budget.get('blocked_reason')
+    if not reason:return None
+    detail=PROP_BUDGET_REASONS.get(reason,reason.replace('_',' '))
+    if reason=='nfl_capacity_reserved':
+        detail=f"{budget.get('nfl_reserved_requests',40)} requests are reserved for NFL ({budget.get('shared_remaining','unknown')} shared requests remain)"
+    return f'NBA prop capture is paused because {detail}. The built-in refresh rechecks automatically.'
+
+
+def _public_game(g,prop_notice=None):
+    now=time.time()
     saved=_forecast(g['game_id'],'game')
     game={'id':g['game_id'],'home_team':g['home_team'],'away_team':g['away_team'],
           'venue':(db.kv_get('nba_game_context_'+g['game_id']) or {}).get('venue'),
@@ -295,7 +318,7 @@ def _public_game(g):
           'market':comparison_market(g['game_id'],saved) if saved else db.kv_get('nba_market_'+g['game_id']) or {},
           'latest_market':db.kv_get('nba_market_'+g['game_id']) or {},'projection':saved['payload'].get('projection') if saved else None,
           'forecast_at':saved['created_at'] if saved else None,'top_props':[],
-          'forecast_message':'Historical inputs are still loading.' if g['tipoff_ts']>time.time() else 'No pregame forecast was saved.',
+          'forecast_message':'Historical inputs are still loading.' if g['tipoff_ts']>now else 'No pregame forecast was saved.',
           'prop_message':'Waiting for five supported main lines, verified identities and enough previous games.'}
     lock=nba_store.get_lock('top5-'+g['game_id'])
     if lock:
@@ -306,26 +329,32 @@ def _public_game(g):
             game['top_props'].append(dict(row,rank=rank,selected_at=lock['locked_at'],
                 result={'win':'won','loss':'lost'}.get(grade.get('result'),grade.get('result','pending')),
                 actual=grade.get('actual_value')))
-    elif g['tipoff_ts']<=time.time():
+    elif g['tipoff_ts']<=now:
         game['prop_message']='No five-prop selection was saved before tipoff. This game will not be backfilled.'
     else:
         coverage=db.kv_get('nba_prop_coverage_'+g['game_id']) or {}
         if coverage.get('message'):game['prop_message']=coverage['message']
-    game['props_state']='locked' if lock else 'awaiting_props' if g['tipoff_ts']>time.time() else 'not_selected'
+        if g['game_date_et']==today(now):
+            if prop_notice is None:prop_notice=_prop_pause_message(now)
+            if prop_notice:game['prop_message']=prop_notice
+    game['props_state']='locked' if lock else 'awaiting_props' if g['tipoff_ts']>now else 'not_selected'
     return game
 
 
 def board(day=None):
     ensure_schema();day=validate_date(day or today())
-    games=[_public_game(g) for g in nba_store.list_games(day)]
-    schedule=db.kv_get('nba_schedule') or {};perf=performance()
     checks=nba_store.list_cadences()
+    now=time.time();saved_games=nba_store.list_games(day)
+    pause=_prop_pause_message(now,checks) if day==today(now) and any(
+        g['tipoff_ts']>now and not nba_store.get_game_lock(g['game_id']) for g in saved_games) else None
+    games=[_public_game(g,prop_notice=pause or '') for g in saved_games]
+    schedule=db.kv_get('nba_schedule') or {};perf=performance()
     attention=any(r['last_status']=='error' for r in checks)
     return {'sport':'NBA','date':day,'today':today(),'season':_season(day)[1],
         'designation':'PASS','readiness':'RESEARCH_ONLY','games':games,'record':perf['props'],
         'schedule_checked_at':schedule.get('checked_at') if schedule.get('start','9999')<=day<=schedule.get('end','0000') else None,
         'notice':'A source check needs attention; saved research remains visible.' if attention else
-                 'Player lines and histories are collected by the built-in refresh.' if any(not g['top_props'] for g in games) else None}
+                 pause or ('Player lines and histories are collected by the built-in refresh.' if any(not g['top_props'] for g in games) else None)}
 
 
 def matchup(game_id):
@@ -363,13 +392,13 @@ def performance():
 
 
 def model_info():
-    return {'version':nba_model.MODEL_VERSION,'cutoff':'2026-10-01T00:00:00Z',
-            'fingerprint':nba_model.PARAMETER_FINGERPRINT}
+    return nba_learning.model_info()
 
 
 def register_model(now):
+    ensure_schema()
     info=model_info()
-    encoded=json.dumps(nba_model.PARAMETERS,sort_keys=True,separators=(',',':'))
+    encoded=json.dumps(nba_learning.parameters(),sort_keys=True,separators=(',',':'))
     old=db.q1('SELECT * FROM nba_model_registry WHERE version=?',(info['version'],))
     if old and (old['fingerprint'],old['cutoff'],old['parameters'])!=(info['fingerprint'],info['cutoff'],encoded):
         raise ValueError('NBA model parameters/cutoff changed; existing forward research cannot be redefined')
@@ -403,13 +432,20 @@ def forecasts(now):
         if stamp>=game['tipoff_ts']:continue
         nba_store.save_forecast('game-'+game['game_id'],game['game_id'],nba_model.MODEL_VERSION,
             {'kind':'game','projection':raw,'market':db.kv_get('nba_market_'+game['game_id']) or {},
-             'model':model_info()},sources,now=stamp)
+             'model':{'version':nba_model.MODEL_VERSION,'cutoff':'2026-10-01T00:00:00Z',
+                      'fingerprint':nba_model.PARAMETER_FINGERPRINT}},sources,now=stamp)
         saved+=1
     return {'message':f'{saved} new pregame forecasts saved; {missing} await sufficient history.',
             'new_forecasts':saved,'missing_histories':missing}
 
 
 def capture_props(now):
+    with nba_learning.snapshot():
+        return _capture_props(now)
+
+
+def _capture_props(now):
+    register_model(now)
     games=db.q("SELECT * FROM nba_games WHERE tipoff_ts>? AND tipoff_ts<? AND status='scheduled'",(now,now+24*3600))
     targets=[g for g in games if g['game_date_et']==today(now) and not nba_store.get_lock('top5-'+g['game_id']) and _forecast(g['game_id'],'game')]
     if not targets:return {'message':'No games await five-prop capture.','status':'no_targets'}
@@ -439,7 +475,7 @@ def capture_props(now):
         quotes=[q for q in result['quotes'] if q['game_id']==game['game_id']]
         stamp=max(time.time(),result['observed_at'])
         injuries=[{'player_id':p['player_id'],'status':p['availability']} for p in roster]
-        selection=nba_model.select_props(quotes,history,game['tipoff_utc'],stamp,injuries=injuries)
+        selection=nba_learning.select_props(quotes,history,game['tipoff_utc'],stamp,injuries=injuries)
         if selection['status']!='ok':
             waiting.append(game['game_id'])
             db.kv_set('nba_prop_coverage_'+game['game_id'],{'checked_at':stamp,'message':
@@ -453,10 +489,10 @@ def capture_props(now):
             quote=nba_store.save_quote_observation(game['game_id'],nba_store.PROP_MARKETS[q['market']],q['player_id'],q['side'],q['line'],
                        q['price'],q['sportsbook'],q['observed_at'],source_artifact_id=source,now=stamp)
             player=next(p for p in roster if p['player_id']==row['player_id'])
-            projection=nba_model.project_prop(row['player_id'],row['market'],history,game['tipoff_utc'],line=row['line'])
+            projection=nba_learning.project_prop(row['player_id'],row['market'],history,game['tipoff_utc'],line=row['line'])
             rows.append(dict(row,confidence=row['probability'],player=q['player'],
                 expected_minutes=projection.get('projected_minutes'),
-                availability_note=f"ESPN roster status at capture: {player['availability']}. Minutes use prior sourced games; rotations may change."+
+                availability_note=f"ESPN roster status at capture: {player['availability']}. Minutes are forecast from prior sourced games; rotations may change."+
                     (' The latest statistics recheck failed; previously verified history was used.'
                      if db.kv_get('nba_player_history_error_'+row['player_id']) else ''),
                 quote_id=quote['quote_id']))
@@ -466,7 +502,7 @@ def capture_props(now):
         sources=sorted({source,game['source_artifact_id']}|
                 {p['source_artifact_id'] for p in roster if p['player_id'] in player_ids}|
                 {h['source_artifact_id'] for h in history if h['player_id'] in player_ids})
-        nba_store.save_forecast('props-'+game['game_id'],game['game_id'],nba_model.MODEL_VERSION,
+        nba_store.save_forecast('props-'+game['game_id'],game['game_id'],model_info()['version'],
             {'kind':'props','rows':rows,'model':model_info()},sources,now=stamp)
         nba_store.lock_selections('top5-'+game['game_id'],items,now=stamp)
         saved+=1
@@ -492,7 +528,7 @@ def grade_due(now):
     games=db.q('SELECT DISTINCT g.* FROM nba_games g JOIN nba_forecasts f ON f.game_id=g.game_id '
                "WHERE g.tipoff_ts<=? OR (g.status IN ('final','canceled') AND g.tipoff_ts<=?) "
                'ORDER BY g.tipoff_ts DESC',(now-4*3600,now))
-    count=0;pending=0;corrections=0;errors=[]
+    count=0;pending_games=0;corrections=0;errors=[]
     for game in games:
         graded_at=now
         try:
@@ -505,16 +541,20 @@ def grade_due(now):
             waiting=waiting or bool(forecast and (not prior or 'pending' in json.loads(prior['payload']).values()))
             terminal=game['status'] in {'final','canceled'}
             first_final=terminal and waiting and db.kv_get('nba_grade_checked_status_'+game['game_id'])!=game['status']
+            new_review=nba_participation.has_new_review(game['game_id'],last,now)
             # New finals bypass a previous live check; unresolved evidence retries every five minutes.
             seconds=300 if (waiting or not terminal) and now-game['tipoff_ts']<=7*86400 else 86400
-            if (now-last<seconds and not first_final) or (not waiting and terminal and now-game['tipoff_ts']>7*86400):continue
+            if (now-last<seconds and not first_final and not new_review) or (not waiting and terminal and now-game['tipoff_ts']>7*86400 and not new_review):continue
             db.kv_set('nba_grade_checked_status_'+game['game_id'],game['status'])
-            obs=nba_sources.fetch('summary',{'event':game['espn_event_id']},ttl=0 if first_final else seconds,now=now)
+            obs=nba_sources.fetch('summary',{'event':game['espn_event_id']},ttl=0 if first_final or new_review else seconds,now=now)
             graded_at=max(now,obs['observed_at'])
             source=artifact(obs,'final-boxscore');parsed=nba_data.parse_summary(obs['data']);actual_game=parsed['game']
             if actual_game['game_id']!=game['game_id'] or (actual_game['home_team'],actual_game['away_team'])!=(game['home_team'],game['away_team']):
                 raise ValueError('NBA final result identity conflict')
-            if actual_game['status'] not in {'final','canceled'}:pending+=1;db.kv_set('nba_grade_checked_'+game['game_id'],graded_at);continue
+            if actual_game['status'] not in {'final','canceled'}:
+                pending_games+=not terminal
+                db.kv_set('nba_grade_checked_'+game['game_id'],graded_at)
+                continue
             if actual_game['status']=='final' and not parsed['box_complete']:
                 raise ValueError('NBA final box score does not reconcile to team totals')
             if game['status']!='final':
@@ -530,6 +570,8 @@ def grade_due(now):
                     'participation':{'played':True} if p['status']=='played' else None})
             official={'game_id':game['game_id'],'game_status':actual_game['status'],'home_score':actual_game['home_score'],
                       'away_score':actual_game['away_score'],'players':players,'verified_final':True}
+            participation=nba_participation.overrides(game['game_id'],official,box_complete=parsed['box_complete'],now=graded_at)
+            players.extend({'player_id':pid,'status':'inactive','stats':None} for pid in participation)
             if forecast:
                 graded=nba_grading.grade_game(_saved_markets(forecast,game),official,graded_at)
                 payload={ {'moneyline':'winners','spread':'spread','total':'total'}[r['market']]:r['result'] for r in graded['grades']}
@@ -547,45 +589,62 @@ def grade_due(now):
                     grade_result={'won':'win','lost':'loss'}.get(graded['result'],graded['result'])
                     old=grades.get(item['rank']) or {}
                     if old.get('result')==grade_result and old.get('actual_value')==graded['actual']:continue
-                    nba_store.add_grade_revision(lock['lock_id'],item['rank'],grade_result,graded['actual'],source,
-                        detail={'reason':graded['reason'],'source':'ESPN final box score','box_complete':True},now=graded_at)
+                    proof=participation.get(item['espn_player_id'])
+                    detail={'reason':graded['reason'],'source':'ESPN final box score','box_complete':True}
+                    if proof:detail.update(source='NBA official reviewed participation',participation_evidence_id=proof['id'],
+                        box_source_artifact_id=source,proof=json.loads(proof['proof']))
+                    nba_store.add_grade_revision(lock['lock_id'],item['rank'],grade_result,graded['actual'],
+                        proof['source_artifact_id'] if proof else source,detail=detail,now=graded_at)
                     count+=1
-                    pending+=graded['result']=='pending'
             db.kv_set('nba_grade_checked_'+game['game_id'],graded_at)
         except Exception as exc:
             db.kv_set('nba_grade_checked_'+game['game_id'],graded_at)
             db.kv_set('nba_grade_error_'+game['game_id'],{'checked_at':graded_at,'error':type(exc).__name__})
             errors.append(game['game_id'])
-    return {'ok':not errors,'source_errors':errors,'message':f'{count} new statistical grades recorded; {pending} completed-game results still pending; {len(errors)} source errors.'+
+    # Report the saved unresolved total even when a grade is unchanged or not due.
+    pending_props=db.q1("SELECT COUNT(*) n FROM nba_selection_lock_items i "
+        "JOIN nba_selection_locks l ON l.lock_id=i.lock_id JOIN nba_games g ON g.game_id=i.game_id "
+        "WHERE g.status IN ('final','canceled') AND COALESCE((SELECT r.result FROM nba_grade_revisions r "
+        "WHERE r.lock_id=i.lock_id AND r.rank=i.rank ORDER BY r.revision DESC LIMIT 1),'pending')='pending'")['n']
+    return {'ok':not errors,'source_errors':errors,'message':f'{count} new statistical grades recorded; {pending_props} completed-game props still pending; {pending_games} games awaiting final results; {len(errors)} source errors.'+
                        (f' {corrections} final-score corrections retained as new evidence.' if corrections else ''),
-            'new_grades':count,'pending':pending,'corrections':corrections}
+            'new_grades':count,'pending':pending_props+pending_games,'pending_props':pending_props,
+            'pending_games':pending_games,'corrections':corrections}
 
 
 def evaluate(now):
     register_model(now)
-    cutoff='2026-03-01T00:00:00Z';end=parse_time(model_info()['cutoff'])
+    historical=nba_learning.historical_evaluation()
+    cutoff=nba_model.historical_evaluation()['holdout_start']
+    end=parse_time('2026-10-01T00:00:00Z')
     teams=[r for r in _teams_history() if (parse_time(r['played_at']) or end)>=0 and (parse_time(r['played_at']) or end)<end]
     game_report=nba_model.evaluate_history(teams,cutoff)
-    roster=[p for code in nba_identity.TEAMS for p in (db.kv_get('nba_roster_'+code) or [])]
-    histories=_players_history(roster);markets={};start=parse_time(cutoff)
-    for market in nba_model.MARKETS:
-        errors=[]
-        for pid in sorted({r['player_id'] for r in histories}):
-            player_history=[r for r in histories if r['player_id']==pid]
-            rows=sorted([r for r in player_history if start<=(parse_time(r['played_at']) or 0)<end],
-                        key=lambda r:r['played_at'])
-            for actual in rows:
-                prediction=nba_model.project_prop(pid,market,player_history,actual['played_at'])
-                if prediction['status']=='ok':errors.append(prediction['projection']-actual[market])
-        markets[market]={'n':len(errors),'mae':round(sum(abs(e) for e in errors)/len(errors),3) if errors else None}
+    markets={market:dict(score,n=score['holdout_n'],mae=round(score['upgraded_mae'],3))
+             for market,score in historical['markets'].items()}
     n=sum(m['n'] for m in markets.values())
-    report={'model':model_info(),'holdout_start':cutoff,'holdout_end':model_info()['cutoff'],
-        'games':game_report,'markets':markets,'evaluated_at':now,'player_count':len({r['player_id'] for r in histories}),
-        'team_count':len({r['team'] for r in teams}),
-        'summary':f"Chronological 2025–26 holdout: {game_report.get('projected_games',0)} game forecasts; {n} player/stat forecasts across {len({r['player_id'] for r in histories})} currently rostered players.",
-        'note':'Fixed descriptive baseline. Current-roster historical sample has survivorship bias. No historical betting lines were used; no retrospective selection win rate or profitability is claimed. Each holdout forecast uses only earlier games.'}
+    report=dict(historical,model=model_info(),games=game_report,markets=markets,evaluated_at=now,
+        team_count=len({r['team'] for r in teams}),
+        summary=f"Retrospective historical validation: {n} player/stat forecasts for the active prop model; {game_report.get('projected_games',0)} game forecasts use the retained game baseline.",
+        note=historical['design'])
     db.kv_set('nba_evaluation',report)
     return {'message':report['summary'],'prop_predictions':n,'game_predictions':game_report.get('projected_games',0)}
+
+
+def _props_cadence(now,previous):
+    cadence=3*3600
+    if not previous or previous['last_run_at'] is None:return cadence
+    state=(previous['last_detail'] or {}).get('status');last=previous['last_run_at']
+    if state in PROP_BUDGET_REASONS or state in {'history_loading','missing_api_key'}:return 300
+    unlocked=[g for g in nba_store.list_games(today(now)) if g['tipoff_ts']>now and
+              g['status']=='scheduled' and not nba_store.get_game_lock(g['game_id']) and _forecast(g['game_id'],'game')]
+    if not unlocked:return cadence
+    tip=min(g['tipoff_ts'] for g in unlocked)
+    if state=='captured' and today(last)==today(now):return max(300,tip-45*60-last)
+    if state in {'outside_capture_window','no_targets','no_pregame_targets','captured'}:
+        midnight=datetime.fromtimestamp(now,ET).replace(hour=0,minute=0,second=0,microsecond=0).timestamp()
+        window=max(midnight,tip-8*3600,last+cadence if state=='captured' else 0)
+        return max(1,window-last) if window>last else 300
+    return cadence
 
 
 def run(now=None):
@@ -597,32 +656,32 @@ def run(now=None):
     results['history']=step('history',stamp,300,lambda:histories(stamp))
     results['forecasts']=step('forecasts',stamp,300,lambda:forecasts(stamp))
     previous=nba_store.get_cadence('props')
-    cadence=3*3600
-    if previous and (previous['last_detail'] or {}).get('status')=='captured':
-        unlocked=[g for g in nba_store.list_games(today(stamp)) if g['tipoff_ts']>stamp and not nba_store.get_game_lock(g['game_id'])]
-        if unlocked:
-            cadence=max(300,min(g['tipoff_ts'] for g in unlocked)-45*60-previous['last_run_at'])
-    results['props']=step('props',stamp,cadence,lambda:capture_props(stamp))
-    # History loading should not consume the paid-capture cadence.
-    if results['props'].get('result',{}).get('status')=='history_loading':
-        nba_store.set_cadence('props',300,now=stamp)
+    results['props']=step('props',stamp,_props_cadence(stamp,previous),lambda:capture_props(stamp))
+    if 'result' in results['props']:
+        nba_store.set_cadence('props',_props_cadence(stamp,nba_store.get_cadence('props')),now=stamp)
     results['grading']=step('grading',stamp,300,lambda:grade_due(stamp))
-    # Refresh the descriptive report as source coverage grows, without fitting parameters.
+    # Publish frozen historical evidence for this version, without refitting it.
     coverage=db.kv_get('nba_evaluation') or {}
-    current_players=sum(bool(db.kv_get('nba_player_history_'+p['player_id'])) for code in nba_identity.TEAMS
-                         for p in (db.kv_get('nba_roster_'+code) or []))
-    if current_players>coverage.get('player_count',0) or not coverage:
-        results['evaluation']=step('evaluation',stamp,1800,lambda:evaluate(stamp))
-    return {'ok':True,'needs_attention':any(not r['ok'] for r in results.values()),'checks':results,
-            'message':'NBA built-in refresh checked due sources, captures and results.',
+    changed_model=(coverage.get('model') or {}).get('fingerprint')!=model_info()['fingerprint']
+    if not coverage or changed_model:
+        results['evaluation']=step('evaluation',stamp,1800,lambda:evaluate(stamp),force=changed_model)
+    healthy=all(r['ok'] for r in results.values())
+    return {'ok':healthy,'needs_attention':not healthy,'checks':results,
+            'message':'NBA built-in refresh checked due sources, captures and results.' if healthy else 'An NBA source check needs attention; the built-in refresh retries automatically.',
             'designation':'PASS','readiness':'RESEARCH_ONLY'}
 
 
 def status():
+    from . import model_learning
     ensure_schema()
     checks=[{'name':r['name'],'label':LABELS.get(r['name'],r['name'].replace('_',' ').title()),
              'status':r['last_status'] or 'not_checked','checked_at':r['last_run_at'],'next_at':r['next_due_at'],
              'message':(r['last_detail'] or {}).get('message',r['last_status'] or 'Not checked yet')}
             for r in nba_store.list_cadences()]
-    return {'sport':'NBA','checks':checks,'budget':nba_quotes.budget(time.time()),'model':model_info(),
-            'evaluation':db.kv_get('nba_evaluation') or {},'designation':'PASS','readiness':'RESEARCH_ONLY'}
+    model=model_info();evaluation=db.kv_get('nba_evaluation') or {}
+    if (evaluation.get('model') or {}).get('fingerprint')!=model['fingerprint']:
+        evaluation={'status':'pending','model':model,
+                    'summary':'The active model changed. Its chronological evaluation is due on the built-in refresh.'}
+    return {'sport':'NBA','checks':checks,'budget':nba_quotes.budget(time.time()),'model':model,
+            'evaluation':evaluation,'learning':model_learning.status('NBA'),
+            'designation':'PASS','readiness':'RESEARCH_ONLY'}

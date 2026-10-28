@@ -13,6 +13,31 @@ KEY = 'product_visit_refresh'
 log = logging.getLogger(__name__)
 
 
+def for_sport(public: dict, sport: str, now: float | None = None) -> dict:
+    """Present shared work for one sport without changing its throttle/cache."""
+    from .product_insights import unresolved_failures
+    result = dict(public)
+    latest = db.q('SELECT name,success,attempted_at,detail FROM research_refresh_steps WHERE id IN '
+                  '(SELECT MAX(id) FROM research_refresh_steps GROUP BY name)')
+    failures = unresolved_failures(latest, now, sport=sport)
+    all_failures = unresolved_failures(latest, now)
+    if failures:
+        result['ok'] = False
+        result['attention'] = ('weekly_forecast' if sport == 'NFL' and all(
+            row['name'].startswith('weekly_freeze_') for row in failures) else 'updates')
+        if result.get('status') != 'busy':
+            result['status'] = 'needs_attention'
+    elif (result.get('attention') and all_failures) or (
+            sport == 'NBA' and result.get('attention') == 'weekly_forecast'):
+        result['ok'] = True
+        result['attention'] = None
+        if result.get('status') == 'needs_attention':
+            result['status'] = 'checked' if result.get('did_work') else 'cached'
+    # An unclassified page/transport exception has no step-attention tag. Keep
+    # that shared runtime failure visible even when the other sport also failed.
+    return result
+
+
 def _with_attention(public: dict, steps: dict | None = None, now: float | None = None) -> dict:
     """Name an unresolved snapshot failure without exposing provider errors."""
     from .product_insights import unresolved_failures

@@ -19,6 +19,7 @@ URL = 'https://api.sportsgameodds.com/v2/events'
 NBA_MONTH_REQUESTS = 48
 NBA_DAY_REQUESTS = 2
 NBA_MONTH_OBJECTS = 480
+NFL_RESERVED_REQUESTS = 40
 MARKETS = {'points': 'points', 'rebounds': 'rebounds', 'assists': 'assists',
            'threePointersMade': 'threes', 'points+rebounds+assists': 'pra'}
 TEAM_NAMES = dict(zip(
@@ -71,10 +72,13 @@ def budget(now):
             reason = 'nba_daily_budget'
         elif sum(max(1,r['events_returned']) for r in nba) >= NBA_MONTH_OBJECTS:
             reason = 'nba_object_budget'
-        elif sum(r['requests_made'] for r in rows) >= nfl_prop_capture_ops.MAX_LOCAL_REQUESTS_30D - 40:
+        elif sum(r['requests_made'] for r in rows) >= nfl_prop_capture_ops.MAX_LOCAL_REQUESTS_30D - NFL_RESERVED_REQUESTS:
             reason = 'nfl_capacity_reserved'
+    used = sum(r['requests_made'] for r in rows)
     return {'blocked_reason': reason,
-            'requests_30d': sum(r['requests_made'] for r in rows), 'nba_requests_30d': len(nba),
+            'requests_30d': used, 'nba_requests_30d': len(nba),
+            'shared_remaining': max(0, nfl_prop_capture_ops.MAX_LOCAL_REQUESTS_30D-used),
+            'nfl_reserved_requests': NFL_RESERVED_REQUESTS,
             'nba_month_limit': NBA_MONTH_REQUESTS, 'nba_day_limit': NBA_DAY_REQUESTS,
             'shared_month_limit': nfl_prop_capture_ops.MAX_LOCAL_REQUESTS_30D}
 
@@ -161,8 +165,13 @@ def capture(games, roster, now, *, getter=None, api_key=None):
               'started':'false','cancelled':'false','oddsAvailable':'true','includeAltLines':'false',
               'bookmakerID':'draftkings','limit':100}
     request_id = uuid.uuid4().hex
-    db.ex('INSERT INTO nba_prop_requests(request_id,attempted_at,request_params,target_game_ids) VALUES(?,?,?,?)',
-          (request_id,now,json.dumps(params,sort_keys=True),json.dumps([g['id'] for g in games])))
+    from .nfl_prop_capture_ops import request_slot_available
+    with db.tx() as conn:
+        requested_at = now if getter is not None else time.time()
+        if not request_slot_available(conn, requested_at):
+            return {'status':'local_per_minute_request_guard','quotes':[]}
+        conn.execute('INSERT INTO nba_prop_requests(request_id,attempted_at,request_params,target_game_ids) VALUES(?,?,?,?)',
+                     (request_id,requested_at,json.dumps(params,sort_keys=True),json.dumps([g['id'] for g in games])))
     try:
         status, raw, headers = (getter or get_raw_meta)(URL, params=params, headers={'x-api-key':key},
                                                       provider='sportsgameodds-nba', timeout=20)

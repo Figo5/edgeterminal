@@ -1,0 +1,301 @@
+{
+  "points": {
+    "active": {
+      "n": 6094,
+      "brier": 0.2441599116639744,
+      "mean_selected_confidence": 0.5527617794266111,
+      "selected_win_rate": 0.5603872661634395
+    },
+    "all_empirical": {
+      "n": 6094,
+      "brier": 0.24876958672589197,
+      "mean_selected_confidence": 0.5742034366734241,
+      "selected_win_rate": 0.54725959960617
+    },
+    "zero_mu": {
+      "active": {
+        "n": 0,
+        "brier": null,
+        "mean_selected_confidence": null,
+        "selected_win_rate": null
+      },
+      "empirical": {
+        "n": 0,
+        "brier": null,
+        "mean_selected_confidence": null,
+        "selected_win_rate": null
+      },
+      "following_nonzero": 0
+    },
+    "near_zero_mu": {
+      "active": {
+        "n": 1,
+        "brier": 0.27605347694806637,
+        "mean_selected_confidence": 0.5254079148129255,
+        "selected_win_rate": 0
+      },
+      "empirical": {
+        "n": 1,
+        "brier": 0.0202725835124418,
+        "mean_selected_confidence": 0.857618177029363,
+        "selected_win_rate": 1
+      }
+    },
+    "extreme_confidence": {
+      "n": 0,
+      "brier": null,
+      "mean_selected_confidence": null,
+      "selected_win_rate": null
+    }
+  },
+  "rebounds": {
+    "active": {
+      "n": 6094,
+      "brier": 0.24479446623889733,
+      "mean_selected_confidence": 0.5776529594175522,
+      "selected_win_rate": 0.5662947161142107
+    },
+    "all_empirical": {
+      "n": 6094,
+      "brier": 0.24479446623889733,
+      "mean_selected_confidence": 0.5776529594175522,
+      "selected_win_rate": 0.5662947161142107
+    },
+    "zero_mu": {
+      "active": {
+        "n": 0,
+        "brier": null,
+        "mean_selected_confidence": null,
+        "selected_win_rate": null
+      },
+      "empirical": {
+        "n": 0,
+        "brier": null,
+        "mean_selected_confidence": null,
+        "selected_win_rate": null
+      },
+      "following_nonzero": 0,
+      "gamma_poisson": {
+        "n": 0,
+        "brier": null,
+        "mean_selected_confidence": null,
+        "selected_win_rate": null
+      }
+    },
+    "near_zero_mu": {
+      "active": {
+        "n": 6,
+        "brier": 0.29149671341510947,
+        "mean_selected_confidence": 0.6538566737882269,
+        "selected_win_rate": 0.5
+      },
+      "empirical": {
+        "n": 6,
+        "brier": 0.29149671341510947,
+        "mean_selected_confidence": 0.6538566737882269,
+        "selected_win_rate": 0.5
+      },
+      "gamma_poisson": {
+        "n": 6,
+        "brier": 0.2625780047091647,
+        "mean_selected_confidence": 0.854398644386792,
+        "selected_win_rate": 0.6666666666666666
+      }
+    },
+    "extreme_confidence": {
+      "n": 0,
+      "brier": null,
+      "mean_selected_confidence": null,
+      "selected_win_rate": null
+    },
+    "gamma_poisson": {
+      "n": 6094,
+      "brier": 0.2434000318963558,
+      "mean_selected_confidence": 0.5845452652097323,
+      "selected_win_rate": 0.5717098785690844
+    }
+  },
+  "assists": {
+    "active": {
+      "n": 6094,
+      "brier": 0.25620560910303797,
+      "mean_selected_confidence": 0.6286363356878789,
+      "selected_win_rate": 0.5594026911716442
+    },
+    "all_empirical": {
+      "n": 6094,
+      "brier": 0.24400652478936188,
+      "mean_selected_confidence": 0.588158638794379,
+      "selected_win_rate": 0.5653101411224155
+    },
+    "zero_mu": {
+      "active": {
+        "n": 3,
+        "brier": 0.3333333333302488,
+        "mean_selected_confidence": 0.9999999999953731,
+        "selected_win_rate": 0.6666666666666666
+      },
+      "empirical": {
+        "n": 3,
+        "brier": 0.2774270299583881,
+        "mean_selected_confidence": 0.5682903671419977,
+        "selected_win_rate": 0.3333333333333333
+      },
+      "following_nonzero": 1,
+      "gamma_poisson": {
+        "n": 3,
+        "brier": 0.31277456828575223,
+        "mean_selected_confidence": 0.9690911323309491,
+        "selected_win_rate": 0.6666666666666666
+      }
+    },
+    "near_zero_mu": {
+      "active": {
+        "n": 80,
+        "brier": 0.29242291053255154,
+        "mean_selected_confidence": 0.9678936926239798,
+        "selected_win_rate": 0.6875
+      },
+      "empirical": {
+        "n": 80,
+        "brier": 0.28347708007147715,
+        "mean_selected_confidence": 0.5856101882268706,
+        "selected_win_rate": 0.3375
+      },
+      "gamma_poisson": {
+        "n": 80,
+        "brier": 0.22987421222627144,
+        "mean_selected_confidence": 0.8157440580510708,
+        "selected_win_rate": 0.6875
+      }
+    },
+    "extreme_confidence": {
+      "n": 73,
+      "brier": 0.24639923978757416,
+      "mean_selected_confidence": 0.9699360209208974,
+      "selected_win_rate": 0.7397260273972602
+    },
+    "gamma_poisson": {
+      "n": 6094,
+      "brier": 0.24091257791934903,
+      "mean_selected_confidence": 0.5898527092667994,
+      "selected_win_rate": 0.5787659993436167
+    }
+  },
+  "threes": {
+    "active": {
+      "n": 6094,
+      "brier": 0.22101126303474317,
+      "mean_selected_confidence": 0.6807001145656824,
+      "selected_win_rate": 0.6337381030521825
+    },
+    "all_empirical": {
+      "n": 6094,
+      "brier": 0.23581676194173923,
+      "mean_selected_confidence": 0.6113864172687827,
+      "selected_win_rate": 0.6253692156219232
+    },
+    "zero_mu": {
+      "active": {
+        "n": 533,
+        "brier": 0.013133208254936595,
+        "mean_selected_confidence": 0.9999999999915147,
+        "selected_win_rate": 0.9868667917448405
+      },
+      "empirical": {
+        "n": 533,
+        "brier": 0.17144007416266244,
+        "mean_selected_confidence": 0.5887721458795936,
+        "selected_win_rate": 0.9868667917448405
+      },
+      "following_nonzero": 7,
+      "gamma_poisson": {
+        "n": 533,
+        "brier": 0.01374344454064053,
+        "mean_selected_confidence": 0.9641497938369115,
+        "selected_win_rate": 0.9868667917448405
+      }
+    },
+    "near_zero_mu": {
+      "active": {
+        "n": 862,
+        "brier": 0.07072009545282239,
+        "mean_selected_confidence": 0.9861069035178285,
+        "selected_win_rate": 0.9245939675174014
+      },
+      "empirical": {
+        "n": 862,
+        "brier": 0.18529105474063653,
+        "mean_selected_confidence": 0.5826435729883475,
+        "selected_win_rate": 0.9245939675174014
+      },
+      "gamma_poisson": {
+        "n": 862,
+        "brier": 0.06394769448639567,
+        "mean_selected_confidence": 0.91685910232501,
+        "selected_win_rate": 0.9245939675174014
+      }
+    },
+    "extreme_confidence": {
+      "n": 758,
+      "brier": 0.058057955032351186,
+      "mean_selected_confidence": 0.9929817717977152,
+      "selected_win_rate": 0.9393139841688655
+    },
+    "gamma_poisson": {
+      "n": 6094,
+      "brier": 0.21447966972096907,
+      "mean_selected_confidence": 0.6405928925103687,
+      "selected_win_rate": 0.6343944863800459
+    }
+  },
+  "pra": {
+    "active": {
+      "n": 6094,
+      "brier": 0.24291753686007125,
+      "mean_selected_confidence": 0.56201286474282,
+      "selected_win_rate": 0.5598949786675419
+    },
+    "all_empirical": {
+      "n": 6094,
+      "brier": 0.24633334723627828,
+      "mean_selected_confidence": 0.5763146207127671,
+      "selected_win_rate": 0.5487364620938628
+    },
+    "zero_mu": {
+      "active": {
+        "n": 0,
+        "brier": null,
+        "mean_selected_confidence": null,
+        "selected_win_rate": null
+      },
+      "empirical": {
+        "n": 0,
+        "brier": null,
+        "mean_selected_confidence": null,
+        "selected_win_rate": null
+      },
+      "following_nonzero": 0
+    },
+    "near_zero_mu": {
+      "active": {
+        "n": 0,
+        "brier": null,
+        "mean_selected_confidence": null,
+        "selected_win_rate": null
+      },
+      "empirical": {
+        "n": 0,
+        "brier": null,
+        "mean_selected_confidence": null,
+        "selected_win_rate": null
+      }
+    },
+    "extreme_confidence": {
+      "n": 1,
+      "brier": 0.9052871552893575,
+      "mean_selected_confidence": 0.9514657930211456,
+      "selected_win_rate": 0
+    }
+  }
+}

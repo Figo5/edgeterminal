@@ -1,0 +1,12 @@
+{
+  "changed_protected_files": [],
+  "failed_steps": {},
+  "learning_decisions": {
+    "NBA": "rejected",
+    "NFL": "rejected"
+  },
+  "learning_ok": true,
+  "missing_prior_rows": {},
+  "overall_refresh_success": true,
+  "protected_rows": 16617
+}

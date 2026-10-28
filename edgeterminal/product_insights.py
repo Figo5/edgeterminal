@@ -26,6 +26,10 @@ def prop(row: dict, now: float | None = None) -> dict:
     if sigma is not None:
         reasons.append(f"The frozen model uses a residual spread of {sigma:.1f} for this stat. The percentage is a model estimate.")
     context = row.get('input_context') or {}
+    if context.get('probability_method') == 'empirical':
+        reasons.append('Probability uses the frozen distribution of historical forecast errors; current-season outcomes do not tune it.')
+    if row.get('model_version'):
+        reasons.append('Saved model: ' + row['model_version'] + '.')
     if context.get('stat_last3') is not None:
         reasons.append(f"Prior three appearances averaged {context['stat_last3']:.1f} in this stat and {context['opportunities_last3']:.1f} {context['opportunity_kind']}.")
     result['explanation'] = reasons
@@ -68,11 +72,55 @@ def game(projection: dict | None) -> list[str]:
     return notes
 
 
-def unresolved_failures(steps: list[dict], now: float | None = None) -> list[dict]:
+NFL_STEPS = {'schedule', 'product_projections', 'availability', 'top_five_capture',
+             'top_five_grading', 'challenger_grading', 'current_game_odds', 'forecast_lines',
+             'near_kickoff_market', 'context', 'game_grading', 'paper_settlement', 'paper_policy'}
+NFL_STEP_PREFIXES = ('weekly_freeze_', 'current_game_market_', 'prop_near_game_', 'prop_pair_')
+
+
+def step_sports(step: dict) -> set[str]:
+    """Scope source failures while shared runtime failures remain shared."""
+    name = step['name']
+    if name.startswith('nba_'):
+        return {'NBA'}
+    if name in NFL_STEPS or name.startswith(NFL_STEP_PREFIXES):
+        return {'NFL'}
+    if name == 'model_learning' and not step.get('success'):
+        detail = step.get('detail') or {}
+        if isinstance(detail, str):
+            try:
+                detail = json.loads(detail)
+            except (ValueError, TypeError):
+                detail = {}
+        sports = (detail.get('result') or {}).get('sports') or {}
+        failed = {sport for sport, checks in sports.items() if sport in {'NBA', 'NFL'}
+                  and any(check.get('status') == 'error' for check in checks.values())}
+        # The worker sanitizes a structured ok=False result to this error.
+        # Its append-only per-sport records also retain failures on cached runs.
+        if sports or 'provider reported unavailable' in detail.get('error', ''):
+            if db.q1("SELECT 1 FROM sqlite_master WHERE type='table' AND name='model_learning_runs'"):
+                failed.update(r['sport'] for r in db.q(
+                    'SELECT sport,status FROM model_learning_runs WHERE id IN '
+                    '(SELECT MAX(id) FROM model_learning_runs GROUP BY sport,kind)')
+                    if r['status'] == 'error')
+            if failed:
+                return failed
+    return {'NBA', 'NFL'}
+
+
+def scoped_steps(steps: list[dict], sport: str | None = None) -> list[dict]:
+    if sport is None:
+        return steps
+    if sport not in {'NBA', 'NFL'}:
+        raise ValueError('unknown update-check sport')
+    return [step for step in steps if sport in step_sports(step)]
+
+
+def unresolved_failures(steps: list[dict], now: float | None = None, *, sport: str | None = None) -> list[dict]:
     """Keep current failures; expired capture windows remain in the audit log."""
     stamp = time.time() if now is None else now
     failures = []
-    for step in steps:
+    for step in scoped_steps(steps, sport):
         if step.get('success'):
             continue
         parts = step['name'].split('_')
@@ -93,14 +141,16 @@ def unresolved_failures(steps: list[dict], now: float | None = None) -> list[dic
     return failures
 
 
-def update_checks(steps: list[dict], now: float) -> list[dict]:
+def update_checks(steps: list[dict], now: float, *, sport: str = 'NFL') -> list[dict]:
     """Public, source-safe status for the latest refresh steps."""
     from .research_refresh import result_interval
+    steps = scoped_steps(steps, sport)
     failed = {r['name'] for r in unresolved_failures(steps, now)}
     labels = {'current_game_odds': 'ESPN game quotes',
               'top_five_capture': 'Five-prop selections',
               'top_five_grading': 'Player-prop grading', 'game_grading': 'Game grading',
               'challenger_grading': 'Challenger grading',
+              'model_learning': 'Automatic model learning',
               'near_kickoff_market': 'Near-kickoff game quotes'}
     checks = []
     for step in steps:
@@ -127,7 +177,7 @@ def update_checks(steps: list[dict], now: float) -> list[dict]:
         checks.append({'name': step['name'], 'label': labels[step['name']], 'state': state,
                        'message': message, 'checked_at': step.get('attempted_at'),
                        'next_retry_at': step['attempted_at'] + result_interval(step)
-                       if active and step['name'] in {'top_five_grading', 'game_grading', 'challenger_grading'} else None})
+                       if active and step['name'] in {'top_five_grading', 'game_grading', 'challenger_grading', 'model_learning'} else None})
     return checks
 
 
@@ -138,7 +188,8 @@ def health(now: float | None = None) -> dict:
     tick = db.q1('SELECT started_at,success FROM research_refresh_ticks ORDER BY started_at DESC LIMIT 1')
     steps = db.q('SELECT name,success,detail,attempted_at FROM research_refresh_steps WHERE id IN '
                  '(SELECT MAX(id) FROM research_refresh_steps GROUP BY name) ORDER BY name')
-    failures = unresolved_failures(steps, stamp)
+    failures = unresolved_failures(steps, stamp, sport='NFL')
+    all_failures = unresolved_failures(steps, stamp)
     covered = {r['game_id'] for r in db.q('SELECT game_id FROM nfl_top_five_selections')}
     from .nfl_top_five import coverage
     prop_coverage = coverage(schedule.get('game_ids', []), stamp)
@@ -163,7 +214,7 @@ def health(now: float | None = None) -> dict:
     warnings = []
     if lag is None or lag > 12 * 60:
         warnings.append('The background worker has not checked in recently. Updates resume when the local service runs.')
-    elif tick and not tick['success']:
+    elif tick and not tick['success'] and (failures or not all_failures):
         warnings.append('The latest background check did not finish successfully.')
     if checked is None or stamp - checked > settings.stale_schedule_s:
         warnings.append('The saved schedule needs a refresh.')

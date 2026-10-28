@@ -1,8 +1,9 @@
 import json
+from concurrent.futures import ThreadPoolExecutor
 
 import pytest
 
-from edgeterminal import db, nba_quotes, nfl_prop_capture_ops
+from edgeterminal import db, nba_quotes, nfl_prop_capture_ops, nfl_props
 from edgeterminal.config import settings
 
 
@@ -30,6 +31,80 @@ def test_nba_quota_reserves_nfl_capacity(isolated):
         db.ex('INSERT INTO nba_prop_requests(request_id,attempted_at,events_returned,quota_json) VALUES(?,?,?,?)',
               (str(index), 1000, 1, '{}'))
     assert nba_quotes.budget(1001)['blocked_reason'] == 'nba_monthly_budget'
+
+
+def test_free_plan_local_budget_allows_daily_nba_and_keeps_nfl_reserve(isolated, monkeypatch):
+    attempt = {'requests_made': 142, 'events_returned': 594, 'target_game_ids': '[]',
+               'attempted_at': 1000., 'error': None, 'quota_json': '[]'}
+    monkeypatch.setattr(nfl_prop_capture_ops, '_attempts', lambda now: [attempt])
+    budget = nba_quotes.budget(1001.)
+    assert budget['blocked_reason'] is None
+    assert budget['shared_remaining'] == budget['shared_month_limit'] - 142
+    assert budget['nfl_reserved_requests'] == 40
+    attempt['requests_made'] = budget['shared_month_limit'] - 40
+    assert nba_quotes.budget(1001.)['blocked_reason'] == 'nfl_capacity_reserved'
+    attempt['requests_made'] = 142
+    attempt['events_returned'] = nfl_prop_capture_ops.MAX_LOCAL_OBJECTS_30D
+    assert nba_quotes.budget(1001.)['blocked_reason'] == 'local_30_day_quota_guard'
+
+
+def test_nba_respects_recent_nfl_requests_without_spending_a_request(isolated):
+    game, roster, _ = sample()
+    stamp = 1792530000.
+    for page in range(10):
+        db.ex('INSERT INTO nfl_prop_api_request_attempts VALUES(?,?,?,?)',
+              ('recent-nfl', page+1, stamp-10, '{}'))
+    result = nba_quotes.capture([game], roster, stamp, api_key='fixture',
+                               getter=lambda *a, **kw: pytest.fail('minute budget exceeded'))
+    assert result['status'] == 'local_per_minute_request_guard'
+    assert db.q1('SELECT COUNT(*) n FROM nba_prop_requests')['n'] == 0
+    assert nba_quotes.budget(stamp)['blocked_reason'] is None
+
+
+def test_nfl_pagination_respects_shared_nba_minute_budget(isolated, monkeypatch):
+    stamp = 1792530000.
+    monkeypatch.setattr(nfl_props.time, 'time', lambda: stamp)
+    for index in range(9):
+        db.ex('INSERT INTO nba_prop_requests(request_id,attempted_at) VALUES(?,?)',
+              ('recent-nba-'+str(index), stamp-10))
+    calls = []
+    def getter(*a, **kw):
+        calls.append(1)
+        return 200, b'{"success":true,"data":[],"nextCursor":"second-page"}', {}
+    with pytest.raises(nfl_props.ProviderError, match='local per-minute request limit'):
+        nfl_props.SportsGameOddsProps(api_key='fixture', getter=getter).fetch(
+            stamp, stamp+3600, batch_id='minute-nfl')
+    assert calls == [1]
+    assert db.q1('SELECT COUNT(*) n FROM nfl_prop_api_request_attempts')['n'] == 1
+
+
+def test_minute_budget_reopens_at_the_window_boundary(isolated):
+    for page in range(10):
+        db.ex('INSERT INTO nfl_prop_api_request_attempts VALUES(?,?,?,?)',
+              ('recent-nfl', page+1, 1000., '{}'))
+    with db.tx() as conn:
+        assert not nfl_prop_capture_ops.request_slot_available(conn, 1059.)
+    with db.tx() as conn:
+        assert nfl_prop_capture_ops.request_slot_available(conn, 1060.)
+
+
+def test_concurrent_nba_captures_share_the_last_minute_slot(isolated):
+    game, roster, event = sample()
+    stamp = 1792530000.
+    for page in range(9):
+        db.ex('INSERT INTO nfl_prop_api_request_attempts VALUES(?,?,?,?)',
+              ('recent-nfl', page+1, stamp-10, '{}'))
+    calls = []
+    def getter(*a, **kw):
+        calls.append(1)
+        return 200, json.dumps({'success':True,'data':[event]}).encode(), {}
+    def capture(_):
+        return nba_quotes.capture([game], roster, stamp, getter=getter, api_key='fixture')['status']
+    with ThreadPoolExecutor(max_workers=2) as pool:
+        outcomes = list(pool.map(capture, range(2)))
+    assert sorted(outcomes) == ['captured','local_per_minute_request_guard']
+    assert calls == [1]
+    assert db.q1('SELECT COUNT(*) n FROM nba_prop_requests')['n'] == 1
 
 
 def sample():

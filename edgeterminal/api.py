@@ -235,9 +235,16 @@ def product_nba_status() -> Dict:
 @app.post('/api/product/nba/check')
 def product_nba_check() -> Dict:
     # The same visit throttle and worker lock cover both sports and all tabs.
-    result=product_visit_check()
-    if any(r['status']=='error' for r in nba_ops.status()['checks']):
+    result=_product_visit_check('NBA')
+    status=nba_ops.status()
+    learning=status.get('learning') or {}
+    if (any(r['status']=='error' for r in status['checks']) or
+            any((learning.get(kind) or {}).get('status')=='error'
+                for kind in ('diagnostics','retuning','integrity'))):
         return dict(result,ok=False,attention='nba_updates')
+    if result.get('attention')=='weekly_forecast':
+        return dict(result,ok=True,attention=None,
+                    status='cached' if result.get('status')=='needs_attention' else result.get('status'))
     return result
 
 
@@ -297,8 +304,12 @@ def product_nfl_refresh() -> Dict:
 @app.post('/api/product/nfl/check')
 def product_visit_check() -> Dict:
     """A page visit may run due work; it never forces a provider request."""
+    return _product_visit_check('NFL')
+
+
+def _product_visit_check(sport: str) -> Dict:
     try:
-        return visit_refresh.check()
+        return visit_refresh.for_sport(visit_refresh.check(), sport)
     except ValueError:
         raise HTTPException(503, 'Automatic updates require ESPN research mode') from None
 
@@ -324,9 +335,13 @@ def product_status() -> Dict:
 
 @app.get('/api/product/methodology')
 def product_methodology() -> Dict:
+    from .nfl_learning import model_info
+    active = model_info()
     return {'title': 'How the record works', 'readiness': 'RESEARCH_ONLY', 'designation': 'PASS',
             'notes': ['Five distinct player/stat selections lock before kickoff when five supported main lines are available.',
-                      'Player prop model families and residual uncertainty are fixed. Training ends before 2026 Week 3; later completed weeks update inputs only.',
+                      'Prior completed games update player inputs. The built-in worker evaluates new prop model versions weekly on separate chronological games and sourced main lines; only validated improvements may activate.',
+                      'Each model version keeps its own recorded training cutoff and parameters. Saved predictions and results are never refitted.',
+                      'New player prop captures use ' + active['version'] + '. Previously saved predictions retain their original model and results.',
                       'Model probability is an estimate. Its difference from the quoted price is not a validated betting edge.',
                       'Live selections and archived rankings have separate records. Archive rankings were applied after games to forecasts saved before kickoff.',
                       'Latest verified source revisions determine outcomes. Missing stats stay pending; corrections remain visible.',

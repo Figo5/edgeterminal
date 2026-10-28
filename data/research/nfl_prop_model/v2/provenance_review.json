@@ -1,0 +1,73 @@
+{
+  "feature_code_sha256": {
+    "_matrix": "fd179c531576454cb2413252cc354b75dbc909cf1c1ac7335c522ab997058512",
+    "derived_features": "7b4b6b8588f11a1cd589858447b174c6f5b6ce78eac9441c1150ffae161b0010",
+    "lab._avg": "7d11c88ca5fede7f6bba00a2f3a43b090d6de84a47521debeaef21a9a340622f",
+    "lab._eligible": "b98bc3d7992b6e3470145fefde98713443c5206850167f6cbb1c60bffc49cc62",
+    "lab._feature": "723f186f6db9a2577ad3a5e61dce829019a7deae6d298386c9a141f208df7c43",
+    "lab._matrix": "d3aab50d83a66cc84fee8f575302c8d5a77566f4547de27982a07545fbf430fe",
+    "lab._num": "47f75e718a35b1da0213ac9f387df12f979fb81169036f1c30672d8bb4fbe667",
+    "lab._read_stats": "08206e144568ffe48276601e71be8d0c96610b49102d4023abda4f5e06a73d0f",
+    "lab._schedule": "ed2c7a790fc6399d836899e064f2e7beb853efe2a92f26569e4f07d9fa456bbf",
+    "lab._team": "2f57859ffc0658aa82b39bc4746e4a38fa356ac3bf5f0f9105e12baa7f9f5f22",
+    "lab._week3_features": "76fbc1902792a60c2450bba849355f90bd1711899cfd25ebb4202a41567d7d5d",
+    "lab.build_dataset": "34fd6af64385230d00e7e569faf663319e2237f0e45cb0590708f5de2d3d17b3",
+    "lab.constants": "baa00b411a1c1cf67e5cf9b6c7953be79938ca6893c625a41d3a45bfb7969b92"
+  },
+  "inference_provenance_extension": {
+    "implementation_function_names": [
+      "_empirical",
+      "_matrix",
+      "_predict",
+      "derived_features",
+      "lab._avg",
+      "lab._eligible",
+      "lab._estimator",
+      "lab._feature",
+      "lab._matrix",
+      "lab._norm_name",
+      "lab._num",
+      "lab._pair_quotes",
+      "lab._prob_over",
+      "lab._read_stats",
+      "lab._schedule",
+      "lab._team",
+      "lab._week3_features",
+      "lab.build_dataset",
+      "lab.constants",
+      "probabilities",
+      "project_current"
+    ],
+    "new_manifest_sha256": "ebbbd72be85c60056aec7fbf67095e21c83dafbf05a86ede142c21f314e19c26",
+    "operation": "preactivation metadata-only inference function pin extension; no fit/calibration rerun",
+    "prior_manifest_sha256": "aabf6135e8e4a167fbd1b0960920707f915f65e21308f12413fdef4222ecc160",
+    "runtime_versions": {
+      "joblib": "1.5.3",
+      "numpy": "2.0.2",
+      "python": "3.9.6",
+      "scikit_learn": "1.6.1"
+    },
+    "unchanged_fields": [
+      "configurations",
+      "evaluation_2025",
+      "models_sha256",
+      "parameter_fingerprint",
+      "training_cutoff"
+    ],
+    "unchanged_models_sha256": "39629858bba4db2fd5baaa2576bbe34760768e86df7e27a6e22eafa56ab1a2cb"
+  },
+  "model_mtime_ns": 1793105575900184218,
+  "new_manifest_sha256": "aabf6135e8e4a167fbd1b0960920707f915f65e21308f12413fdef4222ecc160",
+  "operation": "preactivation provenance metadata only; no fit or calibration rerun",
+  "prior_manifest_sha256": "6fdbb3334cd58492235d407bb63dc967c37e2f3aa9bd449a69a2d388b84d2cff",
+  "schedule_mtime_ns": 1789406102323668511,
+  "training_schedule_sha256": "d05eddee399d1ef3aea535b9502fbae63e5e5ce2b315cd7d9ecb8ccff25942c0",
+  "unchanged_fields": [
+    "configurations",
+    "evaluation_2025",
+    "models_sha256",
+    "parameter_fingerprint",
+    "training_cutoff"
+  ],
+  "unchanged_models_sha256": "39629858bba4db2fd5baaa2576bbe34760768e86df7e27a6e22eafa56ab1a2cb"
+}

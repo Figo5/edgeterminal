@@ -3,6 +3,7 @@ import gzip
 import hashlib
 import json
 import os
+import subprocess
 import time
 from datetime import datetime,timezone
 
@@ -11,10 +12,63 @@ import pytest
 from sklearn.linear_model import LogisticRegression,Ridge
 
 from edgeterminal import db
+from edgeterminal import nfl_repro_bundle as repro
 from edgeterminal.config import ROOT,settings
 from edgeterminal.nfl_forward_grading import register_freeze
 from edgeterminal.nfl_model_registry import register as register_model,versions
 from edgeterminal.nfl_repro_bundle import BundleStage,sha256,verify_bundle
+
+
+@pytest.fixture
+def committed_code_tree(tmp_path,monkeypatch):
+    """Exercise the actual Git path guard without touching the user's index."""
+    def git(*args):
+        return subprocess.run(["git",*args],cwd=tmp_path,capture_output=True,
+                              text=True,check=True).stdout.strip()
+    git("init","--quiet")
+    for relative in ("edgeterminal/model.py","requirements.txt","requirements-model.txt",
+                     "data/research/current.json"):
+        path=tmp_path/relative
+        path.parent.mkdir(parents=True,exist_ok=True)
+        path.write_text("original\n")
+    git("add",".")
+    git("-c","user.name=Freeze test","-c","user.email=freeze-test@example.invalid",
+        "commit","--quiet","-m","Initial committed model")
+    monkeypatch.setattr(repro,"ROOT",tmp_path)
+    return tmp_path,git
+
+
+def test_freeze_code_guard_accepts_committed_models_and_unrelated_research_updates(committed_code_tree):
+    root,git=committed_code_tree
+    original=git("rev-parse","HEAD")
+    (root/"data/research/current.json").write_text("new source results\n")
+    (root/"reports").mkdir()
+    (root/"reports/new-result.json").write_text("new report\n")
+    assert repro.code_commit()==original
+    (root/"edgeterminal/model.py").write_text("reviewed model update\n")
+    with pytest.raises(ValueError,match="uncommitted; refusing freeze"):
+        repro.code_commit()
+    git("add","edgeterminal/model.py")
+    git("-c","user.name=Freeze test","-c","user.email=freeze-test@example.invalid",
+        "commit","--quiet","-m","Reviewed model update")
+    updated=git("rev-parse","HEAD")
+    assert updated!=original
+    assert repro.code_commit()==updated
+
+
+@pytest.mark.parametrize("relative,stage", [
+    ("edgeterminal/model.py",True),
+    ("edgeterminal/untracked_model.py",False),
+    ("requirements.txt",False),
+    ("requirements-model.txt",True),
+])
+def test_freeze_code_guard_refuses_uncommitted_code_and_dependency_changes(committed_code_tree,relative,stage):
+    root,git=committed_code_tree
+    (root/relative).write_text("unreviewed change\n")
+    if stage:
+        git("add",relative)
+    with pytest.raises(ValueError,match="uncommitted; refusing freeze"):
+        repro.code_commit()
 
 
 @pytest.fixture

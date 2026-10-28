@@ -31,3 +31,28 @@ test('NBA record separates historical evaluation from saved predictions', () => 
   assert.match(html,/Historical evaluation/);
   assert.doesNotMatch(html,/Not recorded|Week/);
 });
+
+test('NBA probability disclosures follow the saved prediction method', () => {
+  const game={id:'nba-2026-1',home_team:'BOS',away_team:'NYK',top_props:[{
+    rank:1,player:'Player',market:'points',side:'over',line:15.5,confidence:0.6,
+    model_version:'nba-research-2.0.0',probability_method:'historical_standardized_residual_cdf'}]};
+  const upgraded=ui.matchup({game});
+  assert.match(upgraded,/historical forecast errors/);
+  assert.match(upgraded,/nba-research-2.0.0/);
+  assert.doesNotMatch(upgraded,/uncalibrated research estimates/);
+  const legacy=ui.matchup({game:{...game,top_props:[{...game.top_props[0],probability_method:undefined}]}});
+  assert.match(legacy,/uncalibrated research estimates/);
+  assert.doesNotMatch(legacy,/historical forecast errors/);
+});
+
+test('Learning status shows a retained model and escapes recorded reasons', () => {
+  const html=ui.about({model:{version:'nba-research-2.0.1',cutoff:'2026-10-01'},learning:{
+    enabled:true,schedule:'Weekly retuning',diagnostics:{status:'ok',checked_at:1793188800},
+    retuning:{status:'rejected',checked_at:1793188800,next_due_at:1793793600,
+      detail:{reasons:['market_regression:<unsafe>']}}}});
+  assert.match(html,/Automatic model learning/);
+  assert.match(html,/Current model retained/);
+  assert.match(html,/&lt;unsafe&gt;/);
+  assert.match(html,/saved predictions and grades stay fixed/);
+  assert.doesNotMatch(html,/<unsafe>|undefined|fixed input\/training cutoff/);
+});

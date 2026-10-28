@@ -78,6 +78,46 @@ def test_missing_official_participation_stays_visible_after_successful_idle_tick
     assert any('participation evidence' in s for s in h['warnings'])
 
 
+def test_sport_views_exclude_other_sport_steps_but_keep_shared_failures(isolated):
+    step('nba_research', 900., error='NBA source unavailable')
+    step('top_five_grading', 901., error='NFL source unavailable')
+    step('worker_runtime', 902., error='shared runtime unavailable')
+    rows = db.q('SELECT name,attempted_at,success,detail FROM research_refresh_steps')
+    assert {r['name'] for r in product_insights.unresolved_failures(rows, 1000., sport='NFL')} == {
+        'top_five_grading', 'worker_runtime'}
+    assert {r['name'] for r in product_insights.unresolved_failures(rows, 1000., sport='NBA')} == {
+        'nba_research', 'worker_runtime'}
+    # The complete worker audit still retains every failure.
+    assert len(product_insights.unresolved_failures(rows, 1000.)) == 3
+
+
+def test_nfl_health_does_not_repeat_an_unrelated_nba_worker_failure(isolated):
+    step('nba_research', 900., error='NBA source unavailable')
+    db.ex('INSERT INTO research_refresh_ticks VALUES(?,?,?,?)', ('nba-error', 950., 951., 0))
+    db.kv_set('nfl_current_schedule', {'week': 8, 'game_ids': []})
+    health = product_insights.health(1000.)
+    assert health['state'] == 'healthy'
+    assert not health['warnings']
+
+
+def test_combined_learning_failure_uses_persisted_sport_status_when_detail_was_sanitized(isolated):
+    from edgeterminal import model_learning
+    model_learning.ensure_schema()
+    model_learning._record('NBA', 'retuning', 900., 'evidence', {'status': 'error'})
+    model_learning._record('NFL', 'retuning', 900., 'evidence', {'status': 'waiting'})
+    step('model_learning', 900., error='provider reported unavailable')
+    rows = db.q('SELECT name,attempted_at,success,detail FROM research_refresh_steps')
+    assert not product_insights.unresolved_failures(rows, 1000., sport='NFL')
+    assert product_insights.unresolved_failures(rows, 1000., sport='NBA')
+
+
+def test_unknown_combined_learning_error_remains_visible_to_both_sports(isolated):
+    step('model_learning', 900., error='worker failed before recording sports')
+    rows = db.q('SELECT name,attempted_at,success,detail FROM research_refresh_steps')
+    assert product_insights.unresolved_failures(rows, 1000., sport='NFL')
+    assert product_insights.unresolved_failures(rows, 1000., sport='NBA')
+
+
 def test_result_source_retries_transport_once_without_using_cached_bytes(monkeypatch):
     calls = []
     class Source:
