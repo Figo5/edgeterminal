@@ -52,3 +52,12 @@ The source/prop grading and new learning cycle completed successfully.
 
 No new Codex automation, provider subscription, Odds API access, official pick,
 external message, commit or push was introduced. PASS / RESEARCH_ONLY remains.
+
+## Release follow-up
+
+The user subsequently requested fixing the identified snapshot blocker. The
+reviewed implementation was committed, the pre-kickoff Week 8 bundle was
+created and deeply verified, and live status is now healthy with no warnings.
+See `docs/research/release_fix_2026_10_28.md` for the 989-test release verification
+and source/record preservation evidence. The earlier commit warning above
+describes the initial learning review and is now resolved.

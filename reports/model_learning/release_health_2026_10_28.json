@@ -1,0 +1,47 @@
+{
+  "live_state": "healthy",
+  "models": {
+    "NBA": {
+      "cutoff": "2026-10-01T00:00:00Z",
+      "fingerprint": "a985aed3dfc2e702c9d13cd289c5961d79dd2425ab9c51d3c5970c5f376170dd",
+      "version": "nba-research-2.0.1"
+    },
+    "NFL": {
+      "fingerprint": "95e051438c5298670b83a7be6f7a931e2cdbc86bf6c1b98c28cda74f46105725",
+      "manifest_sha256": "ebbbd72be85c60056aec7fbf67095e21c83dafbf05a86ede142c21f314e19c26",
+      "training_cutoff": [
+        2026,
+        3
+      ],
+      "version": "nfl-opportunity-empirical-2.0.0"
+    }
+  },
+  "preservation": {
+    "changed": false,
+    "original_files_verified": 9,
+    "preexisting_rows_verified": 16617
+  },
+  "release_commit": "6e3a71bf7dfd4ee39f3004cbdfb78e90974d437f",
+  "scheduler": {
+    "interval_seconds": 300,
+    "loaded": true
+  },
+  "snapshot": {
+    "bundle_id": "2a4ac5ec96d84183854e52cbd4defaef",
+    "bundle_path": "/Users/giofiore/edgeterminal/data/nflverse/forward_bundles/2a4ac5ec96d84183854e52cbd4defaef",
+    "deep": true,
+    "freeze_sha256": "b149ac20c5d6fe6e6f869f6197d78f43871cb948c76e94c32b3dddc32ce56c3d",
+    "games": 14,
+    "manifest_sha256": "bb20a5129d1b0be0f5f51913d2db5359f3b58cb2697cc781691cf7fcb240671d",
+    "season": 2026,
+    "training_games": 1978,
+    "verified_artifacts": 123,
+    "week": 8
+  },
+  "tests": {
+    "javascript_passed": 17,
+    "python_passed": 989
+  },
+  "warnings": [],
+  "worker_success": true
+}

@@ -35,3 +35,24 @@ exclusive, and the original Week 3 bytes must remain unchanged.
 PASS / RESEARCH_ONLY, ESPN game quotes, SportsGameOdds quota guards and
 five-minute final-result grading remain in force. This release improves
 reliability and validation; it does not promise a higher future win rate.
+
+## Verified release result
+
+- Implementation commit: `6e3a71bf7dfd4ee39f3004cbdfb78e90974d437f`.
+- Full verification: 989 Python tests and 17 JavaScript tests passed.
+- Week 8 snapshot: 14 games, 1,978 prior training games and ESPN quotes for all
+  14 games. All 123 bundled artifacts passed deep verification. The snapshot
+  was created before kickoff and records the committed implementation.
+- Normal built-in worker completed successfully. NFL and NBA check endpoints
+  both return `ok: true`; live product status is `healthy` with no warnings.
+  The LaunchAgent remains loaded at a 300-second interval.
+- The NBA/NFL active versions remain `nba-research-2.0.1` and
+  `nfl-opportunity-empirical-2.0.0`. Both have successful diagnostics; rejected
+  experimental updates remain inactive.
+- All 16,617 pre-existing protected rows and nine original model/freeze files
+  passed the preservation check. The original Week 3 snapshot still matches.
+
+Machine-readable evidence: `reports/model_learning/release_health_2026_10_28.json`.
+The live NFL board was also checked in the browser: the snapshot warning has
+cleared, current quotes are displayed and games awaiting five sourced props
+show their guarded next check. Missing props are not backfilled.
