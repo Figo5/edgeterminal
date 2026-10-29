@@ -1,0 +1,12 @@
+{
+  "id": "/",
+  "name": "EdgeTerminal",
+  "short_name": "EdgeTerminal",
+  "description": "Live NBA and NFL research forecasts and verified results.",
+  "start_url": "/?league=NBA",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#080808",
+  "theme_color": "#111111",
+  "icons": [{"src": "/static/app-icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"}]
+}

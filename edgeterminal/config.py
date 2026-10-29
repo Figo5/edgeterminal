@@ -113,6 +113,7 @@ class Settings:
     host = os.getenv("HOST", "127.0.0.1")
     port = int(os.getenv("PORT", "8799"))
     hosted_mode = _b("HOSTED_MODE", False)
+    runtime_mode = os.getenv("EDGETERMINAL_RUNTIME", "local").strip().lower()
     public_url = os.getenv("PUBLIC_URL", "http://127.0.0.1:8799").rstrip("/")
     smtp_host = os.getenv("SMTP_HOST", "").strip()
     smtp_port = int(_f("SMTP_PORT", 587))

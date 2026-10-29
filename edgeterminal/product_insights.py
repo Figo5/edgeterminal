@@ -213,7 +213,7 @@ def health(now: float | None = None) -> dict:
     lag = stamp - tick['started_at'] if tick else None
     warnings = []
     if lag is None or lag > 12 * 60:
-        warnings.append('The background worker has not checked in recently. Updates resume when the local service runs.')
+        warnings.append('The background worker has not checked in recently. Updates resume when the background service runs.')
     elif tick and not tick['success'] and (failures or not all_failures):
         warnings.append('The latest background check did not finish successfully.')
     if checked is None or stamp - checked > settings.stale_schedule_s:

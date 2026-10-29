@@ -10,11 +10,13 @@ from datetime import date, datetime, timedelta, timezone
 from zoneinfo import ZoneInfo
 
 from . import db, nba_data, nba_identity, nba_model, nba_learning, nba_grading, nba_quotes, nba_sources, nba_store, nba_participation
+from . import nba_game_context, nba_game_forecasts
 from .integrity import parse_time
 
 ET = ZoneInfo('America/New_York')
 LABELS = {'schedule': 'Schedule & game prices', 'history': 'Historical inputs',
           'forecasts': 'Pregame forecasts', 'props': 'Player-prop capture', 'grading': 'Final results & grading',
+          'spread_learning': 'Spread inputs & model checks',
           'evaluation': 'Chronological evaluation'}
 PROP_BUDGET_REASONS = {
     'nba_monthly_budget':'the NBA monthly request allowance is exhausted',
@@ -119,10 +121,16 @@ def parse_market(comp,observed_at,source_sha):
                 m['total']=abs(line);m[side+'_price']=price(close.get('odds'))
         for side in ('home','away'):
             m[side+'_moneyline']=price(((ml.get(side) or {}).get('close') or {}).get('odds'))
-        m['sportsbook']=(offer.get('provider') or {}).get('displayName') or 'Unknown'
+        m['sportsbook']=((offer.get('provider') or {}).get('displayName') or
+                         (offer.get('provider') or {}).get('name') or 'Unknown')
         if any(m[k] is not None for k in ('home_spread','total','home_moneyline','away_moneyline')):
             break
     return m
+
+
+def _schedule_cadence(now):
+    next_game=db.q1("SELECT MIN(tipoff_ts) AS tip FROM nba_games WHERE status='scheduled' AND tipoff_ts>?",(now,))
+    return 300 if next_game and next_game['tip'] is not None and next_game['tip']-now<=3600 else 900
 
 
 def refresh_schedule(now):
@@ -132,7 +140,7 @@ def refresh_schedule(now):
     # This ESPN endpoint accepts one date; range requests return HTTP 400.
     for offset in range(-1,8):
         target=day+timedelta(days=offset)
-        ttl=900 if offset==0 else 3600 if offset==1 else 6*3600
+        ttl=_schedule_cadence(now) if offset==0 else 3600 if offset==1 else 6*3600
         obs=nba_sources.fetch('scoreboard',{'dates':target.strftime('%Y%m%d'),'limit':100},ttl=ttl,now=now)
         if not isinstance(obs['data'].get('events'),list):
             raise ValueError('NBA schedule response lacks an events list')
@@ -171,9 +179,13 @@ def load_team_history(code,year,now):
     rows=[]
     for season in (year,year+1):
         obs=nba_sources.fetch(f'teams/{nba_identity.espn_team_id(code)}/schedule',
-            {'season':season,'seasontype':2},ttl=7*86400 if season==year else 6*3600,now=now)
+            {'season':season,'seasontype':2},
+            ttl=7*86400 if season==year else nba_game_context.source_ttl(code,now),now=now)
         source_id=artifact(obs,'team-history')
         rows.extend(dict(r,source_artifact_id=source_id) for r in nba_sources.team_history(obs['data'],obs['sha256']))
+        if season==year+1:
+            context=nba_game_context.parse_schedule(code,obs['data'],source_id,obs['observed_at'])
+            db.kv_set('nba_team_schedule_context_'+code,context)
     # Each team schedule includes both teams' score rows; retain only the requested team.
     rows=unique_history([r for r in rows if r['team']==code],'team')
     db.kv_set('nba_team_history_'+code,rows)
@@ -181,17 +193,12 @@ def load_team_history(code,year,now):
 
 
 def _availability(player):
-    statuses=[str(i.get('status') or '').lower() for i in player.get('injuries',[])]
-    for status in ('out','doubtful','questionable','probable'):
-        if any(status in s for s in statuses):
-            return status
-    if player.get('roster_status') not in {'active','Active'}:
-        return 'inactive'
-    return 'not_listed_on_roster_injury_feed'
+    return nba_game_context.roster_availability(player)
 
 
 def load_roster(code,now):
-    obs=nba_sources.fetch(f'teams/{nba_identity.espn_team_id(code)}/roster',ttl=3*3600,now=now)
+    obs=nba_sources.fetch(f'teams/{nba_identity.espn_team_id(code)}/roster',
+                          ttl=nba_game_context.source_ttl(code,now,'roster'),now=now)
     parsed=nba_data.parse_roster(obs['data'])
     if parsed['team']!=code:
         raise ValueError('NBA roster team identity conflict')
@@ -280,11 +287,14 @@ def _inc(record,result):
 
 
 def _forecast(game_id,kind):
-    return next((r for r in nba_store.list_forecasts(game_id) if r['payload'].get('kind')==kind),None)
+    original=next((r for r in nba_store.list_forecasts(game_id) if r['payload'].get('kind')==kind),None)
+    return nba_game_forecasts.selected(game_id,legacy=original) if kind=='game' else original
 
 
 def comparison_market(game_id,saved):
     market=dict(saved['payload'].get('market') or {})
+    if saved['payload'].get('kind')=='game-revision':
+        return market
     for kind,keys in [('spread-line',('home_spread','away_spread','home_price','away_price')),
                       ('total-line',('total','over_price','under_price'))]:
         if market.get(keys[0]) is not None:continue
@@ -320,6 +330,17 @@ def _public_game(g,prop_notice=None):
           'forecast_at':saved['created_at'] if saved else None,'top_props':[],
           'forecast_message':'Historical inputs are still loading.' if g['tipoff_ts']>now else 'No pregame forecast was saved.',
           'prop_message':'Waiting for five supported main lines, verified identities and enough previous games.'}
+    if saved:
+        payload=saved['payload']; live=payload.get('kind')=='game-revision'
+        schedules=(payload.get('input_manifest') or {}).get('schedule') or {}
+        stale=any(v.get('stale') or not v.get('complete') for v in schedules.values())
+        age=max(0,now-saved['created_at'])
+        upcoming=g['status']=='scheduled' and g['tipoff_ts']>now
+        game.update(forecast_id=saved['forecast_id'],forecast_policy=payload.get('policy_id'),
+            forecast_refresh={'enabled':live,'age_seconds':age,'inputs_stale':stale,
+                'state':'stale' if upcoming and (stale or age>900) else 'live' if live and upcoming else 'saved',
+                'message':('Pregame updates continue automatically; the latest saved forecast before tipoff becomes the record.'
+                           if live and upcoming else 'Saved pregame forecast and comparison lines remain in the record.')})
     lock=nba_store.get_lock('top5-'+g['game_id'])
     if lock:
         rows=_forecast(g['game_id'],'props')['payload']['rows']
@@ -377,10 +398,11 @@ def performance():
             day=nba_store.get_game(item['game_id'])['game_date_et'];daily=days.setdefault(day,_record())
             state=(grades.get(item['rank']) or {}).get('result','pending')
             _inc(result['props'],state);_inc(daily,state)
-    for row in db.q('SELECT f.* FROM nba_forecasts f JOIN nba_games g ON g.game_id=f.game_id '
-                    'WHERE g.season_start_year=? ORDER BY f.created_at',(year,)):
-        payload=json.loads(row['payload'])
-        if payload.get('kind')!='game':continue
+    for item in db.q('SELECT DISTINCT f.game_id FROM nba_forecasts f JOIN nba_games g ON g.game_id=f.game_id '
+                    'WHERE g.season_start_year=? ORDER BY f.game_id',(year,)):
+        row=_forecast(item['game_id'],'game')
+        if not row:continue
+        payload=row['payload']
         grade=db.q1('SELECT payload FROM nba_game_grade_revisions WHERE game_id=? ORDER BY id DESC LIMIT 1',(row['game_id'],))
         outcome=json.loads(grade['payload']) if grade else {}
         for key in ('winners','spread','total'):
@@ -407,36 +429,75 @@ def register_model(now):
               (info['version'],info['fingerprint'],info['cutoff'],now,encoded))
 
 
+def _refresh_game_projection(game,history,now):
+    from . import nba_spread_model, nba_spread_data
+    stamp=max(now,time.time())
+    if stamp>=game['tipoff_ts']:return False
+    history=nba_spread_data.enrich_from_boxes(history,stamp)
+    schedule=nba_game_context.schedules(game,history,stamp)
+    availability=nba_game_context.availability(game,stamp)
+    projection=nba_spread_model.project_game(game['home_team'],game['away_team'],history,
+        game['tipoff_utc'],as_of=stamp,schedule=schedule,availability=availability)
+    if projection['status']!='ok':return False
+    rows=projection.pop('selected_rows')
+    feature_cutoff=projection.pop('feature_cutoff')
+    manifest={'rows':rows,'feature_cutoff':feature_cutoff,
+        'schedule':{team:context for team,context in schedule.items() if context.get('source_artifact_id')},
+        'coverage':projection.get('coverage') or {}}
+    market=db.kv_get('nba_market_'+game['game_id']) or {}
+    sources={row['source_artifact_id'] for row in rows}
+    sources.update(row['possession_source_artifact_id'] for row in rows if row.get('possession_source_artifact_id'))
+    sources.update(c['source_artifact_id'] for c in manifest['schedule'].values())
+    sources.update(p['source_artifact_id'] for p in availability)
+    sources.add(game['source_artifact_id'])
+    if market.get('source_artifact_id'):sources.add(market['source_artifact_id'])
+    old=_forecast(game['game_id'],'game')
+    stamp=max(stamp,time.time())
+    if stamp>=game['tipoff_ts']:return False
+    saved=nba_game_forecasts.save_revision(game['game_id'],projection,market,manifest,
+        sorted(sources),now=stamp,model_info=nba_spread_model.model_info())
+    return not old or old['forecast_id']!=saved['forecast_id']
+
+
 def forecasts(now):
     register_model(now)
-    history=_teams_history();saved=0;missing=0
+    history=_teams_history();saved=0;missing=0;revisions=0;errors=[]
+    nba_game_forecasts.activate(max(now,time.time()))
     games=db.q("SELECT * FROM nba_games WHERE tipoff_ts>? AND tipoff_ts<? AND status='scheduled'",(now,now+2*86400))
     for game in games:
-        existing=_forecast(game['game_id'],'game')
-        if existing:
-            current=db.kv_get('nba_market_'+game['game_id']) or {}
-            for kind,key in [('spread-line','home_spread'),('total-line','total')]:
-                if existing['payload'].get('market',{}).get(key) is None and current.get(key) is not None and not _forecast(game['game_id'],kind):
-                    stamp=max(now,time.time())
-                    if stamp<game['tipoff_ts'] and current.get('source_artifact_id'):
-                        nba_store.save_forecast(kind+'-'+game['game_id'],game['game_id'],nba_model.MODEL_VERSION,
-                            {'kind':kind,'market':current},[current['source_artifact_id']],now=stamp)
-            continue
-        projection=nba_model.project_game(game['home_team'],game['away_team'],history,game['tipoff_utc'])
-        if projection['status']!='ok':missing+=1;continue
-        sources=sorted({r['source_artifact_id'] for r in history if r['team'] in {game['home_team'],game['away_team']}}|
-                       {game['source_artifact_id']})
-        raw=dict(projection,home_score=projection['proj_home'],away_score=projection['proj_away'],
-                 home_margin=projection['margin'],away_win_probability=round(1-projection['home_win_probability'],4))
-        stamp=max(now,time.time())
-        if stamp>=game['tipoff_ts']:continue
-        nba_store.save_forecast('game-'+game['game_id'],game['game_id'],nba_model.MODEL_VERSION,
-            {'kind':'game','projection':raw,'market':db.kv_get('nba_market_'+game['game_id']) or {},
-             'model':{'version':nba_model.MODEL_VERSION,'cutoff':'2026-10-01T00:00:00Z',
-                      'fingerprint':nba_model.PARAMETER_FINGERPRINT}},sources,now=stamp)
-        saved+=1
-    return {'message':f'{saved} new pregame forecasts saved; {missing} await sufficient history.',
-            'new_forecasts':saved,'missing_histories':missing}
+        try:
+            existing=_forecast(game['game_id'],'game')
+            if existing:
+                current=db.kv_get('nba_market_'+game['game_id']) or {}
+                if existing['payload'].get('kind')!='game-revision':
+                    for kind,key in [('spread-line','home_spread'),('total-line','total')]:
+                        if existing['payload'].get('market',{}).get(key) is None and current.get(key) is not None and not _forecast(game['game_id'],kind):
+                            stamp=max(now,time.time())
+                            if stamp<game['tipoff_ts'] and current.get('source_artifact_id'):
+                                nba_store.save_forecast(kind+'-'+game['game_id'],game['game_id'],nba_model.MODEL_VERSION,
+                                    {'kind':kind,'market':current},[current['source_artifact_id']],now=stamp)
+            else:
+                projection=nba_model.project_game(game['home_team'],game['away_team'],history,game['tipoff_utc'])
+                if projection['status']!='ok':missing+=1;continue
+                sources=sorted({r['source_artifact_id'] for r in history if r['team'] in {game['home_team'],game['away_team']}}|
+                               {game['source_artifact_id']})
+                raw=dict(projection,home_score=projection['proj_home'],away_score=projection['proj_away'],
+                         home_margin=projection['margin'],away_win_probability=round(1-projection['home_win_probability'],4))
+                stamp=max(now,time.time())
+                if stamp>=game['tipoff_ts']:continue
+                nba_store.save_forecast('game-'+game['game_id'],game['game_id'],nba_model.MODEL_VERSION,
+                    {'kind':'game','projection':raw,'market':db.kv_get('nba_market_'+game['game_id']) or {},
+                     'model':{'version':nba_model.MODEL_VERSION,'cutoff':'2026-10-01T00:00:00Z',
+                              'fingerprint':nba_model.PARAMETER_FINGERPRINT}},sources,now=stamp)
+                saved+=1
+            revisions+=_refresh_game_projection(game,history,now)
+        except Exception as exc:
+            db.kv_set('nba_game_refresh_error_'+game['game_id'],
+                {'checked_at':max(now,time.time()),'error':type(exc).__name__,'message':str(exc)[:180]})
+            errors.append(game['game_id'])
+    return {'ok':not errors,
+            'message':f'{saved} first pregame forecasts and {revisions} updated projections saved; {missing} await sufficient history; {len(errors)} checks need review.',
+            'new_forecasts':saved,'new_revisions':revisions,'missing_histories':missing,'source_errors':errors}
 
 
 def capture_props(now):
@@ -576,6 +637,10 @@ def grade_due(now):
                 graded=nba_grading.grade_game(_saved_markets(forecast,game),official,graded_at)
                 payload={ {'moneyline':'winners','spread':'spread','total':'total'}[r['market']]:r['result'] for r in graded['grades']}
                 payload.update(home_score=official['home_score'],away_score=official['away_score'])
+                if forecast['payload'].get('kind')=='game-revision':
+                    payload.update(forecast_id=forecast['forecast_id'],
+                        forecast_sha256=forecast['payload_sha256'],
+                        forecast_policy_id=forecast['payload']['policy_id'])
                 encoded=json.dumps(payload,sort_keys=True)
                 sha=hashlib.sha256((encoded+':'+str(prior['id'] if prior else 0)).encode()).hexdigest()
                 if not prior or prior['payload']!=encoded:
@@ -651,7 +716,7 @@ def run(now=None):
     stamp=time.time() if now is None else now
     ensure_schema();register_model(stamp)
     results={}
-    results['schedule']=step('schedule',stamp,900,lambda:refresh_schedule(stamp))
+    results['schedule']=step('schedule',stamp,_schedule_cadence(stamp),lambda:refresh_schedule(stamp))
     # Advance bounded history bootstrap every five minutes until all current roster identities are checked.
     results['history']=step('history',stamp,300,lambda:histories(stamp))
     results['forecasts']=step('forecasts',stamp,300,lambda:forecasts(stamp))
@@ -660,6 +725,8 @@ def run(now=None):
     if 'result' in results['props']:
         nba_store.set_cadence('props',_props_cadence(stamp,nba_store.get_cadence('props')),now=stamp)
     results['grading']=step('grading',stamp,300,lambda:grade_due(stamp))
+    from . import nba_spread_learning
+    results['spread_learning']=step('spread_learning',stamp,300,lambda:nba_spread_learning.run(stamp))
     # Publish frozen historical evidence for this version, without refitting it.
     coverage=db.kv_get('nba_evaluation') or {}
     changed_model=(coverage.get('model') or {}).get('fingerprint')!=model_info()['fingerprint']
@@ -672,7 +739,8 @@ def run(now=None):
 
 
 def status():
-    from . import model_learning
+    from . import model_learning, nba_spread_model, nba_spread_learning
+    from .config import settings
     ensure_schema()
     checks=[{'name':r['name'],'label':LABELS.get(r['name'],r['name'].replace('_',' ').title()),
              'status':r['last_status'] or 'not_checked','checked_at':r['last_run_at'],'next_at':r['next_due_at'],
@@ -683,5 +751,9 @@ def status():
         evaluation={'status':'pending','model':model,
                     'summary':'The active model changed. Its chronological evaluation is due on the built-in refresh.'}
     return {'sport':'NBA','checks':checks,'budget':nba_quotes.budget(time.time()),'model':model,
+            'game_model':nba_spread_model.model_info(),'game_learning':nba_spread_learning.status(now=time.time()),
+            'game_forecasts':nba_game_forecasts.status(),
+            'runtime':{'mode':'hosted' if settings.runtime_mode=='always_on' else 'local',
+                       'requires_awake_mac':settings.runtime_mode!='always_on'},
             'evaluation':evaluation,'learning':model_learning.status('NBA'),
             'designation':'PASS','readiness':'RESEARCH_ONLY'}

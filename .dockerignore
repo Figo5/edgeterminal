@@ -1,0 +1,8 @@
+# The runtime image receives requirements only. A clean checkout is mounted
+# read-only at runtime; live state and secrets never enter the build context.
+**
+!requirements.txt
+!requirements-model.txt
+!deploy/
+!deploy/Dockerfile
+!deploy/constraints.txt

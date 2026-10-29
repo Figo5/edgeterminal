@@ -56,3 +56,24 @@ test('Learning status shows a retained model and escapes recorded reasons', () =
   assert.match(html,/saved predictions and grades stay fixed/);
   assert.doesNotMatch(html,/<unsafe>|undefined|fixed input\/training cutoff/);
 });
+
+test('Live NBA game revisions explain the pretipoff record and stale inputs', () => {
+  const html=ui.matchup({game:{id:'nba-2026-1',home_team:'BOS',away_team:'NYK',
+    forecast_refresh:{enabled:true,state:'stale',message:'Pregame updates continue automatically; the latest saved forecast before tipoff becomes the record.'},
+    projection:{game_component_version:'nba-game-live-1.2.0'},top_props:[]}});
+  assert.match(html,/latest saved forecast before tipoff/);
+  assert.match(html,/Inputs need a fresh check/);
+  assert.match(html,/nba-game-live-1.2.0/);
+});
+
+test('Phone data page distinguishes the local worker from an always-on host', () => {
+  const local=ui.about({runtime:{mode:'local',requires_awake_mac:true},game_model:{version:'game-v2'},
+    game_learning:{message:'More verified games needed <unsafe>'}});
+  assert.match(local,/Mac must be awake/);
+  assert.match(local,/Spread model/);
+  assert.match(local,/&lt;unsafe&gt;/);
+  assert.doesNotMatch(local,/<unsafe>/);
+  const hosted=ui.about({runtime:{mode:'hosted',requires_awake_mac:false}});
+  assert.match(hosted,/independently of your Mac/);
+  assert.doesNotMatch(hosted,/while this Mac is awake/);
+});

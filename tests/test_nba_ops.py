@@ -15,6 +15,9 @@ def isolated(tmp_path, monkeypatch):
     monkeypatch.setattr(settings, 'database_url', f'sqlite:///{tmp_path / "nba.db"}')
     db.init()
     nba_store.ensure_schema()
+    # Spread collection/learning has its own network-free contract tests.
+    from edgeterminal import nba_spread_learning
+    monkeypatch.setattr(nba_spread_learning, 'run', lambda *a, **kw: {'ok': True, 'status': 'waiting'})
     yield
     db._conn.close()
     db._conn = None

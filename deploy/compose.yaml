@@ -1,0 +1,73 @@
+# One always-on Linux host and one authoritative state directory.
+# No ports are exposed outside host loopback. Put private HTTPS in front.
+x-runtime: &runtime
+  image: edgeterminal-runtime:${EDGETERMINAL_REVISION:?Set the reviewed commit SHA}
+  build:
+    context: ..
+    dockerfile: deploy/Dockerfile
+    args:
+      EDGETERMINAL_REVISION: ${EDGETERMINAL_REVISION:?Set the reviewed commit SHA}
+  user: "10001:10001"
+  working_dir: /app
+  init: true
+  restart: unless-stopped
+  read_only: true
+  cap_drop: [ALL]
+  security_opt: [no-new-privileges:true]
+  tmpfs: [/tmp]
+  stop_grace_period: 30s
+  volumes:
+    - type: bind
+      source: ${EDGETERMINAL_CODE_DIR:?Set a clean checkout without a .env file}
+      target: /app
+      read_only: true
+      bind:
+        create_host_path: false
+    - type: bind
+      source: ${EDGETERMINAL_STATE_DIR:?Restore state before startup}/data
+      target: /app/data
+      bind:
+        create_host_path: false
+    - type: bind
+      source: ${EDGETERMINAL_STATE_DIR:?Restore state before startup}/reports
+      target: /app/reports
+      bind:
+        create_host_path: false
+  environment: &environment
+    EDGETERMINAL_RUNTIME: always_on
+    HOSTED_MODE: "true"
+    PUBLIC_URL: ${EDGETERMINAL_PUBLIC_URL:?Set the private HTTPS origin}
+    ODDS_PROVIDER: espn
+    ODDS_API_KEY: ""
+    DEBUG_ENDPOINTS: "false"
+    DATABASE_URL: sqlite:////app/data/edgeterminal.db
+    PORT: "8799"
+    PYTHONDONTWRITEBYTECODE: "1"
+  logging:
+    driver: json-file
+    options:
+      max-size: 10m
+      max-file: "3"
+
+services:
+  web:
+    <<: *runtime
+    command: [python, deploy/runtime.py, web]
+    env_file: ${EDGETERMINAL_WEB_ENV_FILE:?Use a separate web env file without provider keys}
+    ports: ["127.0.0.1:8799:8799"]
+    healthcheck:
+      test: [CMD, python, deploy/runtime.py, check-web]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+  worker:
+    <<: *runtime
+    command: [python, deploy/runtime.py, worker]
+    env_file: ${EDGETERMINAL_WORKER_ENV_FILE:?Store provider keys only in the worker env file}
+    healthcheck:
+      test: [CMD, python, deploy/runtime.py, check-worker]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 10m

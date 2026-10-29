@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import math
 import os
 import plistlib
 import subprocess
+import time
 from pathlib import Path
 
-from .config import ROOT
+from .config import ROOT, settings
 
 LABEL = "com.edgeterminal.research-refresh"
 PYTHON = ROOT / ".venv/bin/python"
@@ -64,11 +66,25 @@ def uninstall() -> dict:
     return status()
 
 
-def status() -> dict:
+def status(now=None) -> dict:
+    if settings.runtime_mode == 'always_on':
+        from . import db
+        stamp=time.time() if now is None else now
+        exists=db.q1("SELECT 1 FROM sqlite_master WHERE type='table' AND name='research_refresh_ticks'")
+        last=db.q1('SELECT started_at,finished_at,success FROM research_refresh_ticks '
+                   'ORDER BY started_at DESC LIMIT 1') if exists else None
+        healthy=bool(last and all(isinstance(last[k],(int,float)) and math.isfinite(last[k])
+                     for k in ('started_at','finished_at')) and last['success']==1
+                     and last['started_at']<=last['finished_at']<=stamp
+                     and 0<=stamp-last['finished_at']<=25*60)
+        return {'kind':'always_on','supported':True,'installed':True,'loaded':healthy,
+                'interval_seconds':300,'last_worker_at':last['finished_at'] if last else None,
+                'detail':'Recent completed background-worker tick.' if healthy else
+                         'The background worker has no recent successful completed tick.'}
     if os.uname().sysname != "Darwin":
-        return {"supported": False, "installed": PLIST.exists(), "loaded": False}
+        return {"kind":"launchd","supported": False, "installed": PLIST.exists(), "loaded": False}
     active = _launchctl("print", f"{_domain()}/{LABEL}")
-    return {"supported": True, "installed": PLIST.exists(),
+    return {"kind":"launchd","supported": True, "installed": PLIST.exists(),
             "loaded": active.returncode == 0, "label": LABEL,
             "plist": str(PLIST), "interval_seconds": 300,
             "stdout_log": str(OUT_LOG), "stderr_log": str(ERR_LOG),
