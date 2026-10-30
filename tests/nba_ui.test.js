@@ -77,3 +77,18 @@ test('Phone data page distinguishes the local worker from an always-on host', ()
   assert.match(hosted,/independently of your Mac/);
   assert.doesNotMatch(hosted,/while this Mac is awake/);
 });
+
+test('Validated calibration and workload forecasts show their saved method honestly', () => {
+  for (const [method, phrase] of [
+    ['actual_line_selected_policy_calibration', /Calibrated on earlier saved market lines/],
+    ['role_minutes_predictive_mixture', /Includes uncertainty in minutes and production/]
+  ]) {
+    const html=ui.matchup({game:{home_team:'BOS',away_team:'NYK',top_props:[{
+      rank:1,player:'Player',market:'points',side:'over',line:15.5,confidence:.49,
+      probability_method:method}]}});
+    assert.match(html,phrase);
+    assert.match(html,/49\.0%/);
+    assert.doesNotMatch(html,/uncalibrated research estimates/);
+    assert.match(html,/over 15\.5/);
+  }
+});

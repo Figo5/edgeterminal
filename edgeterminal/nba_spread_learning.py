@@ -17,12 +17,13 @@ import statistics
 import time
 from zoneinfo import ZoneInfo
 
-from . import db,nba_store,nba_spread_data as data,nba_spread_model as model
+from . import db,nba_store,nba_spread_data as data,nba_spread_model as model,nba_spread_market as market_model
 
 DAY=86400;WEEK=7*DAY
 MIN_VALIDATION_GAMES=60
 MIN_VALIDATION_DAYS=7
 MIN_NEW_GAMES=10
+EVALUATION_FAMILY='nba-spread-market-v2'
 ALPHAS=(1.,10.,100.)
 ROOT=Path(__file__).resolve().parents[1]
 ET=ZoneInfo('America/New_York')
@@ -41,20 +42,29 @@ def ensure_schema():
           'id INTEGER PRIMARY KEY,version TEXT,created_at REAL NOT NULL,kind TEXT NOT NULL,detail TEXT NOT NULL)')
     db.ex('CREATE TABLE IF NOT EXISTS nba_spread_learning_runs ('
           'id INTEGER PRIMARY KEY,started_at REAL NOT NULL,status TEXT NOT NULL,detail TEXT NOT NULL)')
+    db.ex('CREATE TABLE IF NOT EXISTS nba_spread_validation_consumption ('
+          'game_id TEXT PRIMARY KEY,family TEXT NOT NULL,version TEXT NOT NULL '
+          'REFERENCES nba_spread_model_candidates(version),consumed_at REAL NOT NULL,'
+          'game_date_et TEXT NOT NULL,forecast_sha256 TEXT NOT NULL,label_sha256 TEXT NOT NULL)')
     db.ex("CREATE TRIGGER IF NOT EXISTS nba_spread_activation_gate BEFORE INSERT ON nba_spread_model_events "
           "WHEN NEW.kind='activated' AND NOT EXISTS (SELECT 1 FROM nba_spread_model_candidates c "
           "WHERE c.version=NEW.version AND c.training_cutoff<NEW.created_at "
           "AND json_extract(c.evaluation,'$.passed')=1 AND json_extract(c.evaluation,'$.rows')>=60 "
           "AND json_extract(c.evaluation,'$.days')>=7) "
           "BEGIN SELECT RAISE(ABORT,'NBA spread candidate has not passed validation'); END")
-    for table in ('nba_spread_model_candidates','nba_spread_model_events','nba_spread_learning_runs'):
+    db.ex("CREATE TRIGGER IF NOT EXISTS nba_spread_market_consumption_gate BEFORE INSERT ON nba_spread_model_events "
+          "WHEN NEW.kind='activated' AND EXISTS (SELECT 1 FROM nba_spread_model_candidates c "
+          "WHERE c.version=NEW.version AND json_extract(c.artifact,'$.kind')='nba-spread-market-v2') "
+          "AND (SELECT COUNT(*) FROM nba_spread_validation_consumption v WHERE v.version=NEW.version)<60 "
+          "BEGIN SELECT RAISE(ABORT,'NBA spread market holdout has not been sealed'); END")
+    for table in ('nba_spread_model_candidates','nba_spread_model_events','nba_spread_learning_runs','nba_spread_validation_consumption'):
         for action in ('UPDATE','DELETE'):
             db.ex(f'CREATE TRIGGER IF NOT EXISTS {table}_no_{action.lower()} BEFORE {action} ON {table} '
                   "BEGIN SELECT RAISE(ABORT,'NBA spread research is append-only'); END")
 
 
 def code_catalog():
-    names=('nba_spread_model.py','nba_spread_learning.py','nba_spread_data.py','nba_model.py',
+    names=('nba_spread_model.py','nba_spread_learning.py','nba_spread_data.py','nba_spread_market.py','nba_model.py',
            'nba_sources.py','nba_identity.py','nba_game_context.py','nba_game_forecasts.py',
            'pricing.py','analytics/nba.py','nba_model_manifest.py')
     return {f'edgeterminal/{name}':hashlib.sha256((ROOT/'edgeterminal'/name).read_bytes()).hexdigest()
@@ -190,7 +200,96 @@ def evaluate(rows,*,training_cutoff):
 def _snapshots(now):
     from . import nba_game_forecasts
     helper=getattr(nba_game_forecasts,'validation_snapshots',None)
-    return helper(now,limit=120) if helper else []
+    return helper(now,limit=240) if helper else []
+
+
+class _FeatureReplay:
+    """Source-bound extra-team views at each forecast as-of, cached per proposal."""
+    def __init__(self):
+        self.parsed={};self.used={};self.identities={}
+
+    def history(self,as_of):
+        heads=db.q("SELECT id,url,kind,received_at,http_status,sha256 FROM (SELECT id,url,kind,received_at,http_status,sha256, "
+            "ROW_NUMBER() OVER(PARTITION BY url ORDER BY received_at DESC,id DESC) AS position "
+            "FROM nba_source_artifacts a WHERE kind IN ('team-history','spread-team-history') "
+            "AND received_at<=?) WHERE position=1",(as_of,))
+        rows=[]
+        for head in heads:
+            identity=(head['sha256'],head['received_at'])
+            if head['id'] in self.identities and self.identities[head['id']]!=identity:
+                raise ValueError('NBA feature-replay source identity changed within the proposal')
+            self.identities[head['id']]=identity
+            key=(head['id'],head['sha256'])
+            if key not in self.parsed:
+                source=db.q1('SELECT * FROM nba_source_artifacts WHERE id=?',(head['id'],))
+                data.verify_source(source,received_by=as_of)
+                # Parse all rows present in these already-received bytes. The
+                # shared scorer then enforces the exact target feature cutoff;
+                # parsing is not a claim of historical publication availability.
+                self.parsed[key]=data.source_history(source,cutoff=as_of+366*DAY)
+            rows.extend(self.parsed[key])
+        return data.enrich_from_boxes(rows,as_of)
+
+    def use(self,rows,as_of):
+        identifiers={r['source_artifact_id'] for r in rows}
+        identifiers.update(r['possession_source_artifact_id'] for r in rows if r.get('possession_source_artifact_id'))
+        for ident in identifiers:
+            if ident not in self.identities:
+                source=db.q1('SELECT sha256,received_at FROM nba_source_artifacts WHERE id=?',(ident,))
+                if not source:raise ValueError('NBA feature-replay source is missing')
+                self.identities[ident]=(source['sha256'],source['received_at'])
+            self.used[ident]=min(as_of,self.used.get(ident,as_of))
+
+    def catalog(self):
+        catalog=[]
+        for ident,as_of in sorted(self.used.items()):
+            source=db.q1('SELECT * FROM nba_source_artifacts WHERE id=?',(ident,))
+            data.verify_source(source,received_by=as_of)
+            if (source['sha256'],source['received_at'])!=self.identities[ident]:
+                raise ValueError('NBA feature-replay source changed after prediction')
+            catalog.append(dict(kind='nba_source_artifact',id=ident,sha256=source['sha256'],
+                received_at=source['received_at'],available_by=as_of,role='feature_replay'))
+        return catalog
+
+
+def _replay(record,history,artifact,replay=None):
+    """Use frozen target inputs plus earlier, source-bound opponent context."""
+    rows=record['input_manifest']['rows'];schedule=record['input_manifest'].get('schedule')
+    current=replay.history(record['as_of']) if replay else history
+    merged={(x['team'],str(x['game_id'])):x for x in current}
+    merged.update({(x['team'],str(x['game_id'])):x for x in rows})
+    out=model.project_game(record['home_team'],record['away_team'],list(merged.values()),record['tipoff_ts'],
+        as_of=record['as_of'],schedule=schedule,artifact=artifact,market=record['market'])
+    if out['status']!='ok':raise ValueError('NBA spread frozen inputs cannot reproduce every supported validation game')
+    if replay:replay.use(out.get('selected_rows',[]),record['as_of'])
+    return out
+
+
+def _market_training_sources(cohorts):
+    """Carry exact prefix input/quote/final receipts into the new artifact."""
+    catalog={}
+    for phase in ('fit','development','calibration'):
+        for record in cohorts[phase]:
+            quote=market_model.quote_context(record['market'],record['as_of'],record['tipoff_ts'])
+            descriptors=record.get('source_artifacts') or []
+            matched=False
+            for source in descriptors:
+                if source['received_at']>record['as_of']:
+                    raise ValueError('NBA market-training source was received after its forecast')
+                if source['id']==quote['source_artifact_id']:
+                    if source['sha256']!=quote['source_sha256'] or source['received_at']>quote['observed_at']:
+                        raise ValueError('NBA market-training quote source descriptor mismatch')
+                    matched=True
+                descriptor=dict(kind='nba_source_artifact',id=source['id'],sha256=source['sha256'],
+                    received_at=source['received_at'],role='market_'+phase)
+                catalog[(descriptor['id'],descriptor['role'])]=descriptor
+            if not matched:raise ValueError('NBA market-training quote lacks its frozen source descriptor')
+            if not record.get('label_source_artifact_id') or not record.get('label_source_sha256'):
+                raise ValueError('NBA market-training result lacks its verified final source')
+            label=dict(kind='nba_source_artifact',id=record['label_source_artifact_id'],
+                sha256=record['label_source_sha256'],received_at=record['result_observed_at'],role='market_'+phase+'_label')
+            catalog[(label['id'],label['role'])]=label
+    return sorted(catalog.values(),key=lambda r:(r['role'],r['id']))
 
 
 def build_candidate(now):
@@ -198,7 +297,16 @@ def build_candidate(now):
     if ready is None:return dict(status='waiting',reason='historical_seasons_bootstrapping')
     records=[r for r in _snapshots(now) if r['as_of']>ready]
     if len(records)<MIN_VALIDATION_GAMES:return dict(status='waiting',reason='more_verified_future_spread_games',validation_games=len(records),required_games=MIN_VALIDATION_GAMES)
-    cutoff=min(r['as_of'] for r in records)-1
+    spent=db.q('SELECT game_id,game_date_et FROM nba_spread_validation_consumption')
+    split=market_model.partition(records,now=now,
+        excluded_validation_game_ids=[r['game_id'] for r in spent],
+        excluded_validation_dates=[r['game_date_et'] for r in spent])
+    if split['status']!='ready':
+        return dict(status='waiting',reason=split['reason'],coverage=split['counts'],required=split['required'],
+            validation_games=split['counts']['validation'],required_games=MIN_VALIDATION_GAMES,
+            validation_days=split['validation_days'],
+            message='Spread learning retains its live model until earlier fit/development/calibration cohorts and 60 unused validation games across seven unused dates are available.')
+    cohorts=split['cohorts'];records=cohorts['validation'];cutoff=split['training_cutoff']
     current=active()
     if current and current['artifact']['training_cutoff']>=cutoff:return dict(status='waiting',reason='active_game_model_overlaps_validation')
     if current and len({r['game_id'] for r in records}-set(current['artifact']['validation_game_ids']))<MIN_NEW_GAMES:
@@ -206,32 +314,52 @@ def build_candidate(now):
     previous=db.q1('SELECT artifact FROM nba_spread_model_candidates ORDER BY created_at DESC,version DESC LIMIT 1')
     if previous and len({r['game_id'] for r in records}-set(json.loads(previous['artifact'])['validation_game_ids']))<MIN_NEW_GAMES:
         return dict(status='waiting',reason='fewer_than_ten_new_games_since_proposal')
-    history,sources=data.training_history(cutoff)
-    artifact=fit_candidate(history,cutoff);artifact['training_sources']=sources
+    # The historical core must precede anchor FIT forecasts, not merely the
+    # outer holdout. Otherwise prefix outcomes could train their own inputs.
+    core_cutoff=split['core_training_cutoff']
+    history,sources=data.training_history(core_cutoff)
+    core=fit_candidate(history,core_cutoff);core['training_sources']=sources
+    replay=_FeatureReplay()
+    prefix={}
+    for phase in ('fit','development','calibration'):
+        prefix[phase]=[dict(r,core_margin=_replay(r,history,core,replay)['raw_feature_margin']) for r in cohorts[phase]]
+    anchor=market_model.fit_anchor(prefix['fit'],prefix['development'],prefix['calibration'])
+    anchor['core_sd_margin']=core['sd_margin']
+    artifact=dict(core,schema=2,kind='nba-spread-market-v2',core_training_cutoff=core_cutoff,
+        training_cutoff=cutoff,sd_margin=anchor['calibration_sd'],market_anchor=anchor,
+        market_training_sources=_market_training_sources(cohorts),
+        actual_line_cohorts={phase:[r['game_id'] for r in cohorts[phase]] for phase in cohorts},
+        market_training_design='Whole Eastern-date fit/development/calibration prefixes; late labels purged before every next-phase as-of; untouched actual-line outer holdout.',
+        purged_market_game_ids=split['purged_game_ids'])
+    artifact['evaluation_family']=EVALUATION_FAMILY
+    model.validate_artifact(artifact)
     paired=[]
     for r in records:
-        rows=r['input_manifest']['rows'];schedule=r['input_manifest'].get('schedule')
-        # Extra opponent context is from source snapshots already available at
-        # the training cutoff; target-team snapshots remain the actual capture's.
-        merged={(x['team'],str(x['game_id'])):x for x in history}
-        merged.update({(x['team'],str(x['game_id'])):x for x in rows})
-        after=model.project_game(r['home_team'],r['away_team'],list(merged.values()),r['tipoff_ts'],
-                                 as_of=r['as_of'],schedule=schedule,artifact=artifact)
-        if after['status']!='ok':raise ValueError('NBA spread frozen inputs cannot reproduce validation game')
+        after=_replay(r,history,artifact,replay)
         line=r['market'].get('home_spread')
-        if line is None:continue
+        if line is None:raise ValueError('NBA spread holdout lost a supported actual line')
         actual=r['actual_margin'];before=r['projection']['home_margin']
         before_sd=r['projection'].get('sd_margin',model.baseline.SD_MARGIN)
+        core_margin=after['raw_feature_margin']
         paired.append(dict(game_id=r['game_id'],actual_margin=actual,home_spread=line,
             baseline_margin=before,candidate_margin=after['home_margin'],
-            baseline_probability=model.baseline.norm_cdf((before+line)/before_sd),
-            candidate_probability=model.baseline.norm_cdf((after['home_margin']+line)/after['sd_margin']),
+            feature_only_margin=core_margin,market_only_margin=-line,
+            baseline_probability=market_model.cover_probabilities(before,before_sd,line)['conditional_home'],
+            candidate_probability=market_model.cover_probabilities(after['home_margin'],after['sd_margin'],line)['conditional_home'],
+            feature_only_probability=market_model.cover_probabilities(core_margin,core['sd_margin'],line)['conditional_home'],
+            market_only_probability=.5,
             forecast_at=r['as_of'],tipoff=r['tipoff_ts'],result_at=r['result_observed_at']))
     decision=evaluate(paired,training_cutoff=cutoff)
+    benchmarks=market_model.benchmark(paired)
     artifact['validation_game_ids']=[r['game_id'] for r in paired]
     artifact['validation']=decision
+    artifact['same_line_benchmarks']=benchmarks
+    artifact['feature_replay_sources']=replay.catalog()
+    artifact['validation_receipts']=[dict(game_id=r['game_id'],game_date_et=datetime.fromtimestamp(r['tipoff_ts'],ET).date().isoformat(),
+        forecast_sha256=r['forecast_sha256'],label_sha256=r['label_source_sha256']) for r in records]
     artifact['version']='nba-game-adaptive-'+_sha(artifact)[:16]
-    return dict(status='ready',artifact=artifact,evaluation=dict(decision,rows_detail=paired),sources=sources)
+    return dict(status='ready',artifact=artifact,evaluation=dict(decision,rows_detail=paired,benchmarks=benchmarks),
+                sources=sources+artifact['market_training_sources']+artifact['feature_replay_sources'])
 
 
 def run(now=None):
@@ -269,11 +397,24 @@ def run(now=None):
         artifact=proposal['artifact'];encoded=_json(artifact);sha=hashlib.sha256(encoded.encode()).hexdigest()
         existing=db.q1('SELECT sha256 FROM nba_spread_model_candidates WHERE version=?',(artifact['version'],))
         if existing and existing['sha256']!=sha:raise ValueError('NBA spread immutable version conflict')
-        if not existing:db.ex('INSERT INTO nba_spread_model_candidates VALUES(?,?,?,?,?,?)',
-            (artifact['version'],stamp,artifact['training_cutoff'],encoded,sha,_json(proposal['evaluation'])))
         passed=proposal['evaluation']['passed'];kind='activated' if passed else 'rejected'
-        db.ex('INSERT INTO nba_spread_model_events(version,created_at,kind,detail) VALUES(?,?,?,?)',
-              (artifact['version'],stamp,kind,_json(proposal['evaluation'])))
+        with db.tx() as conn:
+            if not existing:conn.execute('INSERT INTO nba_spread_model_candidates VALUES(?,?,?,?,?,?)',
+                (artifact['version'],stamp,artifact['training_cutoff'],encoded,sha,_json(proposal['evaluation'])))
+            if artifact.get('kind')=='nba-spread-market-v2':
+                receipts=artifact.get('validation_receipts') or []
+                if len(receipts)!=proposal['evaluation']['rows']:
+                    raise ValueError('NBA spread holdout receipts do not match evaluation coverage')
+                for receipt in receipts:
+                    for field in ('forecast_sha256','label_sha256'):
+                        value=receipt.get(field)
+                        if not isinstance(value,str) or len(value)!=64 or any(c not in '0123456789abcdef' for c in value):
+                            raise ValueError('NBA spread holdout needs exact forecast and label hashes')
+                    conn.execute('INSERT INTO nba_spread_validation_consumption VALUES(?,?,?,?,?,?,?)',
+                        (receipt['game_id'],EVALUATION_FAMILY,artifact['version'],stamp,
+                         receipt['game_date_et'],receipt['forecast_sha256'],receipt['label_sha256']))
+            conn.execute('INSERT INTO nba_spread_model_events(version,created_at,kind,detail) VALUES(?,?,?,?)',
+                (artifact['version'],stamp,kind,_json(proposal['evaluation'])))
         return _record(stamp,kind,dict(version=artifact['version'],evaluation=proposal['evaluation'],bootstrap=bootstrap))
     except Exception as exc:
         return _record(stamp,'error',dict(reason=str(exc)[:250],error_type=type(exc).__name__,bootstrap=bootstrap))

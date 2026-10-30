@@ -73,7 +73,12 @@ def test_invalid_json_config_fails_closed():
 
 def test_candidate_cannot_reuse_an_active_model_trained_inside_validation(monkeypatch):
     monkeypatch.setattr(learning, "_active", lambda: {"candidate_id": "later", "training_cutoff": 200.})
-    monkeypatch.setattr(learning, "_validation_records", lambda now: ([{"kickoff_at": 100.}], {}, []))
+    monkeypatch.setattr(learning, "_quality_window", lambda now: ([{"game_id": "g"}],
+        [(2026, 4), (2026, 5), (2026, 6)], {"g": {"season": 2026, "week": 4}}))
+    monkeypatch.setattr(learning, "_kickoff", lambda game: 100.)
+    monkeypatch.setattr(learning, "_validated_active", lambda: {"training_cutoff": 200., "artifact": {}})
+    from edgeterminal import model_learning_store
+    monkeypatch.setattr(model_learning_store, "holdout_available", lambda *a: True)
     monkeypatch.setattr(learning, "fit_market", lambda *a: pytest.fail("fit on invalid baseline window"))
     result = learning.build_candidate(now=300.)
     assert result["status"] == "waiting"

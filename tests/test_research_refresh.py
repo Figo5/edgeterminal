@@ -310,5 +310,5 @@ def test_launchagent_runs_background_worker_without_terminal():
     spec = research_scheduler.specification()
     assert spec["ProgramArguments"][1:] == ["-m", "edgeterminal.research_refresh", "run"]
     assert spec["RunAtLoad"] is True and spec["StartInterval"] == 300
-    assert spec["WorkingDirectory"].endswith("/edgeterminal")
+    assert spec["WorkingDirectory"] == str(research_scheduler.ROOT)
     assert spec["StandardErrorPath"].endswith("research-refresh.err.log")

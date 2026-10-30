@@ -40,6 +40,7 @@ DESIGN = ('Expanding chronological coefficient fit; next 120 whole games for '
           'Development selects a predeclared season-aware shrinkage weight by MAE only. '
           'Count probabilities integrate Gamma-Poisson rate uncertainty. '
           'No outcome-based parameter changes occur while serving a forecast.')
+QUALITY_PROTOCOL = 'NBA propsquality2.0'
 
 
 def _active():
@@ -75,6 +76,8 @@ def _number(value):
 
 
 def _validate_artifact(artifact):
+    if artifact.get('schema') == 2:
+        return _validate_quality_artifact(artifact)
     if (artifact.get('schema') != 1 or artifact.get('kind') != 'nba-adaptive-v1'
             or set(artifact.get('markets', {})) != set(MARKETS)):
         raise ValueError('Invalid NBA adaptive artifact contract')
@@ -199,6 +202,8 @@ def _probabilities(market, mean, sd, line, config, distribution):
 
 
 def _project(player_id, market, player_history, tipoff, line, artifact, info):
+    if artifact.get('schema') == 2:
+        return _quality_project(player_id, market, player_history, tipoff, line, artifact, info)
     if market not in MARKETS:
         raise ValueError(f'unsupported market {market!r}')
     tip = baseline.parse_time(tipoff)
@@ -250,6 +255,8 @@ def select_props(quotes, player_history, tipoff, now, injuries=None, count=5):
     if current is None:
         return baseline.select_props(quotes, player_history, tipoff, now, injuries, count)
     artifact = _validate_artifact(current['artifact'])
+    if artifact.get('schema') == 2:
+        return _quality_select(current, quotes, player_history, tipoff, now, injuries, count)
     tip, stamp = baseline.parse_time(tipoff), baseline.parse_time(now)
     if tip is None or stamp is None or stamp >= tip:
         raise ValueError('select_props requires valid now before tipoff')
@@ -524,3 +531,39 @@ def nightly_diagnostics(now=None):
                 model=model_info(), whole_games=len(context['game_ids']), cohorts=cohorts,
                 exclusions=context['exclusions'], verified_sources=len(sources),
                 note='Correlated selections are descriptive diagnostics; only the scheduled whole-game gate may change the model.')
+
+
+def _validate_quality_artifact(artifact):
+    from . import nba_prop_quality, nba_prop_role
+    return nba_prop_role.validate(artifact) if artifact.get('kind') == nba_prop_role.KIND else nba_prop_quality.validate(artifact)
+
+
+def _quality_project(player_id, market, history, tipoff, line, artifact, info):
+    from . import nba_prop_quality, nba_prop_role
+    if baseline.parse_time(tipoff) <= artifact['training_cutoff']:
+        return baseline.project_prop(player_id, market, history, tipoff, line)
+    module = nba_prop_role if artifact.get('kind') == nba_prop_role.KIND else nba_prop_quality
+    return module.project(player_id, market, history, tipoff, line, artifact, info)
+
+
+def _quality_select(current, quotes, history, tipoff, now, injuries, count):
+    from . import nba_prop_quality, nba_prop_role
+    tip, stamp = baseline.parse_time(tipoff), baseline.parse_time(now)
+    if tip is None or stamp is None or stamp >= tip:
+        raise ValueError('select_props requires valid now before tipoff')
+    if stamp < current['artifact']['training_cutoff'] or tip <= current['artifact']['training_cutoff']:
+        return baseline.select_props(quotes, history, tipoff, now, injuries, count)
+    module = nba_prop_role if current['artifact'].get('kind') == nba_prop_role.KIND else nba_prop_quality
+    return module.select(current, quotes, history, tipoff, now, injuries, count)
+
+
+def build_quality_candidate(now=None):
+    """Predeclared actual-line calibration lane, separate from raw role proposals."""
+    from . import nba_prop_quality, nba_prop_role
+    stamp = time.time() if now is None else _number(now)
+    role = nba_prop_role.build(stamp)
+    if role['status'] == 'ready':
+        return role
+    calibrated = nba_prop_quality.build(stamp)
+    calibrated['role_proposal'] = {k:v for k,v in role.items() if k not in {'artifact','sources','evaluation'}}
+    return calibrated

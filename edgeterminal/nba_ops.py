@@ -436,15 +436,15 @@ def _refresh_game_projection(game,history,now):
     history=nba_spread_data.enrich_from_boxes(history,stamp)
     schedule=nba_game_context.schedules(game,history,stamp)
     availability=nba_game_context.availability(game,stamp)
+    market=db.kv_get('nba_market_'+game['game_id']) or {}
     projection=nba_spread_model.project_game(game['home_team'],game['away_team'],history,
-        game['tipoff_utc'],as_of=stamp,schedule=schedule,availability=availability)
+        game['tipoff_utc'],as_of=stamp,schedule=schedule,availability=availability,market=market)
     if projection['status']!='ok':return False
     rows=projection.pop('selected_rows')
     feature_cutoff=projection.pop('feature_cutoff')
     manifest={'rows':rows,'feature_cutoff':feature_cutoff,
         'schedule':{team:context for team,context in schedule.items() if context.get('source_artifact_id')},
         'coverage':projection.get('coverage') or {}}
-    market=db.kv_get('nba_market_'+game['game_id']) or {}
     sources={row['source_artifact_id'] for row in rows}
     sources.update(row['possession_source_artifact_id'] for row in rows if row.get('possession_source_artifact_id'))
     sources.update(c['source_artifact_id'] for c in manifest['schedule'].values())
@@ -455,7 +455,8 @@ def _refresh_game_projection(game,history,now):
     stamp=max(stamp,time.time())
     if stamp>=game['tipoff_ts']:return False
     saved=nba_game_forecasts.save_revision(game['game_id'],projection,market,manifest,
-        sorted(sources),now=stamp,model_info=nba_spread_model.model_info())
+        sorted(sources),now=stamp,model_info={'version':projection['model_version'],
+            'fingerprint':projection['parameter_fingerprint'],'cutoff':projection['training_cutoff']})
     return not old or old['forecast_id']!=saved['forecast_id']
 
 
@@ -531,12 +532,19 @@ def _capture_props(now):
     request=db.q1('SELECT * FROM nba_prop_requests WHERE request_id=?',(result['request_id'],))
     source=nba_store.save_artifact({'kind':'player-quotes','url':nba_quotes.URL+'?leagueID=NBA',
         'received_at':result['observed_at'],'http_status':200,'sha256':request['raw_sha256'],'body':request['raw_body']})
-    history=_players_history(roster);saved=0;waiting=[]
+    history=_players_history(roster);saved=0;waiting=[];context_errors=[]
     for game in targets:
         quotes=[q for q in result['quotes'] if q['game_id']==game['game_id']]
         stamp=max(time.time(),result['observed_at'])
-        injuries=[{'player_id':p['player_id'],'status':p['availability']} for p in roster]
-        selection=nba_learning.select_props(quotes,history,game['tipoff_utc'],stamp,injuries=injuries)
+        from . import nba_policy_evidence
+        try:
+            context=nba_policy_evidence.capture_context(game,quotes,verified_roster,history,source,stamp)
+        except ValueError as exc:
+            context_errors.append(game['game_id']+': '+str(exc))
+            continue
+        quotes=context['quotes']
+        game_history=context['history']
+        selection=context['selection']
         if selection['status']!='ok':
             waiting.append(game['game_id'])
             db.kv_set('nba_prop_coverage_'+game['game_id'],{'checked_at':stamp,'message':
@@ -547,13 +555,13 @@ def _capture_props(now):
             q=next(q for q in quotes if str(q['player_id'])==str(row['player_id']) and
                    q['market']==row['market'] and q['side']==row['side'] and q['line']==row['line'] and
                    q['sportsbook']==row['sportsbook'])
-            quote=nba_store.save_quote_observation(game['game_id'],nba_store.PROP_MARKETS[q['market']],q['player_id'],q['side'],q['line'],
-                       q['price'],q['sportsbook'],q['observed_at'],source_artifact_id=source,now=stamp)
+            quote={'quote_id':q['quote_id']}
             player=next(p for p in roster if p['player_id']==row['player_id'])
-            projection=nba_learning.project_prop(row['player_id'],row['market'],history,game['tipoff_utc'],line=row['line'])
+            projection=nba_learning.project_prop(row['player_id'],row['market'],game_history,game['tipoff_utc'],line=row['line'])
             rows.append(dict(row,confidence=row['probability'],player=q['player'],
                 provider_player_id=q.get('provider_player_id'),
                 identity_source_artifact_id=q.get('identity_source_artifact_id'),
+                policy_context_id=context['context_id'],
                 expected_minutes=projection.get('projected_minutes'),
                 availability_note=f"ESPN roster status at capture: {player['availability']}. Minutes are forecast from prior sourced games; rotations may change."+
                     (' The latest statistics recheck failed; previously verified history was used.'
@@ -566,10 +574,20 @@ def _capture_props(now):
                 {r['identity_source_artifact_id'] for r in rows if r.get('identity_source_artifact_id') is not None}|
                 {p['source_artifact_id'] for p in roster if p['player_id'] in player_ids}|
                 {h['source_artifact_id'] for h in history if h['player_id'] in player_ids})
+        stamp=max(stamp,time.time(),db.now())
+        if stamp>=game['tipoff_ts']:
+            context_errors.append(game['game_id']+': prop selection crossed tipoff')
+            continue
         nba_store.save_forecast('props-'+game['game_id'],game['game_id'],model_info()['version'],
             {'kind':'props','rows':rows,'model':model_info()},sources,now=stamp)
+        stamp=max(stamp,time.time(),db.now())
+        if stamp>=game['tipoff_ts']:
+            context_errors.append(game['game_id']+': prop locking crossed tipoff')
+            continue
         nba_store.lock_selections('top5-'+game['game_id'],items,now=stamp)
         saved+=1
+    if context_errors:
+        raise ValueError('NBA per-game prop evidence checks failed after processing other targets: '+'; '.join(context_errors))
     return {'message':f'{saved} games received five saved selections; {len(waiting)} await five supported markets.',
             'status':'captured','new_locks':saved,'waiting_games':waiting,'quotes':len(result['quotes']),
             'identity_omissions':result.get('warnings',{}).get('player_identity',0)}

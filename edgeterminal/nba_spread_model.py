@@ -44,8 +44,9 @@ def _finite(value):
 
 
 def validate_artifact(artifact):
-    if (not isinstance(artifact,dict) or artifact.get('schema')!=1
-            or artifact.get('kind')!='nba-spread-residual-v1'
+    v1=isinstance(artifact,dict) and (artifact.get('schema'),artifact.get('kind'))==(1,'nba-spread-residual-v1')
+    v2=isinstance(artifact,dict) and (artifact.get('schema'),artifact.get('kind'))==(2,'nba-spread-market-v2')
+    if (not (v1 or v2)
             or artifact.get('feature_names')!=list(FEATURE_NAMES)):
         raise ValueError('Invalid NBA spread artifact contract')
     _finite(artifact['training_cutoff']); _finite(artifact['intercept'])
@@ -54,11 +55,20 @@ def validate_artifact(artifact):
         for value in artifact[name]:_finite(value)
     if any(s<=0 for s in artifact['scales']):raise ValueError('Invalid NBA spread feature scale')
     if not 1<=_finite(artifact['sd_margin'])<=100:raise ValueError('Invalid NBA spread uncertainty')
+    if v2:
+        anchor=artifact.get('market_anchor') or {}
+        if (anchor.get('kind')!='positive_convex_market_anchor'
+                or anchor.get('market_basis')!='exact_saved_ESPN_home_spread'
+                or not 0<_finite(anchor.get('weight'))<=1
+                or not 1<=_finite(anchor.get('core_sd_margin'))<=100
+                or _finite(anchor.get('calibration_sd'))!=artifact['sd_margin']
+                or _finite(artifact.get('core_training_cutoff'))>artifact['training_cutoff']):
+            raise ValueError('Invalid NBA market-anchored artifact contract')
     return artifact
 
 
 def baseline_info():
-    names=('nba_spread_model.py','nba_game_context.py','nba_model.py','pricing.py','analytics/nba.py')
+    names=('nba_spread_model.py','nba_spread_market.py','nba_game_context.py','nba_model.py','pricing.py','analytics/nba.py')
     sources={f'edgeterminal/{name}':hashlib.sha256((ROOT/'edgeterminal'/name).read_bytes()).hexdigest()
              for name in names if (ROOT/'edgeterminal'/name).is_file()}
     params=dict(kind=BASELINE_VERSION,pinned_parameter_fingerprint=baseline.PARAMETER_FINGERPRINT,
@@ -164,20 +174,30 @@ def features(home,away,history,tipoff,*,as_of=None,schedule=None):
                 opponent_feature_rows=len(unique)-len(selected)))
 
 
-def project_game(home,away,history,tipoff,*,as_of=None,availability=None,schedule=None,artifact=None):
+def project_game(home,away,history,tipoff,*,as_of=None,availability=None,schedule=None,artifact=None,market=None):
+    from . import nba_spread_market
     context=features(home,away,history,tipoff,as_of=as_of,schedule=schedule)
     out=dict(context['baseline']);info=baseline_info()
     if context['status']!='ok':return out
     current=_active() if artifact is None else None
     artifact=artifact if artifact is not None else current['artifact'] if current else None
     tip=baseline.parse_time(tipoff);stamp=tip-baseline.FEATURE_LAG_S if as_of is None else float(as_of)
-    used=False
+    quote=nba_spread_market.quote_context(market,stamp,tip)
+    used=False;anchored=False;weight=None;fallback=None;raw_margin=out['margin'];raw_feature_margin=raw_margin
     if artifact is not None:
         validate_artifact(artifact)
-        if artifact['training_cutoff']<stamp:
+        wants_market=artifact['kind']=='nba-spread-market-v2'
+        if wants_market and quote is None:
+            fallback='missing_supported_market'
+        elif artifact['training_cutoff']<stamp:
             residual=artifact['intercept']+sum(c*(v-m)/s for c,v,m,s in
                 zip(artifact['coefficients'],context['values'],artifact['means'],artifact['scales']))
-            margin=out['margin']+residual;total=out['total'];sd=artifact['sd_margin']
+            raw_feature_margin=out['margin']+residual
+            margin=raw_feature_margin;total=out['total'];sd=artifact['sd_margin']
+            if wants_market:
+                weight=artifact['market_anchor']['weight']
+                margin=nba_spread_market.blend(margin,quote['margin'],weight);anchored=True
+            raw_margin=margin
             out.update(margin=round(margin,2),proj_home=round((total+margin)/2,2),
                        proj_away=round((total-margin)/2,2),sd_margin=sd,
                        home_win_probability=round(baseline.norm_cdf(margin/sd),4))
@@ -185,13 +205,24 @@ def project_game(home,away,history,tipoff,*,as_of=None,availability=None,schedul
                 epistemic='Validated residual game model; player availability is recorded without an unvalidated point adjustment.')
             info=dict(version=artifact['version'],game_component_version=artifact['version'],cutoff=artifact['training_cutoff'],
                       fingerprint=hashlib.sha256(_json(artifact).encode()).hexdigest());used=True
+        else:fallback='artifact_not_available_asof'
     selected=context['selected_rows'] if used else context['target_rows']
     out.update(model_version=info['version'],game_component_version=info['version'],
                parameter_fingerprint=info['fingerprint'],training_cutoff=info['cutoff'],
-               home_score=out['proj_home'],away_score=out['proj_away'],home_margin=out['margin'],
+               home_score=out['proj_home'],away_score=out['proj_away'],home_margin=raw_margin if anchored else out['margin'],
                selected_rows=selected,feature_cutoff=context['feature_cutoff'],coverage=context['coverage'],
                availability_context=dict(players=list(availability or []),numeric_adjustment_applied=False,
                    note='Availability is sourced context; historical player-impact coefficients have not been validated.'),
                features_applied=used,feature_names=list(FEATURE_NAMES) if used else [],
+               raw_feature_margin=raw_feature_margin,raw_home_margin=raw_margin,
+               market_anchor_applied=anchored,market_anchor_weight=weight,market_anchor_fallback=fallback,
+               market_margin=quote['margin'] if quote else None,market_observed_at=quote['observed_at'] if quote else None,
+               unchanged_feature_side=((raw_feature_margin-quote['margin']>=0)==(raw_margin-quote['margin']>=0)) if anchored else None,
                away_win_probability=round(1-out['home_win_probability'],4))
+    if quote:
+        probabilities=nba_spread_market.cover_probabilities(out['home_margin'],out['sd_margin'],quote['home_spread'])
+        out.update(spread_probability_home=probabilities['home'],spread_probability_away=probabilities['away'],
+                   spread_probability_push=probabilities['push'],spread_probability_home_given_no_push=probabilities['conditional_home'],
+                   market_only_benchmark=dict(margin=quote['margin'],observed_at=quote['observed_at'],
+                       source_artifact_id=quote['source_artifact_id'],ats_direction=None))
     return out

@@ -14,7 +14,15 @@ const sign=v=>v==null?'—':`${v>0?'+':''}${num(v)}`;
 const recordText=r=>(r?.won||r?.lost||r?.push)?`${r.won||0}–${r.lost||0}${r.push?`–${r.push}`:''}`:'No graded selections';
 const note=r=>`${r?.won+r?.lost>0?pct(r.won/(r.won+r.lost))+' win rate · ':''}${r?.pending||0} pending · ${r?.void||0} void`;
 const metric=(title,value,detail)=>`<div><span>${esc(title)}</span><strong>${esc(value)}</strong><small>${esc(detail||'')}</small></div>`;
-const probabilityNote=r=>['historical_standardized_residual_cdf','adaptive_residual_cdf'].includes(r.probability_method)?'Estimated from historical forecast errors. Accuracy on current market lines is still being measured.':r.probability_method==='exposure_gamma_poisson'?'Includes uncertainty in the production rate at the projected minutes. Accuracy on current market lines is still being measured.':r.probability_method==='historical_validated_parametric'?'Uses a count or normal distribution retained by historical validation. Accuracy on current market lines is still being measured.':'Model probabilities are uncalibrated research estimates.';
+const probabilityNotes={
+ historical_standardized_residual_cdf:'Estimated from historical forecast errors. Accuracy on current market lines is still being measured.',
+ adaptive_residual_cdf:'Estimated from historical forecast errors. Accuracy on current market lines is still being measured.',
+ exposure_gamma_poisson:'Includes uncertainty in the production rate at the projected minutes. Accuracy on current market lines is still being measured.',
+ historical_validated_parametric:'Uses a count or normal distribution retained by historical validation. Accuracy on current market lines is still being measured.',
+ actual_line_selected_policy_calibration:'Calibrated on earlier saved market lines. The original five selections and sides stay fixed; confidence can fall below 50%. Future accuracy is still being measured.',
+ role_minutes_predictive_mixture:'Includes uncertainty in minutes and production, using prior observed workloads. The version passed saved-line validation; future accuracy is still being measured.'
+};
+const probabilityNote=r=>probabilityNotes[r.probability_method]||'Model probabilities are uncalibrated research estimates.';
 const footer='<p class="source-note">Research estimates · PASS / RESEARCH_ONLY. Five distinct player/stat selections save before tipoff when supported source lines are available. Missing captures are never added after a game starts.</p>';
 
 function props(game,detail=false){

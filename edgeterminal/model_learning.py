@@ -121,10 +121,21 @@ def _diagnostics(sport, now):
 
 
 def _train(sport, now):
-    result = _adapter(sport).build_candidate(now)
+    adapter = _adapter(sport)
+    builder = getattr(adapter, 'build_quality_candidate', adapter.build_candidate)
+    result = builder(now)
     if result.get('status') != 'ready':
         return {'status': 'waiting', 'reason': result.get('reason', result.get('message', 'More verified data is needed.')),
                 **{key: result[key] for key in ('validation_games', 'validation_rows', 'coverage') if key in result}}
+    if _protocol(sport) != 'legacy-v1' and (
+            not result['artifact'].get('evaluation_family') or
+            not isinstance(result['artifact'].get('ranking_changed'), bool) or
+            result['artifact'].get('probability_contract') != 'conditional_side_given_no_push'):
+        raise ValueError('quality protocol requires a family, selection policy and decided-outcome probability contract')
+    family = result['artifact'].get('evaluation_family')
+    if family and not _registry().holdout_available(sport, family,
+            {row['game_id'] for row in result['evaluation']['rows']}):
+        return {'status': 'waiting', 'reason': 'New untouched outer validation games are required before another proposal.'}
     candidate = _registry().register_candidate(sport, result['version'], result['training_cutoff'],
         result['artifact'], result['evaluation'], result['sources'], now=now)
     decision = _registry().activate_if_passes(candidate['candidate_id'], now=now)
@@ -132,6 +143,18 @@ def _train(sport, now):
             'version': result['version'],
             'reason': decision.get('reason'), 'reasons': decision.get('reasons', []),
             'evaluation': {key: decision[key] for key in ('rows', 'games', 'markets', 'aggregate') if key in decision}}
+
+
+def _protocol(sport):
+    return getattr(_adapter(sport), 'QUALITY_PROTOCOL', 'legacy-v1')
+
+
+def _due(sport, last, kind, now, evidence):
+    # A new fixed protocol receives one attempt; reads still never train.
+    if kind == 'retuning' and _protocol(sport) != 'legacy-v1' and (
+            not last or last['detail'].get('learning_protocol') != _protocol(sport)):
+        return now
+    return _next_due(last, kind, now, evidence)
 
 
 def _integrity(sport, now):
@@ -179,7 +202,7 @@ def run(now=None):
                     {'status': 'ok', 'message': 'Active model integrity recheck succeeded.'})
         for kind in ('diagnostics', 'retuning'):
             last = _last(sport, kind)
-            if now < _next_due(last, kind, now, evidence):
+            if now < _due(sport, last, kind, now, evidence):
                 checks[kind] = {'status': 'cached'}
                 continue
             if kind == 'retuning' and _near_kickoff(now):
@@ -195,9 +218,12 @@ def run(now=None):
                 detail = dict(detail, status=detail.get('status', 'ok'))
                 if rollback:
                     detail['integrity_rollback'] = rollback
+                json.dumps(detail, allow_nan=False)
             except Exception as exc:
                 detail = {'status': 'error', 'reason': str(exc)[:250], 'error_type': type(exc).__name__,
                           'message': 'Learning check failed; existing saved forecasts and grades remain unchanged.'}
+            if kind == 'retuning':
+                detail['learning_protocol'] = _protocol(sport)
             checks[kind] = _record(sport, kind, now, evidence, detail)
         results[sport] = checks
     healthy = all(check['status'] != 'error' for checks in results.values() for check in checks.values())
@@ -230,7 +256,7 @@ def status(sport=None, *, now=None):
             last = _last(name, kind)
             saved[kind] = {'status': last['status'] if last else 'not_checked',
                            'checked_at': last['started_at'] if last else None,
-                           'next_due_at': _next_due(last, kind, now, _evidence_key(name)),
+                           'next_due_at': _due(name, last, kind, now, _evidence_key(name)),
                            'detail': last['detail'] if last else {}}
         output[name] = saved
     return output[sport] if sport else {'enabled': True, 'sports': output}

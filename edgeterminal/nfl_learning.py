@@ -7,6 +7,7 @@ promotion; HTTP prediction serves JSON coefficients without fitting anything.
 from __future__ import annotations
 
 from collections import Counter
+from copy import deepcopy
 from datetime import datetime
 import csv
 import hashlib
@@ -21,6 +22,15 @@ import numpy as np
 
 from . import db, nfl_identity, nfl_prop_grading as grading
 from . import nfl_prop_lab as lab, nfl_prop_model as baseline
+from . import nfl_prop_roles as roles
+
+QUALITY_PROTOCOL = "nfl-props-quality-v2"
+ROLE_SCHEMA = "nfl-selective-role-composite-v2"
+ROLE_PARAMETERS = {"family": roles.SCHEMA, "alpha": roles.ALPHA,
+                   "residual_calibration_weeks": 1, "market_selection_weeks": 1,
+                   "validation_weeks": 3, "minimum_calibration_rows": 30,
+                   "selection": "top-five-confidence-v1",
+                   "quote_unit": "one-over-book-lexicographic-per-game-player-market"}
 
 SCHEMA = "nfl-weekly-json-ridge-v1"
 PARAMETERS = {"family": "ridge_role", "alpha": 100., "calibration_weeks": 2,
@@ -108,9 +118,11 @@ def _validated_active():
     if active is None:
         return None
     artifact = active["artifact"]
-    if (artifact.get("schema") != SCHEMA or artifact.get("features") != list(baseline.FEATURES) or
-            artifact.get("parameters") != PARAMETERS or
-            set(artifact.get("configurations", {})) != set(lab.MARKETS)):
+    legacy = (artifact.get("schema") == SCHEMA and artifact.get("features") == list(baseline.FEATURES)
+              and artifact.get("parameters") == PARAMETERS)
+    composite = (artifact.get("schema") == ROLE_SCHEMA and artifact.get("features") == list(roles.FEATURES)
+                 and artifact.get("parameters") == ROLE_PARAMETERS)
+    if (not (legacy or composite) or set(artifact.get("configurations", {})) != set(lab.MARKETS)):
         raise ValueError("NFL adaptive artifact contract mismatch")
     return active
 
@@ -141,8 +153,8 @@ def _feature_for(prepared: dict, market: str) -> dict:
 def _metadata(active: dict) -> dict:
     artifact = active["artifact"]
     return {
-        "model_version": active["version"], "feature_version": SCHEMA,
-        "feature_names": list(baseline.FEATURES),
+        "model_version": active["version"], "feature_version": artifact["schema"],
+        "feature_names": artifact["features"],
         "parameter_fingerprint": artifact["parameter_fingerprint"],
         "model_manifest_sha256": active["artifact_sha256"],
         "training_cutoff": artifact["fit_boundary_week"],
@@ -164,6 +176,10 @@ def project_current(datasets: dict, history: dict, validation: dict, batch_id: s
         raise ValueError("NFL model training cutoff is not prior to forecast")
     artifact = active["artifact"]
     inputs = lab._week3_features(history, season, week, stats_dir)
+    role_inputs = {}
+    if artifact["schema"] == ROLE_SCHEMA:
+        raw, _ = lab._read_stats(stats_dir)
+        role_inputs = roles.current_features(inputs, raw, season, week)
     for row in report["projections"]:
         quote = db.q1("SELECT team FROM nfl_prop_snapshots WHERE id=?", (row["quote_id"],))
         prepared = inputs.get((row["gsis_player_id"], nfl_identity.team_code(quote["team"]))) if quote else None
@@ -171,8 +187,14 @@ def project_current(datasets: dict, history: dict, validation: dict, batch_id: s
             raise ValueError("adaptive NFL forecast has no matching prior-only inputs")
         market = row["market"]
         config = artifact["configurations"][market]
-        point, probability = predict(config, _feature_for(prepared, market), market, float(row["line"]))
-        row.update(model_version=active["version"] + ":ridge_role",
+        if config.get("kind") == "frozen_baseline":
+            _check_baseline_config(config)
+            continue  # Preserve the entire pinned nonlinear baseline row exactly.
+        feature = _feature_for(prepared, market)
+        if config.get("kind") == roles.SCHEMA:
+            feature.update(role_inputs[(row["gsis_player_id"], lab._team(quote["team"]), market)])
+        point, probability = _json_predict(config, feature, market, float(row["line"]))
+        row.update(model_version=active["version"] + ":" + ("role_v2" if config.get("kind") == roles.SCHEMA else "ridge_role"),
                    parameter_fingerprint=artifact["parameter_fingerprint"],
                    model_manifest_sha256=active["artifact_sha256"], projection=round(point, 4),
                    uncertainty_sigma=round(float(np.std(config["residuals"], ddof=1)), 4),
@@ -184,7 +206,7 @@ def project_current(datasets: dict, history: dict, validation: dict, batch_id: s
                    training_cutoff_at=active["training_cutoff"],
                    calibration_cutoff_at=artifact["calibration_cutoff"])
         row["input_context"]["probability_method"] = "weekly_empirical"
-    report["model_selection"] = {m: "ridge_role" for m in lab.MARKETS}
+    report["model_selection"] = {m: artifact["configurations"][m].get("kind", "ridge_role") for m in lab.MARKETS}
     report["model_metadata"] = _metadata(active)
     return report
 
@@ -253,13 +275,6 @@ def _current_snapshot(catalog: dict, before: float, season: int) -> dict:
     return max(eligible, key=lambda pair: pair[0])[1]
 
 
-def _dataset(body: bytes, cutoff: tuple[int, int]):
-    with TemporaryDirectory(prefix="edgeterminal-nfl-learning-") as directory:
-        path = Path(directory)
-        (path / "stats_player_week_2026.csv").write_bytes(body)
-        return lab.build_dataset(cutoff, stats_dir=path)
-
-
 def _require_completed_history(body: bytes, boundary: tuple[int, int], schedule: dict) -> None:
     rows = list(csv.DictReader(io.StringIO(body.decode("utf-8-sig"))))
     present = {r["game_id"] for r in rows if r.get("season_type") == "REG"}
@@ -272,6 +287,8 @@ def _require_completed_history(body: bytes, boundary: tuple[int, int], schedule:
 def _validation_records(now: float):
     from . import nfl_top_five
     board = nfl_top_five.view()
+    if not board["games"]:
+        return [], {}, []
     schedule = lab._schedule()
     complete = set()
     by_week = {}
@@ -319,137 +336,6 @@ def _validation_records(now: float):
                                "kickoff_at": row["kickoff_utc"], "result_observed_at": grade_row["graded_at"],
                                "freeze_sha": freeze_sha, "frozen_metadata": frozen["metadata"]})
     return output, freezes, list(sources.values())
-
-
-def _baseline_points(records: list, active):
-    if active:
-        for row in records:
-            row["baseline_prediction"], probability = predict(active["artifact"]["configurations"][row["market"]],
-                row["features"], row["market"], row["line"])
-            row["baseline_probability"] = probability[row["side"]]
-        return
-    manifest, models = baseline.load_artifact()
-    for market in lab.MARKETS:
-        rows = [r for r in records if r["market"] == market]
-        if not rows:
-            continue
-        config = manifest["configurations"][market]
-        points = baseline._predict(models[market], rows, market, config["family"])
-        for row, point in zip(rows, points):
-            if config["probability_method"] == "empirical":
-                probability = baseline.probabilities(row["line"], float(point), config, market)
-            else:
-                over = lab._prob_over(row["line"], point, config["baseline_sigma"])
-                probability = {"over": over, "under": 1. - over}
-            row["baseline_prediction"] = float(point)
-            row["baseline_probability"] = probability[row["side"]]
-
-
-def build_candidate(now: float | None = None) -> dict:
-    """Build a proposed weekly update; the registry independently gates promotion."""
-    stamp = time.time() if now is None else now
-    records, _, sources = _validation_records(stamp)
-    if not records:
-        return {"status": "waiting", "reason": "Three completed NFL weeks with verified selected main lines are required."}
-    validation_start = min(r["kickoff_at"] for r in records)
-    active = _active()
-    if active and active["training_cutoff"] >= validation_start:
-        return {"status": "waiting", "reason": "Current NFL baseline needs a new untouched whole-week validation window."}
-    season, week = min((r["season"], r["week"]) for r in records)
-    if season != 2026 or week < 3:
-        return {"status": "waiting", "reason": "NFL local feature source supports the 2026 regular season."}
-    fit_boundary = (season, week - PARAMETERS["calibration_weeks"])
-    schedule = lab._schedule()
-    whole_week_start = min(_kickoff(g) for g in schedule.values()
-                           if (int(g["season"]), int(g["week"])) == (season, week))
-    if active and active["training_cutoff"] >= whole_week_start:
-        return {"status": "waiting", "reason": "Current NFL baseline needs a new untouched whole-week validation window."}
-    training_cutoff = min(_kickoff(g) for g in schedule.values()
-                          if (int(g["season"]), int(g["week"])) == fit_boundary) - 1.
-    calibration_cutoff = whole_week_start - 1.
-    catalog = _catalog(stamp)
-    fit_snapshot = _current_snapshot(catalog, training_cutoff, season)
-    calibration_snapshot = _current_snapshot(catalog, calibration_cutoff, season)
-    _require_completed_history(fit_snapshot["body"], fit_boundary, schedule)
-    _require_completed_history(calibration_snapshot["body"], (season, week), schedule)
-    fit, _, fit_hashes = _dataset(fit_snapshot["body"], fit_boundary)
-    all_calibration, _, cal_hashes = _dataset(calibration_snapshot["body"], (season, week))
-    _, calibration = split_rows(all_calibration, (season, week))
-    configs = {market: fit_market(fit[market], calibration[market], market) for market in lab.MARKETS}
-    # Exact archived pregame input bytes, never a refreshed postgame feature file.
-    feature_cache = {}
-    for row in records:
-        hashes = row["frozen_metadata"]["input_sha256"]
-        digest = hashes.get("features:stats_player_week_2026.csv", hashes.get("stats_player_week_2026.csv"))
-        if digest not in catalog:
-            raise ValueError("NFL quoted validation is missing its frozen feature source")
-        source = catalog[digest]
-        if not source["available_at"] <= row["frozen_metadata"]["created_at"] < row["kickoff_at"]:
-            raise ValueError("NFL validation feature source postdates its immutable pregame forecast")
-        key = digest, row["season"], row["week"]
-        if key not in feature_cache:
-            with TemporaryDirectory(prefix="edgeterminal-nfl-learning-") as directory:
-                path = Path(directory)
-                (path / "stats_player_week_2026.csv").write_bytes(source["body"])
-                _, history, _ = lab.build_dataset((row["season"], row["week"]), path)
-                feature_cache[key] = lab._week3_features(history, row["season"], row["week"], path)
-            sources.append({**source["source"], "role": "validation"})
-        quote = db.q1("SELECT team,line_type FROM nfl_prop_snapshots WHERE id=?", (row["quote_id"],))
-        if not quote or quote["line_type"] != "main":
-            raise ValueError("NFL validation requires original main-line quotes")
-        prepared = feature_cache[key].get((row["gsis_player_id"], nfl_identity.team_code(quote["team"])))
-        if prepared is None:
-            raise ValueError("NFL validation identity has no frozen prior-only features")
-        row["features"] = _feature_for(prepared, row["market"])
-    _baseline_points(records, active)
-    evaluation_rows = []
-    for row in records:
-        point, probability = predict(configs[row["market"]], row["features"], row["market"], row["line"])
-        evaluation_rows.append({key: row[key] for key in (
-            "game_id", "player_id", "market", "quote_id", "line", "side", "observed_at", "kickoff_at",
-            "result_observed_at", "actual", "baseline_prediction", "baseline_probability")})
-        evaluation_rows[-1].update(candidate_prediction=point, candidate_probability=probability[row["side"]])
-    for role, hashes, snapshot in (("training", fit_hashes, fit_snapshot),
-                                   ("calibration", cal_hashes, calibration_snapshot)):
-        for name, digest in hashes.items():
-            item = snapshot if name.endswith("2026.csv") else catalog.get(digest)
-            if item is None:
-                raise ValueError("NFL historical source lacks an availability receipt")
-            sources.append({**item["source"], "role": role})
-    sources.append({"kind": "file", "path": str(lab.SCHEDULE.relative_to(lab.ROOT)),
-                    "sha256": _digest(lab.SCHEDULE.read_bytes()),
-                    "received_at": lab.SCHEDULE.stat().st_mtime, "role": "training"})
-    fit_games = {r["game_id"] for rows in fit.values() for r in rows}
-    calibration_games = {r["game_id"] for rows in calibration.values() for r in rows}
-    training = {
-        "fit_game_ids": sorted(_canonical_game(schedule[g]) for g in fit_games),
-        "calibration_game_ids": sorted(_canonical_game(schedule[g]) for g in calibration_games),
-        "fit_label_max_at": max(s["received_at"] for s in sources if s["role"] == "training"),
-        "calibration_label_max_at": max(s["received_at"] for s in sources if s["role"] == "calibration")}
-    last_week = max(r["week"] for r in records)
-    artifact = {"schema": SCHEMA, "parameters": PARAMETERS,
-                "features": list(baseline.FEATURES), "configurations": configs,
-                "fit_boundary_week": list(fit_boundary), "training_cutoff": training_cutoff,
-                "calibration_cutoff": calibration_cutoff, "training": training,
-                "validation_description": f"2026 weeks {week}-{last_week}; locked actual main lines; never fitted",
-                "parameter_fingerprint": _digest({"parameters": PARAMETERS, "configurations": configs}),
-                "code_sha256": {str(Path(module.__file__).relative_to(lab.ROOT)): _digest(Path(module.__file__).read_bytes())
-                                for module in (baseline, lab)}}
-    artifact["code_sha256"]["edgeterminal/nfl_learning.py"] = _digest(Path(__file__).read_bytes())
-    evaluation = {"kind": "actual_main_lines", "validation_start": validation_start,
-                  "validation_end": max(r["result_observed_at"] for r in records),
-                  "calibration_cutoff": calibration_cutoff,
-                  "baseline_candidate_id": active["candidate_id"] if active else None,
-                  "rows": evaluation_rows}
-    unique = {(s["kind"], s.get("path"), s["sha256"], s["role"]): s for s in sources}
-    sources = sorted(unique.values(), key=lambda source: (source["role"], source["kind"], source["sha256"]))
-    # The same source/label/code revision is idempotent across worker retries.
-    revision = _digest({"artifact": artifact, "evaluation": evaluation, "sources": sources})[:16]
-    version = f"nfl-weekly-ridge-1.2026w{last_week:02d}-{revision}"
-    artifact["version"] = version
-    return {"status": "ready", "sport": "NFL", "version": version,
-            "training_cutoff": training_cutoff, "artifact": artifact,
-            "evaluation": evaluation, "sources": sources}
 
 
 def _saved_metrics(rows: list) -> dict:
@@ -517,9 +403,7 @@ def seal_forward(report: dict, dataset_hashes: dict, created_at: float | None = 
         quote = db.q1("SELECT * FROM nfl_prop_snapshots WHERE id=? AND batch_id=?", (row["quote_id"], report["batch_id"]))
         if (not quote or quote["line_type"] != "main" or row["quote_id"] not in paired_ids or
                 not row["observed_at"] <= stamp < row["kickoff_utc"] or
-                row["model_version"] != metadata["model_version"] + ":ridge_role" or
-                any(row.get(key) != metadata[key] for key in ("parameter_fingerprint", "model_manifest_sha256",
-                    "learning_candidate_id", "training_cutoff_at", "calibration_cutoff_at")) or
+                not _seal_model_matches(row, metadata, active) or
                 any(row.get(field) != quote[source] for field, source in (
                     ("canonical_game_id", "canonical_game_id"), ("player_id", "player_id"), ("market", "market"),
                     ("sportsbook", "sportsbook"), ("line", "line"), ("side", "side"), ("price", "price"),
@@ -533,3 +417,497 @@ def seal_forward(report: dict, dataset_hashes: dict, created_at: float | None = 
         connection.execute("INSERT INTO nfl_prop_research_freezes(freeze_sha,source_batch_id,frozen_at,payload) VALUES(?,?,?,?)",
                            (digest, report["batch_id"], stamp, body))
     return {"freeze_sha": digest, "quote_count": len(rows), "frozen_at": stamp}
+
+
+def _baseline_config():
+    return dict(kind='frozen_baseline', version=baseline.VERSION,
+                manifest_sha256=baseline.MANIFEST_SHA256,
+                parameter_fingerprint=baseline.PARAMETER_FINGERPRINT)
+
+
+def _check_baseline_config(config):
+    if config != _baseline_config():
+        raise ValueError('retained NFL baseline pin changed')
+
+
+def _json_predict(config, features, market, line):
+    return (roles.predict(config, features, market, line) if config.get('kind') == roles.SCHEMA
+            else predict(config, features, market, line))
+
+
+def _seal_model_matches(row, metadata, active):
+    config = active['artifact']['configurations'][row['market']]
+    if config.get('kind') == 'frozen_baseline':
+        _check_baseline_config(config)
+        return (row.get('model_version', '').startswith(baseline.VERSION + ':') and
+                row.get('parameter_fingerprint') == baseline.PARAMETER_FINGERPRINT and
+                row.get('model_manifest_sha256') == baseline.MANIFEST_SHA256 and
+                'learning_candidate_id' not in row)
+    suffix = ':role_v2' if config.get('kind') == roles.SCHEMA else ':ridge_role'
+    return (row.get('model_version') == metadata['model_version'] + suffix and
+            all(row.get(key) == metadata[key] for key in ('parameter_fingerprint',
+                'model_manifest_sha256', 'learning_candidate_id', 'training_cutoff_at', 'calibration_cutoff_at')))
+
+
+def _quality_window(now):
+    """Choose scheduled whole weeks without inspecting any result label."""
+    records = db.q('SELECT * FROM nfl_top_five_selections ORDER BY selected_at,game_id')
+    if not records:
+        return [], [], {}
+    schedule = lab._schedule()
+    grouped = {}
+    for record in records:
+        if _digest(record['payload'].encode()) != record['sha256']:
+            raise ValueError('NFL policy selection checksum mismatch')
+        value = json.loads(record['payload'])
+        if any(value.get(k) != record[k] for k in ('game_id', 'freeze_sha', 'selected_at')):
+            raise ValueError('NFL policy selection metadata changed')
+        parts = record['game_id'].split('-')
+        week = int(parts[1]), int(parts[3])
+        grouped.setdefault(week, []).append(dict(record, season=week[0], week=week[1]))
+    completed = [week for week in sorted(grouped) if any(
+        (int(g['season']), int(g['week'])) == week for g in schedule.values()) and
+        max(_kickoff(g) for g in schedule.values()
+            if (int(g['season']), int(g['week'])) == week) + 8 * 3600 < now]
+    outer = completed[-ROLE_PARAMETERS['validation_weeks']:]
+    return [r for w in outer for r in grouped[w]], outer, schedule
+
+
+def _pregame_universe(group):
+    """Reconstruct the complete source universe and only pregame exclusions."""
+    from . import nfl_top_five, nfl_prop_availability
+    record = db.q1('SELECT * FROM nfl_top_five_selections WHERE game_id=?', (group['game_id'],))
+    if (not record or record['freeze_sha'] != group['freeze_sha'] or
+            record['selected_at'] != group['selected_at'] or
+            _digest(record['payload'].encode()) != record['sha256']):
+        raise ValueError('NFL policy does not match its immutable pregame selection')
+    payload = json.loads(record['payload'])
+    if (payload.get('policy') != nfl_top_five.POLICY or any(
+            payload.get(k) != record[k] for k in ('game_id', 'freeze_sha', 'selected_at'))):
+        raise ValueError('NFL policy selection source changed')
+    frozen = grading._freeze(group['freeze_sha'])
+    seal = db.q1('SELECT frozen_at FROM nfl_prop_research_freezes WHERE freeze_sha=?', (group['freeze_sha'],))
+    stamp = group['selected_at']
+    if not seal or not seal['frozen_at'] <= stamp:
+        raise ValueError('NFL policy selection predates freeze')
+    universe = [dict(r) for r in frozen['projections'] if r['canonical_game_id'] == group['game_id']]
+    ids = [r['quote_id'] for r in universe]
+    if not universe or len(set(ids)) != len(ids):
+        raise ValueError('NFL policy universe has missing or duplicate quotes')
+    eligible, exclusions, availability = [], {}, {}
+    pairs = {r['id'] for r in lab._pair_quotes(frozen['metadata']['source_batch_id'])[0]}
+    for row in universe:
+        quote = db.q1('SELECT * FROM nfl_prop_snapshots WHERE id=?', (row['quote_id'],))
+        if (not quote or quote['line_type'] != 'main' or row['quote_id'] not in pairs or
+                any(row[k] != quote[q] for k, q in (
+                    ('canonical_game_id', 'canonical_game_id'), ('player_id', 'player_id'),
+                    ('player_name', 'player_name'), ('market', 'market'), ('line', 'line'),
+                    ('side', 'side'), ('price', 'price'), ('sportsbook', 'sportsbook'),
+                    ('observed_at', 'retrieved_at'), ('kickoff_utc', 'kickoff_utc')))):
+            raise ValueError('NFL policy frozen quote differs from main-line source')
+        if not row['observed_at'] <= stamp < row['kickoff_utc']:
+            exclusions[str(row['quote_id'])] = 'outside_pregame_capture'
+            continue
+        if stamp - row['observed_at'] > 86400:
+            exclusions[str(row['quote_id'])] = 'stale_before_selection'
+            continue
+        identity = row['player_name'], row['market'], row['kickoff_utc']
+        if identity not in availability:
+            availability[identity] = nfl_prop_availability.view(row['player_name'], group['game_id'],
+                row['kickoff_utc'], row['market'], now=stamp)
+        status = availability[identity]
+        if status['blocked']:
+            exclusions[str(row['quote_id'])] = 'pregame_' + status['status']
+        else:
+            eligible.append(dict(row, team=quote['team']))
+    # Verify the saved selector and availability too; it remains historical evidence,
+    # while the incumbent is independently rescored on these same input bytes.
+    selected = nfl_top_five.rank(eligible)
+    clean = [{k: v for k, v in r.items() if k != 'team'} for r in selected]
+    if clean != payload.get('selections'):
+        raise ValueError('NFL historical top-five selector/availability cannot be reconstructed')
+    if len(selected) != 5:
+        raise ValueError('NFL common policy universe lacks five player markets')
+    return universe, eligible, exclusions, frozen['metadata']
+
+
+def _graded_universe(group, now):
+    """Exclude a whole game for any unresolved eligible offer; never cherry-pick."""
+    universe, eligible, exclusions, metadata = _pregame_universe(group)
+    revisions = db.q('SELECT * FROM nfl_prop_grade_revisions WHERE freeze_sha=? AND graded_at<=? '
+                     'ORDER BY quote_id,revision', (group['freeze_sha'], now))
+    latest = {r['quote_id']: r for r in revisions}
+    sources, evidence_cache, rows = {}, {}, []
+    for frozen in eligible:
+        saved = latest.get(frozen['quote_id'])
+        grade = json.loads(saved['payload']) if saved else None
+        if not grade or grade.get('research_statistical_result') not in ('won', 'lost', 'push'):
+            return None, [], 'eligible_universe_unresolved_or_void'
+        sha = saved['evidence_sha']
+        if sha not in evidence_cache:
+            proof = db.q1('SELECT * FROM nfl_prop_grade_evidence WHERE evidence_sha=?', (sha,))
+            value = json.loads(proof['payload']) if proof else None
+            if not proof or _digest((group['freeze_sha'] + grading._canonical(value)).encode()) != sha:
+                raise ValueError('NFL policy grade evidence checksum mismatch')
+            verified = grading._validate_evidence(value, {group['game_id']}, now)
+            for source in (verified['stat_source'], verified['final_source']):
+                if not source['file'].startswith('db:nfl_prop_grade_source_artifacts:'):
+                    raise ValueError('NFL policy has no immutable official source receipt')
+                archive = db.q1('SELECT captured_at FROM nfl_prop_grade_source_artifacts WHERE sha256=?', (source['sha256'],))
+                if not archive or archive['captured_at'] > saved['graded_at']:
+                    raise ValueError('NFL policy grade predates source receipt')
+                sources[source['sha256']] = dict(kind='nfl_prop_grade_source_artifact',
+                    sha256=source['sha256'], received_at=archive['captured_at'], role='validation')
+            evidence_cache[sha] = verified
+        proof = evidence_cache[sha]
+        player = proof['players'].get(frozen['gsis_player_id'], {})
+        actual = grade.get('actual_stat')
+        if (proof['status'] != 'final' or player.get('status') != 'active' or
+                player.get('stats', {}).get(frozen['market']) != actual or
+                proof['retrieved'] > saved['graded_at'] or
+                grade['research_statistical_result'] != grading._settlement(frozen['side'], actual, frozen['line'])):
+            raise ValueError('NFL policy actual conflicts with official final evidence')
+        rows.append(dict(frozen, game_id=group['game_id'], season=group.get('season', 2026),
+            week=group.get('week', int(group['game_id'].split('-')[3])),
+            kickoff_at=frozen['kickoff_utc'], actual=actual,
+            result_observed_at=saved['graded_at'], frozen_metadata=metadata))
+    detail = dict(game_id=group['game_id'], freeze_sha=group['freeze_sha'],
+                  selected_at=group['selected_at'],
+                  universe_quote_ids=sorted(r['quote_id'] for r in universe),
+                  eligible_quote_ids=sorted(r['quote_id'] for r in eligible), exclusions=exclusions,
+                  rows=rows)
+    return detail, list(sources.values()), None
+
+
+def _role_dataset(body, cutoff):
+    with TemporaryDirectory(prefix='edgeterminal-nfl-role-fit-') as directory:
+        path = Path(directory)
+        (path / 'stats_player_week_2026.csv').write_bytes(body)
+        datasets, history, hashes = lab.build_dataset(cutoff, stats_dir=path)
+        raw, role_hashes = lab._read_stats(path)
+        if hashes != role_hashes:
+            raise ValueError('NFL role feature source revisions differ')
+        return roles.augment_datasets(datasets, raw), history, hashes
+
+
+def _attach_features(groups, catalog, sources):
+    """Rebuild prior-only inputs from exact freeze-pinned bytes, never latest CSV."""
+    cache = {}
+    for group in groups:
+        for row in group['rows']:
+            metadata = row['frozen_metadata']
+            hashes = metadata['input_sha256']
+            digest = hashes.get('features:stats_player_week_2026.csv', hashes.get('stats_player_week_2026.csv'))
+            source = catalog.get(digest)
+            if not source or not source['available_at'] <= metadata['created_at'] < row['kickoff_at']:
+                raise ValueError('NFL policy missing receipt-backed frozen feature bytes')
+            key = digest, row['season'], row['week']
+            if key not in cache:
+                with TemporaryDirectory(prefix='edgeterminal-nfl-policy-input-') as directory:
+                    path = Path(directory)
+                    (path / 'stats_player_week_2026.csv').write_bytes(source['body'])
+                    _, history, read_hashes = lab.build_dataset((row['season'], row['week']), path)
+                    raw, _ = lab._read_stats(path)
+                    for name, expected in read_hashes.items():
+                        pinned = hashes.get('features:' + name, hashes.get(name))
+                        if pinned != expected:
+                            raise ValueError('NFL policy historical feature prefix hash changed')
+                    inputs = lab._week3_features(history, row['season'], row['week'], path)
+                    cache[key] = inputs, roles.current_features(inputs, raw, row['season'], row['week'])
+                sources.append(dict(source['source'], role='validation'))
+            inputs, role_values = cache[key]
+            identity = row['gsis_player_id'], lab._team(row['team'])
+            prepared = inputs.get(identity)
+            if prepared is None:
+                raise ValueError('NFL policy identity lacks frozen prior-only inputs')
+            row['features'] = {**_feature_for(prepared, row['market']),
+                **role_values[(*identity, row['market'])]}
+
+
+def _score(rows, artifact=None):
+    """One scorer dispatch for serving-equivalent rounded policy replay."""
+    output = [dict(r) for r in rows]
+    pinned = None
+    for row in output:
+        market = row['market']
+        config = artifact['configurations'][market] if artifact else _baseline_config()
+        if config.get('kind') == 'frozen_baseline':
+            _check_baseline_config(config)
+            if pinned is None:
+                pinned = baseline.load_artifact()
+            manifest, models = pinned
+            base_config = manifest['configurations'][market]
+            point = float(baseline._predict(models[market], [row], market, base_config['family'])[0])
+            if base_config['probability_method'] == 'empirical':
+                probabilities = baseline.probabilities(row['line'], point, base_config, market)
+            else:
+                over = lab._prob_over(row['line'], point, base_config['baseline_sigma'])
+                probabilities = dict(over=over, under=1. - over, push=0.)
+        else:
+            point, probabilities = _json_predict(config, row['features'], market, float(row['line']))
+        row.update(projection=round(point, 4), probability_over=round(probabilities['over'], 6),
+                   probability_under=round(probabilities['under'], 6), probability_push=round(probabilities['push'], 6))
+    return output
+
+
+def _conditional_side(row, side):
+    mass = 1. - row['probability_push']
+    if mass <= 0:
+        raise ValueError('NFL decided probability has no non-push mass')
+    value = row['probability_' + side] / mass
+    if not math.isfinite(value) or value < 0 or value > 1. + 1.01e-6:
+        raise ValueError('NFL conditional probability is invalid')
+    return min(1., value)
+
+
+def _paired(row, before, after):
+    value = {key: row[key] for key in ('game_id', 'player_id', 'market', 'quote_id', 'line', 'side',
+             'observed_at', 'kickoff_at', 'result_observed_at', 'actual')}
+    value.update(baseline_prediction=before['projection'], candidate_prediction=after['projection'],
+                 baseline_probability=_conditional_side(before, row['side']),
+                 candidate_probability=_conditional_side(after, row['side']))
+    return value
+
+
+def _policy(group, incumbent, candidate):
+    from .nfl_top_five import rank
+    before = {r['quote_id']: r for r in _score(group['rows'], incumbent)}
+    after = {r['quote_id']: r for r in _score(group['rows'], candidate)}
+    result = {k: deepcopy(v) for k, v in group.items() if k != 'rows'}
+    result['baseline'] = [_paired(r, r, after[r['quote_id']]) for r in rank(list(before.values()))]
+    result['candidate'] = [_paired(r, before[r['quote_id']], r) for r in rank(list(after.values()))]
+    if any(len(result[key]) != 5 for key in ('baseline', 'candidate')):
+        raise ValueError('NFL replay must choose five distinct player/stat markets')
+    return result
+
+
+def _quote_units(groups):
+    """One deterministic observed over quote per game/player/stat, before labels."""
+    seen, output = set(), []
+    rows = sorted((r for g in groups for r in g['rows']),
+                  key=lambda r: (r['game_id'], str(r['player_id']), r['market'], r['sportsbook'], r['quote_id']))
+    for row in rows:
+        identity = row['game_id'], row['player_id'], row['market']
+        if row['side'] == 'over' and identity not in seen:
+            seen.add(identity); output.append(row)
+    return output
+
+
+def _incumbent(candidate_id):
+    if candidate_id is None:
+        return None
+    from . import model_learning_store as store
+    candidate = store._candidate(candidate_id)
+    if not candidate or candidate['sport'] != 'NFL':
+        raise ValueError('NFL policy incumbent is missing')
+    return store._load(candidate)['artifact']
+
+
+def verify_policy_universe(group, artifact=None):
+    """Registry adapter: rederive frozen universe, eligibility, scores and top five."""
+    detail, _, reason = _graded_universe(group, time.time())
+    if reason:
+        raise ValueError('NFL policy universe is no longer fully resolved: ' + reason)
+    for key in ('universe_quote_ids', 'eligible_quote_ids', 'exclusions'):
+        if detail[key] != group.get(key):
+            raise ValueError('NFL policy frozen universe or pregame exclusions changed')
+    sources = []
+    _attach_features([detail], _catalog(time.time()), sources)
+    incumbent = _incumbent(group.get('baseline_candidate_id'))
+    if artifact is None:
+        raise ValueError('NFL candidate artifact required for full policy re-verification')
+    expected = _policy(detail, incumbent, artifact)
+    for key in ('baseline', 'candidate'):
+        if expected[key] != group[key]:
+            raise ValueError('NFL policy scorer or top-five membership changed: ' + key)
+    return True
+
+
+def _fit_role_proposals(fit, residual_cal, incumbent):
+    """Sparse markets retain exact configs instead of blocking supported markets."""
+    proposal, coverage = {}, {}
+    for market in lab.MARKETS:
+        supported = bool(fit[market]) and len(residual_cal[market]) >= roles.MIN_CALIBRATION
+        coverage[market] = dict(fit_rows=len(fit[market]),
+            residual_calibration_rows=len(residual_cal[market]), supported=supported)
+        proposal[market] = (roles.fit_market(fit[market], residual_cal[market], market) if supported
+                           else deepcopy(incumbent['configurations'][market] if incumbent else _baseline_config()))
+    return proposal, coverage
+
+
+def build_candidate(now: float | None = None) -> dict:
+    """Propose sourced role updates chosen before an untouched full-policy holdout."""
+    from . import model_learning_store as store, prop_calibration
+    stamp = time.time() if now is None else now
+    records, weeks, schedule = _quality_window(stamp)
+    if len(weeks) < ROLE_PARAMETERS['validation_weeks']:
+        return dict(status='waiting', reason='Three completed NFL weeks with immutable quote universes are required.',
+                    protocol=QUALITY_PROTOCOL)
+    season, first_week = min(weeks)
+    if season != 2026 or first_week < 4:
+        return dict(status='waiting', reason='NFL role fitting needs earlier whole fit, calibration and selection weeks.',
+                    protocol=QUALITY_PROTOCOL)
+    game_ids = [r['game_id'] for r in records]
+    # Preflight before reading any outer grade labels, including rejected attempts.
+    if not store.holdout_available('NFL', QUALITY_PROTOCOL, game_ids):
+        return dict(status='waiting', reason='This NFL outer cohort was already evaluated; waiting for a wholly fresh window.',
+                    protocol=QUALITY_PROTOCOL)
+    start = min(_kickoff(g) for g in schedule.values()
+                if (int(g['season']), int(g['week'])) == min(weeks))
+    active = _validated_active()
+    if active and (active['training_cutoff'] >= start or
+                   active['artifact'].get('calibration_cutoff', active['training_cutoff']) >= start):
+        return dict(status='waiting', reason='Current NFL baseline needs a new untouched whole-week validation window.',
+                    protocol=QUALITY_PROTOCOL)
+    incumbent = active['artifact'] if active else None
+    baseline_id = active['candidate_id'] if active else None
+    fit_boundary = season, first_week - 2
+    selection_week = season, first_week - 1
+    training_cutoff = min(_kickoff(g) for g in schedule.values()
+        if (int(g['season']), int(g['week'])) == fit_boundary) - 1.
+    probability_cutoff = min(_kickoff(g) for g in schedule.values()
+        if (int(g['season']), int(g['week'])) == selection_week) - 1.
+    calibration_cutoff = start - 1.
+    sources, coverage = [], {}
+    all_records = db.q('SELECT * FROM nfl_top_five_selections ORDER BY selected_at,game_id')
+    inner, quoted_cal = [], []
+    for record in all_records:
+        parts = record['game_id'].split('-')
+        week = int(parts[1]), int(parts[3])
+        if week not in (fit_boundary, selection_week):
+            continue
+        record = dict(record, season=week[0], week=week[1])
+        limit = probability_cutoff if week == fit_boundary else calibration_cutoff
+        group, proof, reason = _graded_universe(record, limit)
+        if reason:
+            coverage[record['game_id']] = reason
+            continue
+        (quoted_cal if week == fit_boundary else inner).append(group)
+        sources.extend(dict(s, role='calibration') for s in proof)
+    cal_units, inner_units = _quote_units(quoted_cal), _quote_units(inner)
+    quote_coverage = dict(calibration_games=len(quoted_cal), calibration_rows=len(cal_units),
+                          market_selection_games=len(inner), market_selection_rows=len(inner_units))
+    if not cal_units or not inner_units:
+        return dict(status='waiting', reason='Earlier NFL actual-line calibration and inner market-choice quotes are missing.',
+                    waiting_kind='coverage_wait', protocol=QUALITY_PROTOCOL,
+                    quote_coverage=quote_coverage, excluded_games=coverage)
+    catalog = _catalog(stamp)
+    fit_snapshot = _current_snapshot(catalog, training_cutoff, season)
+    cal_snapshot = _current_snapshot(catalog, probability_cutoff, season)
+    _require_completed_history(fit_snapshot['body'], fit_boundary, schedule)
+    _require_completed_history(cal_snapshot['body'], selection_week, schedule)
+    fit, _, fit_hashes = _role_dataset(fit_snapshot['body'], fit_boundary)
+    prior, _, cal_hashes = _role_dataset(cal_snapshot['body'], selection_week)
+    residual_cal = {m: [r for r in prior[m] if (r['season'], r['week']) == fit_boundary] for m in lab.MARKETS}
+    # The fixed opportunity scorer is fitted once. No family/alpha search touches
+    # the inner selector or outer results; retained market configs are deep copies.
+    proposal, fit_coverage = _fit_role_proposals(fit, residual_cal, incumbent)
+    if not any(c['supported'] for c in fit_coverage.values()):
+        return dict(status='waiting', reason='NFL role training/calibration sample coverage is incomplete.',
+                    waiting_kind='coverage_wait', protocol=QUALITY_PROTOCOL, role_fit_coverage=fit_coverage,
+                    quote_coverage=quote_coverage, excluded_games=coverage)
+    _attach_features(quoted_cal + inner, catalog, sources)
+    cal_units, inner_units = _quote_units(quoted_cal), _quote_units(inner)
+    role_artifact = dict(configurations=proposal)
+    role_cal = _score(cal_units, role_artifact)
+    incumbent_cal = _score(cal_units, incumbent)
+    incumbent_maps = {}
+    for market in lab.MARKETS:
+        def calibration_rows(scored):
+            return [dict(row, probability_over=row['probability_over'],
+                         probability_under=row['probability_under'], probability_push=row['probability_push'])
+                    for row in scored if row['market'] == market]
+        if fit_coverage[market]['supported']:
+            proposal[market]['actual_line_calibration'] = prop_calibration.fit_calibrator(
+                calibration_rows(role_cal), cutoff=probability_cutoff)
+        incumbent_maps[market] = prop_calibration.fit_calibrator(
+            calibration_rows(incumbent_cal), cutoff=probability_cutoff)
+    before = {r['quote_id']: r for r in _score(inner_units, incumbent)}
+    after = _score(inner_units, role_artifact)
+    inner_rows = [_paired(row, before[row['quote_id']], row) for row in after]
+    selection = prop_calibration.choose_market_updates(inner_rows, lab.MARKETS, cutoff=calibration_cutoff)
+    changed = selection['changed_markets']
+    if not changed:
+        return dict(status='waiting', reason='No NFL market passed the separate inner actual-line improvement requirements.',
+                    protocol=QUALITY_PROTOCOL, market_selection=selection, quote_coverage=quote_coverage, excluded_games=coverage)
+    configs = {m: deepcopy(proposal[m] if m in changed else
+        incumbent['configurations'][m] if incumbent else _baseline_config()) for m in lab.MARKETS}
+    artifact = dict(schema=ROLE_SCHEMA, evaluation_family=QUALITY_PROTOCOL, parameters=ROLE_PARAMETERS,
+        probability_contract='conditional_side_given_no_push',
+        features=list(roles.FEATURES), configurations=configs, changed_markets=changed, role_fit_coverage=fit_coverage,
+        ranking_changed=True, market_selection=selection, fit_boundary_week=list(fit_boundary),
+        training_cutoff=training_cutoff, calibration_cutoff=calibration_cutoff,
+        probability_calibration_cutoff=probability_cutoff,
+        validation_description=f'2026 weeks {first_week}-{max(w[1] for w in weeks)}; full frozen offers; untouched',
+        parameter_fingerprint=_digest(dict(parameters=ROLE_PARAMETERS, configurations=configs)),
+        selector_sha256=_digest(Path(__file__).with_name('nfl_top_five.py').read_bytes()))
+    # Only now, after the market choice is sealed, read outer labels and rebuild
+    # features. These labels cannot change the selected market/configuration list.
+    outer = []
+    for record in records:
+        group, proof, reason = _graded_universe(record, stamp)
+        if reason:
+            coverage[record['game_id']] = reason
+        else:
+            outer.append(group); sources.extend(proof)
+    if len(outer) < 30 or sum(len(g['rows']) for g in outer) < 100:
+        return dict(status='waiting', reason='Thirty wholly resolved common NFL offer universes are required.',
+                    protocol=QUALITY_PROTOCOL, covered_games=len(outer), excluded_games=coverage)
+    _attach_features(outer, catalog, sources)
+    policies = []
+    ablations = dict(role_only=[], calibration_only=[], combined=[])
+    raw_role = dict(configurations={m: {k: v for k, v in c.items()
+        if not (fit_coverage[m]['supported'] and k == 'actual_line_calibration')} for m, c in proposal.items()})
+    for group in outer:
+        policy = _policy(group, incumbent, artifact)
+        policy['baseline_candidate_id'] = baseline_id
+        policies.append(policy)
+        units = _quote_units([group])
+        baseline_units = {r['quote_id']: r for r in _score(units, incumbent)}
+        for name, candidate in (('role_only', raw_role), ('combined', role_artifact)):
+            ablations[name].extend(_paired(r, baseline_units[r['quote_id']], r) for r in _score(units, candidate))
+        # Calibration-only ablation retains the exact incumbent selected side and
+        # five-player/stat membership; it is diagnostic, never a new rank policy.
+        scored = {r['quote_id']: r for r in _score(group['rows'], incumbent)}
+        for selected in policy['baseline']:
+            row = scored[selected['quote_id']]
+            probability = prop_calibration.apply_calibrator(
+                {s: row['probability_' + s] for s in ('over', 'under', 'push')}, incumbent_maps[row['market']])
+            after_row = dict(row, **{'probability_' + s: round(probability[s], 6) for s in probability})
+            ablations['calibration_only'].append(_paired(row, row, after_row))
+    for role, hashes, snapshot in (('training', fit_hashes, fit_snapshot), ('calibration', cal_hashes, cal_snapshot)):
+        for name, digest in hashes.items():
+            item = snapshot if name.endswith('2026.csv') else catalog.get(digest)
+            if item is None:
+                raise ValueError('NFL role history has no immutable availability receipt')
+            sources.append(dict(item['source'], role=role))
+    sources.append(dict(kind='file', path=str(lab.SCHEDULE.relative_to(lab.ROOT)),
+        sha256=_digest(lab.SCHEDULE.read_bytes()), received_at=lab.SCHEDULE.stat().st_mtime, role='training'))
+    artifact['training'] = dict(
+        fit_game_ids=sorted({_canonical_game(schedule[r['game_id']]) for rows in fit.values() for r in rows}),
+        calibration_game_ids=sorted({_canonical_game(schedule[r['game_id']]) for rows in residual_cal.values() for r in rows}),
+        fit_label_max_at=max(s['received_at'] for s in sources if s['role'] == 'training'),
+        calibration_label_max_at=max(s['received_at'] for s in sources if s['role'] == 'calibration'))
+    from . import nfl_top_five, nfl_prop_availability
+    artifact['code_sha256'] = {str(Path(m.__file__).relative_to(lab.ROOT)): _digest(Path(m.__file__).read_bytes())
+                               for m in (baseline, lab, roles, prop_calibration, nfl_top_five, nfl_prop_availability)}
+    artifact['code_sha256']['edgeterminal/nfl_learning.py'] = _digest(Path(__file__).read_bytes())
+    def ablation_metrics(rows):
+        # The pure shared metric implementation is the same one used by the gate;
+        # these outer ablations describe effects and never choose deployed markets.
+        decided = [r for r in rows if r['actual'] != r['line']]
+        return dict(n=len(decided), **(store._metrics(decided) if decided else {}))
+    evaluation = dict(kind='actual_main_lines', validation_start=start,
+        validation_end=max(r['result_observed_at'] for g in outer for r in g['rows']),
+        calibration_cutoff=calibration_cutoff, baseline_candidate_id=baseline_id,
+        rows=[r for p in policies for r in p['candidate']],
+        selection_policy=dict(kind='common_full_offer_universe', games=policies),
+        coverage=dict(included_games=len(outer), excluded_games=coverage),
+        ablations={name: ablation_metrics(rows) for name, rows in ablations.items()})
+    unique = {(s['kind'], s.get('path'), s['sha256'], s['role']): s for s in sources}
+    sources = sorted(unique.values(), key=lambda s: (s['role'], s['kind'], s['sha256']))
+    revision = _digest(dict(artifact=artifact, evaluation=evaluation, sources=sources))[:16]
+    version = f'nfl-roles-2.2026w{max(w[1] for w in weeks):02d}-{revision}'
+    artifact['version'] = version
+    return dict(status='ready', sport='NFL', version=version, training_cutoff=training_cutoff,
+                artifact=artifact, evaluation=evaluation, sources=sources)

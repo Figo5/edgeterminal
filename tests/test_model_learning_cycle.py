@@ -175,3 +175,37 @@ def test_repaired_integrity_warning_clears_after_a_real_successful_recheck(isola
     result=model_learning.run(now+300)
     assert result['ok']
     assert model_learning.status('NBA',now=now+300)['integrity']['status']=='ok'
+
+
+def test_new_quality_protocol_runs_once_then_obeys_existing_cadence(isolated,monkeypatch):
+    calls,_=setup(monkeypatch)
+    now=1793188800.
+    model_learning.run(now)
+    adapter=model_learning._adapter('NBA')
+    adapter.QUALITY_PROTOCOL='props-quality-v2'
+    adapter.build_quality_candidate=lambda at:calls.append(('quality',at)) or {'status':'waiting','reason':'new outer games needed'}
+    model_learning.run(now+300)
+    model_learning.status(now=now+301)
+    assert len([r for r in calls if r[0]=='quality'])==2
+    model_learning.run(now+600)
+    assert len([r for r in calls if r[0]=='quality'])==2
+    assert model_learning._last('NBA','retuning')['detail']['learning_protocol']=='props-quality-v2'
+
+
+def test_consumed_outer_cohort_waits_without_registering_again(isolated,monkeypatch):
+    ready={'status':'ready','version':'test','training_cutoff':1.,
+           'artifact':{'evaluation_family':'quality-v2'},'evaluation':{'rows':[{'game_id':'used'}]},'sources':[]}
+    _,registry=setup(monkeypatch,ready)
+    registry.holdout_available=lambda *args:False
+    registry.register_candidate=lambda *args,**kwargs:pytest.fail('reused outer cohort was registered')
+    result=model_learning._train('NBA',1793188800.)
+    assert result['status']=='waiting' and 'outer' in result['reason']
+
+
+def test_nonfinite_diagnostics_are_recorded_as_retryable_error(isolated,monkeypatch):
+    setup(monkeypatch)
+    adapter=model_learning._adapter('NBA')
+    adapter.nightly_diagnostics=lambda now:{'status':'ok','brier':float('nan')}
+    result=model_learning.run(1793188800.)
+    assert not result['ok']
+    assert model_learning._last('NBA','diagnostics')['status']=='error'

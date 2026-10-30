@@ -376,7 +376,7 @@ def lock_selections(lock_id: str, selections: List[Dict], now: Optional[float] =
 
     Each selection: {forecast_id, espn_player_id, prop, side, line, quote_id}; list
     order is rank 1..5. `line` must equal the quote's line, and the quote must be the
-    latest observation of that game/player/market/side at lock time, from an HTTP 200
+    latest observation of that game/player/market/side/sportsbook at lock time, from an HTTP 200
     source received <= observed_at <= lock time. One lock per game, whatever its ID.
     Replaying the identical lock returns it unchanged.
     """
@@ -427,8 +427,8 @@ def lock_selections(lock_id: str, selections: List[Dict], now: Optional[float] =
             raise ValueError(f"quote {i['quote_id']} is unpriced or observed after the lock")
         _require_artifact(q['source_artifact_id'], received_by=q['observed_at'])
         latest = db.q1('SELECT quote_id FROM nba_quote_observations WHERE game_id=? AND espn_player_id=? '
-                       'AND market=? AND side=? AND observed_at<=? ORDER BY observed_at DESC, quote_id DESC LIMIT 1',
-                       (game_id, i['espn_player_id'], q['market'], i['side'], at))
+                       'AND market=? AND side=? AND source=? AND observed_at<=? ORDER BY observed_at DESC, quote_id DESC LIMIT 1',
+                       (game_id, i['espn_player_id'], q['market'], i['side'], q['source'], at))
         if latest['quote_id'] != q['quote_id']:
             raise ValueError(f"quote {i['quote_id']} is not the current line at lock time")
     with db.tx() as c:

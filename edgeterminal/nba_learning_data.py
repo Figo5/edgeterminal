@@ -84,7 +84,7 @@ def training_history(cutoff):
 def _capture(forecast, cache):
     sources = json.loads(forecast['source_artifact_ids'])
     history, history_sources = history_from_sources(sources, cache, forecast['created_at'])
-    roster, roster_sources = [], []
+    roster, roster_sources, schedule_sources = [], [], []
     for source_id in sources:
         row, body = _source(source_id, cache, forecast['created_at'])
         if row['kind'] == 'roster':
@@ -92,7 +92,43 @@ def _capture(forecast, cache):
             roster.extend(dict(player_id=p['espn_player_id'], player=p['name'], team=parsed['team'])
                           for p in parsed['players'])
             roster_sources.append(row)
-    return history, history_sources + roster_sources, roster
+        elif row['kind'] == 'scoreboard':
+            schedule_sources.append(row)
+    return history, history_sources + roster_sources + schedule_sources, roster
+
+
+def capture_game(forecast, current_game, cache=None):
+    """Recover the schedule actually available to an immutable prop capture.
+
+    Official final reports sometimes replace the scheduled start with the
+    actual delayed start. That correction must not reinterpret a saved quote
+    or the historical feature cutoff. Old captures without a parseable schedule
+    keep their original current-game fallback; matching malformed/conflicting
+    source identities fail closed.
+    """
+    cache = {} if cache is None else cache
+    matches = []
+    for source_id in json.loads(forecast['source_artifact_ids']):
+        source, body = _source(source_id, cache, forecast['created_at'])
+        if source['kind'] != 'scoreboard':
+            continue
+        if urlparse(source['url']).hostname != 'site.api.espn.com':
+            raise ValueError('NBA frozen schedule has an invalid source identity')
+        for event in body.get('events') or []:
+            if str(event.get('id')) != current_game['espn_event_id']:
+                continue
+            game = nba_data.parse_event(event)
+            if any(game[key] != current_game[key] for key in
+                   ('game_id', 'espn_event_id', 'home_team', 'away_team', 'season_label')):
+                raise ValueError('NBA frozen schedule differs from its game identity')
+            if game['status'] != 'scheduled':
+                raise ValueError('NBA frozen prop schedule was not a future game')
+            from .integrity import parse_time
+            tipoff = parse_time(game['tipoff_utc'])
+            if forecast['created_at'] >= tipoff:
+                raise ValueError('NBA frozen prop forecast was created after scheduled tipoff')
+            matches.append((source['received_at'], source_id, dict(current_game, **game, tipoff_ts=tipoff)))
+    return max(matches, key=lambda item: item[:2])[2] if matches else dict(current_game)
 
 
 def _verify_quote_body(quote, saved, game, payload, roster, identity_catalog=None):
@@ -156,6 +192,9 @@ def validation_records(now, game_count=40):
             if forecast['forecast_id'] not in captures:
                 captures[forecast['forecast_id']] = _capture(forecast, cache)
             history, history_sources, roster = captures[forecast['forecast_id']]
+            frozen_game = capture_game(forecast, game, cache)
+            if game['locked_at'] >= frozen_game['tipoff_ts']:
+                raise ValueError(f'NBA learning lock {lock_id} was captured after its frozen scheduled tipoff')
             qsource, quote_body = _source(quote['source_artifact_id'], cache, quote['observed_at'])
             if qsource['kind'] != 'player-quotes':
                 raise ValueError(f'NBA learning quote {item["quote_id"]} lacks a quote source')
@@ -167,7 +206,7 @@ def validation_records(now, game_count=40):
                 identity_row, _ = _source(identity_id, cache, quote['observed_at'])
                 identity_sources.append(identity_row)
             identities = nba_quotes.player_identity_catalog(identity_sources, quote['observed_at'])
-            _verify_quote_body(quote, saved, game, quote_body, roster, identities)
+            _verify_quote_body(quote, saved, frozen_game, quote_body, roster, identities)
             rsource = db.q1('SELECT * FROM nba_source_artifacts WHERE id=?', (grade['source_artifact_id'],))
             if grade['result'] == 'void':
                 # Participation-only official evidence may be PDF. The registry
@@ -199,7 +238,7 @@ def validation_records(now, game_count=40):
                 continue
             game_records.append(dict(game_id=gid, player_id=item['espn_player_id'], market=item['prop'],
                                      quote_id=item['quote_id'], line=item['line'], side=item['side'],
-                                     observed_at=quote['observed_at'], kickoff_at=game['tipoff_ts'],
+                                     observed_at=quote['observed_at'], kickoff_at=frozen_game['tipoff_ts'],
                                      result_observed_at=grade['graded_at'], actual=actual,
                                      history=history, saved=saved,
                                      sources=[descriptor(s, 'validation') for s in history_sources + identity_sources + [qsource, rsource]]))

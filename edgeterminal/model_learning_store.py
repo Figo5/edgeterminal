@@ -8,6 +8,8 @@ promotion. A failed proposal leaves the active model untouched.
 from __future__ import annotations
 
 from collections import defaultdict
+from contextlib import nullcontext
+from datetime import datetime
 import hashlib
 import json
 import math
@@ -17,6 +19,7 @@ import re
 import statistics
 import tempfile
 import time
+from zoneinfo import ZoneInfo
 
 from . import db
 from .config import ROOT
@@ -31,6 +34,7 @@ MIN_ROWS = 100
 MIN_MARKET_ROWS = 20
 MIN_MARKET_GAMES = 10
 MIN_BRIER_IMPROVEMENT = .002
+MIN_VALIDATION_DATES = 7
 MAX_ARTIFACT_BYTES = 16 * 1024 * 1024
 MAX_SOURCE_BYTES = 64 * 1024 * 1024
 
@@ -46,7 +50,10 @@ def ensure_schema():
           'event TEXT NOT NULL CHECK(event IN ("activated","rejected","rolled_back")),'
           'previous_candidate_id TEXT,recorded_at REAL NOT NULL,reason TEXT NOT NULL,evidence TEXT NOT NULL)')
     db.ex('CREATE INDEX IF NOT EXISTS ix_model_learning_events ON model_learning_events(sport,id)')
-    for table in ('model_learning_candidates','model_learning_events'):
+    db.ex('CREATE TABLE IF NOT EXISTS model_learning_holdouts ('
+          'sport TEXT NOT NULL,family TEXT NOT NULL,game_id TEXT NOT NULL,candidate_id TEXT NOT NULL,'
+          'PRIMARY KEY(sport,family,game_id))')
+    for table in ('model_learning_candidates','model_learning_events','model_learning_holdouts'):
         for action in ('UPDATE','DELETE'):
             db.ex(f'CREATE TRIGGER IF NOT EXISTS {table}_no_{action.lower()} BEFORE {action} ON {table} '
                   "BEGIN SELECT RAISE(ABORT, 'model learning history is immutable'); END")
@@ -204,9 +211,47 @@ def register_candidate(sport,version,training_cutoff,artifact,evaluation,sources
         old=connection.execute('SELECT candidate_id FROM model_learning_candidates WHERE sport=? AND version=?',
                                (sport,version)).fetchone()
         if old and old['candidate_id']!=candidate_id:raise ValueError('model version already identifies another artifact')
+        family=artifact.get('evaluation_family')
+        if family:
+            if not isinstance(family,str) or not re.fullmatch('[A-Za-z0-9_.:-]{1,128}',family):
+                raise ValueError('invalid evaluation family')
+            games={str(row['game_id']) for row in evaluation['rows']}
+            games.update(str(g['game_id']) for g in (evaluation.get('selection_policy') or {}).get('games',[]))
+            previous_candidates=connection.execute('SELECT evaluation FROM model_learning_candidates '
+                'WHERE sport=? AND candidate_id<>?',(sport,candidate_id)).fetchall()
+            if games.intersection(_evaluated_games(previous_candidates)):
+                raise ValueError('outer holdout games already consumed by an earlier model evaluation')
+            for game in sorted(games):
+                used=connection.execute('SELECT candidate_id FROM model_learning_holdouts '
+                    'WHERE sport=? AND game_id=?',(sport,game)).fetchone()
+                if used and used['candidate_id']!=candidate_id:
+                    raise ValueError('outer holdout games already consumed by this evaluation family')
+                connection.execute('INSERT OR IGNORE INTO model_learning_holdouts VALUES(?,?,?,?)',
+                                   (sport,family,game,candidate_id))
         connection.execute('INSERT OR IGNORE INTO model_learning_candidates VALUES(?,?,?,?,?,?,?,?,?)',
             (candidate_id,sport,version,cutoff,stamp,relative,candidate_id,fingerprint,_json(evaluation)))
     return _candidate(candidate_id)
+
+
+def holdout_available(sport,family,game_ids):
+    """Read-only check; rejected proposals also consume their outer games."""
+    sport=_sport(sport)
+    used=set()
+    if db.q1("SELECT 1 FROM sqlite_master WHERE name='model_learning_holdouts'"):
+        used.update(row['game_id'] for row in db.q('SELECT game_id FROM model_learning_holdouts WHERE sport=?',(sport,)))
+    if db.q1("SELECT 1 FROM sqlite_master WHERE name='model_learning_candidates'"):
+        used.update(_evaluated_games(db.q('SELECT evaluation FROM model_learning_candidates WHERE sport=?',(sport,))))
+    return not used.intersection(str(game) for game in game_ids)
+
+
+def _evaluated_games(candidates):
+    """Older registered evaluations remain spent even before the ledger existed."""
+    used=set()
+    for candidate in candidates:
+        evaluation=json.loads(candidate['evaluation'])
+        used.update(str(row['game_id']) for row in evaluation.get('rows',[]))
+        used.update(str(row['game_id']) for row in (evaluation.get('selection_policy') or {}).get('games',[]))
+    return used
 
 
 def _candidate(candidate_id):
@@ -254,6 +299,81 @@ def _metrics(rows):
     return metrics
 
 
+def _policy_gate(evaluation,artifact,sport,all_games,start,end):
+    """Recompute both top-five policies over one immutable common cohort."""
+    if not artifact or not artifact.get('ranking_changed'):return {},[]
+    policy=evaluation.get('selection_policy') or {}
+    if policy.get('kind')!='common_full_offer_universe' or not isinstance(policy.get('games'),list):
+        return {},['full_policy_evidence_required']
+    groups=policy['games'];seen=set();collections={'baseline':[],'candidate':[]};differences=[]
+    paired={row['quote_id']:row for row in evaluation['rows']}
+    retained=set(MARKETS[sport])-set(artifact.get('changed_markets',MARKETS[sport]))
+    for group in groups:
+        gid=str(group['game_id']);universe=group['universe_quote_ids']
+        if gid in seen or not universe or len(universe)!=len(set(universe)):
+            raise ValueError('invalid common policy universe')
+        seen.add(gid)
+        if not group.get('context_id' if sport=='NBA' else 'freeze_sha'):
+            raise ValueError('policy universe source required')
+        game_metrics={}
+        for name in collections:
+            selected=group[name]
+            if len(selected)!=5:raise ValueError('policy must select five supported player markets')
+            identities=set();quotes=set();decided=[]
+            for raw in selected:
+                row=dict(raw)
+                for key in ('actual','line','baseline_prediction','candidate_prediction','baseline_probability',
+                            'candidate_probability','observed_at','kickoff_at','result_observed_at'):
+                    row[key]=_number(row[key])
+                identity=(str(row['player_id']),row['market'])
+                if (str(row['game_id'])!=gid or row['quote_id'] not in universe or identity in identities or
+                        row['quote_id'] in quotes or row['market'] not in MARKETS[sport] or
+                        row['side'] not in ('over','under')):
+                    raise ValueError('invalid selected policy identity')
+                if not row['observed_at']<row['kickoff_at']<row['result_observed_at']<=end:
+                    raise ValueError('invalid selected policy source times')
+                if not start<=row['kickoff_at']<end:raise ValueError('policy game outside outer window')
+                if not 0<=row[name+'_probability']<=1:raise ValueError('invalid selected policy probability')
+                fields=('prediction','probability')
+                if row['market'] in retained and any(row['candidate_'+k]!=row['baseline_'+k] for k in fields):
+                    raise ValueError('retained selected-policy market changed')
+                reference=paired.get(row['quote_id'])
+                if reference and any(row[p+'_'+k]!=reference[p+'_'+k] for p in collections for k in fields):
+                    raise ValueError('selected-policy forecasts differ from paired quote')
+                identities.add(identity);quotes.add(row['quote_id'])
+                if row['actual']!=row['line']:decided.append(row)
+            collections[name].extend(decided)
+            if not decided:raise ValueError('policy game has no decided observations')
+            game_metrics[name]=_metrics(decided)[name]
+        differences.append(game_metrics['candidate']['brier']-game_metrics['baseline']['brier'])
+    if seen!=all_games:raise ValueError('policy cohort differs from paired validation cohort')
+    reasons=[];metrics={}
+    for name,rows in collections.items():
+        metrics[name]=dict(rows=len(rows),wins=sum((r['actual']>r['line'])==(r['side']=='over') for r in rows),
+                           **(_metrics(rows)[name] if rows else {}))
+        if len(rows)<MIN_ROWS or len(seen)<MIN_GAMES:reasons.append('insufficient_full_policy_coverage')
+    if metrics['candidate']['wins']<metrics['baseline']['wins']:reasons.append('selected_policy_win_regression')
+    for metric in ('brier','log_loss'):
+        if metrics['candidate'].get(metric,math.inf)>metrics['baseline'].get(metric,-math.inf)+1e-12:
+            reasons.append('selected_policy_regression:'+metric)
+    upper=(statistics.mean(differences)+1.96*statistics.stdev(differences)/math.sqrt(len(differences))
+           if len(differences)>1 else None)
+    if upper is None or upper>=0:reasons.append('uncertain_selected_policy_improvement')
+    return dict(games=len(seen),**metrics,game_brier_upper95=upper),reasons
+
+
+def _date_bound(groups):
+    """Give each Eastern slate one vote after averaging its game effects."""
+    dates=defaultdict(list)
+    for group in groups.values():
+        date=datetime.fromtimestamp(group[0]['kickoff_at'],ZoneInfo('America/New_York')).date().isoformat()
+        metrics=_metrics(group)
+        dates[date].append(metrics['candidate']['brier']-metrics['baseline']['brier'])
+    paired=[statistics.mean(values) for values in dates.values()]
+    upper=(statistics.mean(paired)+1.96*statistics.stdev(paired)/math.sqrt(len(paired)) if len(paired)>1 else None)
+    return len(dates),upper
+
+
 def gate(evaluation,training_cutoff,artifact=None,*,sport=None,now=None):
     """Recompute a conservative acceptance decision from paired quote rows."""
     reasons=[];stamp=time.time() if now is None else _number(now)
@@ -268,6 +388,11 @@ def gate(evaluation,training_cutoff,artifact=None,*,sport=None,now=None):
             names={r.get('market') for r in rows}
             sport='NBA' if names.issubset(set(MARKETS['NBA'])) else 'NFL'
         sport=_sport(sport);valid=[];identities=set();quotes=set();all_games=set();groups=defaultdict(list)
+        selective=artifact is not None and 'changed_markets' in artifact
+        changed=set(artifact['changed_markets']) if selective else set(MARKETS[sport])
+        if selective and (not changed or not changed.issubset(MARKETS[sport]) or
+                          len(changed)!=len(artifact['changed_markets'])):
+            raise ValueError('invalid changed-market catalog')
         for raw in rows:
             row=dict(raw)
             for key in ('actual','line','baseline_prediction','candidate_prediction','baseline_probability',
@@ -278,11 +403,15 @@ def gate(evaluation,training_cutoff,artifact=None,*,sport=None,now=None):
                 raise ValueError('invalid quote identity')
             identity=(row['game_id'],str(row['player_id']),row['market'])
             if identity in identities or row['quote_id'] in quotes:raise ValueError('duplicate held-out player market')
-            identities.add(identity);quotes.add(row['quote_id']);all_games.add(row['game_id'])
+            identities.add(identity);quotes.add(row['quote_id']);all_games.add(str(row['game_id']))
             if not row['observed_at']<row['kickoff_at']<row['result_observed_at']<=end:
                 raise ValueError('invalid validation source times')
             if not start<=row['kickoff_at']<end:raise ValueError('validation game outside window')
-            if not (0<=row['baseline_probability']<=1 and 0<row['candidate_probability']<1):
+            retained=selective and row['market'] not in changed
+            if retained and any(row['candidate_'+field]!=row['baseline_'+field] for field in ('prediction','probability')):
+                reasons.append('retained_market_changed:'+row['market'])
+            if not (0<=row['baseline_probability']<=1 and
+                    (0<=row['candidate_probability']<=1 if retained else 0<row['candidate_probability']<1)):
                 raise ValueError('invalid predictive probability')
             if row['actual']==row['line']:continue
             valid.append(row);groups[row['game_id']].append(row)
@@ -290,21 +419,32 @@ def gate(evaluation,training_cutoff,artifact=None,*,sport=None,now=None):
         if len(groups)<MIN_GAMES:reasons.append('insufficient_validation_games')
         if artifact is not None:
             training=artifact.get('training') or {}
-            fitted=set(training.get('fit_game_ids') or []);calibrated=set(training.get('calibration_game_ids') or [])
-            development=set(training.get('development_game_ids') or [])
+            fitted={str(g) for g in training.get('fit_game_ids') or []}
+            calibrated={str(g) for g in training.get('calibration_game_ids') or []}
+            development={str(g) for g in training.get('development_game_ids') or []}
             if not fitted or not calibrated:reasons.append('training_game_catalog_required')
             if (fitted|development)&calibrated or (fitted|development|calibrated)&all_games:
                 reasons.append('training_validation_game_overlap')
             if not _number(training.get('fit_label_max_at'))<cutoff:reasons.append('training_label_after_cutoff')
-            if development and 'development_label_max_at' in training:
+            if development:
                 if not _number(training['development_label_max_at'])<cutoff:
                     reasons.append('development_label_after_cutoff')
             if not _number(training.get('calibration_label_max_at'))<calibration:reasons.append('calibration_label_after_cutoff')
+            if selective:
+                choice=artifact.get('market_selection') or {}
+                selected={str(g) for g in choice.get('selection_game_ids') or []}
+                if set(choice.get('changed_markets') or [])!=changed or not selected:
+                    reasons.append('inner_market_selection_required')
+                if selected & (fitted|development|calibrated|all_games):
+                    reasons.append('market_selection_game_overlap')
+                if not (_number(choice.get('selection_label_max_at'))<
+                        _number(choice.get('selection_cutoff'))<=calibration):
+                    reasons.append('market_selection_after_cutoff')
         by_market={}
         for market in MARKETS[sport]:
             subset=[r for r in valid if r['market']==market]
-            if len(subset)<MIN_MARKET_ROWS:reasons.append('insufficient_market_rows:'+market)
-            if len({r['game_id'] for r in subset})<MIN_MARKET_GAMES:
+            if market in changed and len(subset)<MIN_MARKET_ROWS:reasons.append('insufficient_market_rows:'+market)
+            if market in changed and len({r['game_id'] for r in subset})<MIN_MARKET_GAMES:
                 reasons.append('insufficient_market_games:'+market)
             if not subset:continue
             metrics=_metrics(subset);by_market[market]=dict(n=len(subset),games=len({r['game_id'] for r in subset}),**metrics)
@@ -322,8 +462,15 @@ def gate(evaluation,training_cutoff,artifact=None,*,sport=None,now=None):
                 upper=statistics.mean(paired)+1.96*statistics.stdev(paired)/math.sqrt(len(paired))
                 if upper>=0:reasons.append('uncertain_game_group_improvement')
             else:reasons.append('uncertain_game_group_improvement')
+        dates,date_upper=_date_bound(groups)
+        if artifact and artifact.get('evaluation_family'):
+            if dates<MIN_VALIDATION_DATES:reasons.append('insufficient_validation_dates')
+            if date_upper is None or date_upper>=0:reasons.append('uncertain_date_group_improvement')
+        policy,policy_reasons=_policy_gate(evaluation,artifact,sport,all_games,start,end)
+        reasons.extend(policy_reasons)
         return {'passed':not reasons,'reasons':list(dict.fromkeys(reasons)),'rows':len(valid),
-                'games':len(groups),'markets':by_market,'aggregate':aggregate,'game_brier_upper95':upper}
+                'games':len(groups),'markets':by_market,'aggregate':aggregate,'game_brier_upper95':upper,
+                'selection_policy':policy,'dates':dates,'date_brier_upper95':date_upper}
     except (ValueError,TypeError,KeyError,OverflowError) as exc:
         return {'passed':False,'reasons':list(dict.fromkeys(reasons+['invalid_evidence:'+str(exc)]))}
 
@@ -331,6 +478,10 @@ def gate(evaluation,training_cutoff,artifact=None,*,sport=None,now=None):
 def _verify_row(sport,row):
     """Compare evaluation inputs with immutable pregame quotes and latest grades."""
     if sport=='NBA':
+        if row.get('policy_context_id'):
+            from .nba_policy_evidence import verify_policy_row
+            verify_policy_row(row)
+            return
         quote=db.q1('SELECT q.*,g.tipoff_ts,g.status game_status FROM nba_quote_observations q JOIN nba_games g '
                      'ON g.game_id=q.game_id WHERE q.quote_id=?',(row['quote_id'],))
         grade=db.q1('SELECT r.* FROM nba_grade_revisions r JOIN nba_selection_lock_items i '
@@ -341,6 +492,13 @@ def _verify_row(sport,row):
                   'line':quote['line'],'side':quote['side'],'observed_at':quote['observed_at'],
                   'kickoff_at':quote['tipoff_ts'],'actual':grade['actual_value'],
                   'result_observed_at':grade['graded_at']}
+        if db.q1("SELECT 1 FROM sqlite_master WHERE name='nba_forecasts'"):
+            forecast=db.q1('SELECT f.* FROM nba_forecasts f JOIN nba_selection_lock_items i '
+                          'ON i.forecast_id=f.forecast_id WHERE i.quote_id=? LIMIT 1',(row['quote_id'],))
+            if not forecast:raise ValueError('validation frozen forecast is missing')
+            from .nba_learning_data import capture_game
+            current=db.q1('SELECT * FROM nba_games WHERE game_id=?',(quote['game_id'],))
+            expected['kickoff_at']=capture_game(forecast,current)['tipoff_ts']
         if quote['market']!=NBA_MARKETS[row['market']]:raise ValueError('validation quote market changed')
         if grade['result'] not in ('win','loss','push'):raise ValueError('validation grade is unresolved or void')
         if quote['game_status']!='final':raise ValueError('validation game is not final')
@@ -434,7 +592,32 @@ def verify_active(sport,*,now=None):
 def _verify_candidate(candidate,stamp):
     payload=_load(candidate)
     _check_sources(payload['sources'],candidate['training_cutoff'],payload['evaluation']['calibration_cutoff'],stamp)
-    for row in payload['evaluation']['rows']:_verify_row(candidate['sport'],row)
+    _verify_evaluation(candidate['sport'],payload['evaluation'],payload['artifact'])
+
+
+def _verify_evaluation(sport,evaluation,artifact=None):
+    if sport=='NBA':
+        from . import nba_policy_evidence
+        scope=getattr(nba_policy_evidence,'validation_scope',nullcontext)
+    else:scope=nullcontext
+    with scope():
+        _verify_evaluation_rows(sport,evaluation,artifact)
+
+
+def _verify_evaluation_rows(sport,evaluation,artifact):
+    for row in evaluation['rows']:_verify_row(sport,row)
+    policy=evaluation.get('selection_policy')
+    if not policy:return
+    if sport=='NBA':
+        from .nba_policy_evidence import verify_policy_universe
+    else:
+        from .nfl_learning import verify_policy_universe
+    for game in policy['games']:
+        if sport=='NFL' and game.get('baseline_candidate_id')!=evaluation.get('baseline_candidate_id'):
+            raise ValueError('selected policy baseline differs from current comparison')
+        verify_policy_universe(game,artifact=artifact)
+        for name in ('baseline','candidate'):
+            for row in game[name]:_verify_row(sport,row)
 
 
 def activate_if_passes(candidate_id,*,now=None):
@@ -455,8 +638,8 @@ def activate_if_passes(candidate_id,*,now=None):
             return {'status':status,'candidate_id':candidate_id,**json.loads(old['evidence'])}
         try:
             _check_sources(payload['sources'],candidate['training_cutoff'],payload['evaluation']['calibration_cutoff'],stamp)
-            for row in payload['evaluation']['rows']:_verify_row(candidate['sport'],row)
-        except (ValueError,KeyError,TypeError,FileNotFoundError) as exc:
+            _verify_evaluation(candidate['sport'],payload['evaluation'],payload['artifact'])
+        except (ValueError,KeyError,TypeError,OSError) as exc:
             result['passed']=False;result['reasons'].append('source_validation:'+str(exc))
         if payload['evaluation'].get('baseline_candidate_id')!=previous_id:
             result['passed']=False;result['reasons'].append('active_baseline_changed')
