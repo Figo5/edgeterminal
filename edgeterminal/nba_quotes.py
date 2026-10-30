@@ -9,6 +9,7 @@ import unicodedata
 import uuid
 from collections import Counter
 from datetime import datetime, timezone
+from urllib.parse import urlparse
 
 from . import db, nba_sources
 from .config import settings
@@ -97,8 +98,68 @@ def _name(value):
     return re.sub(r'[^a-z0-9]', '', unicodedata.normalize('NFKD', str(value)).encode('ascii','ignore').decode().lower())
 
 
-def normalize(events, games, roster, observed_at):
+def _player_name(player):
+    names = player.get('names') or {}
+    for value in (player.get('name'), names.get('long'), names.get('display')):
+        if isinstance(value, str) and _name(value):
+            return value
+    return None
+
+
+def player_identity_catalog(sources, observed_at):
+    """Recover names from checked prior provider IDs, never from ID spelling or prices.
+
+    A conflicting ID stays quarantined. Current team membership and a unique ESPN
+    roster match are still required by normalize, including after a transfer.
+    """
+    catalog = {}
+    for source in sorted(sources, key=lambda s: (s['received_at'], s['id'])):
+        raw = source['body'].encode() if isinstance(source['body'], str) else source['body']
+        url = urlparse(source['url'])
+        if (source['kind'] != 'player-quotes' or source['http_status'] != 200
+                or source['received_at'] > observed_at or url.scheme != 'https'
+                or url.hostname != 'api.sportsgameodds.com' or url.path.rstrip('/') != '/v2/events'
+                or hashlib.sha256(raw).hexdigest() != source['sha256']):
+            continue
+        try:
+            body = json.loads(raw)
+        except (ValueError, TypeError, UnicodeDecodeError):
+            continue
+        if not isinstance(body, dict) or body.get('success') is not True or not isinstance(body.get('data'), list):
+            continue
+        for event in body['data']:
+            if not isinstance(event, dict) or event.get('leagueID') != 'NBA':
+                continue
+            for ref, player in (event.get('players') or {}).items():
+                if not isinstance(player, dict) or player.get('playerID') != ref:
+                    continue
+                name = _player_name(player)
+                if not name:
+                    continue
+                if ref in catalog and (catalog[ref] is None or _name(catalog[ref]['name']) != _name(name)):
+                    catalog[ref] = None
+                else:
+                    catalog[ref] = dict(name=name, source_artifact_id=source['id'])
+    return catalog
+
+
+def archived_player_identities(observed_at, source_ids=None):
+    """Use only frozen capture sources during replay; live capture may inspect the archive."""
+    if not db.q1("SELECT 1 FROM sqlite_master WHERE type='table' AND name='nba_source_artifacts'"):
+        return {}
+    query = "SELECT * FROM nba_source_artifacts WHERE kind='player-quotes' AND received_at<=?"
+    params = [observed_at]
+    if source_ids is not None:
+        if not source_ids:
+            return {}
+        query += ' AND id IN (' + ','.join('?' for _ in source_ids) + ')'
+        params.extend(source_ids)
+    return player_identity_catalog(db.q(query, tuple(params)), observed_at)
+
+
+def normalize(events, games, roster, observed_at, *, identity_catalog=None):
     quotes, warnings = [], Counter()
+    identity_catalog = identity_catalog or {}
     for event in events:
         status = event.get('status') or {}
         tip = parse_time(event.get('startTime') or status.get('startsAt'))
@@ -111,7 +172,10 @@ def normalize(events, games, roster, observed_at):
             warnings['event_identity_or_tipoff'] += 1
             continue
         game = matches[0]
-        team_ids = {str(teams[s].get('teamID')): _team(teams[s]) for s in ('home','away')}
+        team_ids = {teams[s].get('teamID'): _team(teams[s]) for s in ('home','away')}
+        if len(team_ids) != 2 or any(not key for key in team_ids):
+            warnings['event_identity_or_tipoff'] += 1
+            continue
         for key, odd in (event.get('odds') or {}).items():
             if not isinstance(odd, dict):
                 continue
@@ -122,11 +186,17 @@ def normalize(events, games, roster, observed_at):
                 warnings['odd_identity'] += 1
                 continue
             player = (event.get('players') or {}).get(ref) or {}
-            code = team_ids.get(str(player.get('teamID')))
-            name = player.get('name') or (player.get('names') or {}).get('long')
+            code = team_ids.get(player.get('teamID'))
+            name = _player_name(player)
+            binding = identity_catalog.get(ref)
+            if ref in identity_catalog and (binding is None or name and _name(name) != _name(binding['name'])):
+                warnings['player_identity'] += 1
+                continue
+            identity_source = binding['source_artifact_id'] if not name and binding else None
+            name = name or (binding['name'] if binding else None)
             candidates = [r for r in roster if r.get('team') == code and
                           _name(r.get('player') or r.get('full_name')) == _name(name)] if name and code else []
-            if len(candidates) != 1 or player.get('playerID',ref) != ref:
+            if len(candidates) != 1 or player.get('playerID') != ref:
                 warnings['player_identity'] += 1
                 continue
             matched = candidates[0]
@@ -145,6 +215,7 @@ def normalize(events, games, roster, observed_at):
                     'market': MARKETS[stat], 'line': line, 'side': side, 'price': int(price),
                     'sportsbook': book, 'observed_at': observed_at, 'identity_verified': True,
                     'line_type': 'main', 'is_main': True, 'provider_player_id': ref,
+                    'identity_source_artifact_id': identity_source,
                     'provider_event_id': event.get('eventID'), 'source': URL,
                     'availability': matched.get('availability','unknown'),
                     'availability_observed_at': matched.get('observed_at')})
@@ -189,7 +260,8 @@ def capture(games, roster, now, *, getter=None, api_key=None):
               (receipt,status,len(data.get('data',[])),json.dumps(quota),error,sha,raw,request_id))
         if error:
             return {'status':'source_error','error':error,'quotes':[],'request_id':request_id}
-        quotes, warnings = normalize(data['data'],games,roster,receipt)
+        identities = archived_player_identities(receipt)
+        quotes, warnings = normalize(data['data'],games,roster,receipt,identity_catalog=identities)
         return {'status':'captured','quotes':quotes,'warnings':warnings,'request_id':request_id,
                 'source_sha256':sha,'observed_at':receipt,'events_returned':len(data['data'])}
     except Exception as exc:

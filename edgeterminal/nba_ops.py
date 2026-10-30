@@ -552,6 +552,8 @@ def _capture_props(now):
             player=next(p for p in roster if p['player_id']==row['player_id'])
             projection=nba_learning.project_prop(row['player_id'],row['market'],history,game['tipoff_utc'],line=row['line'])
             rows.append(dict(row,confidence=row['probability'],player=q['player'],
+                provider_player_id=q.get('provider_player_id'),
+                identity_source_artifact_id=q.get('identity_source_artifact_id'),
                 expected_minutes=projection.get('projected_minutes'),
                 availability_note=f"ESPN roster status at capture: {player['availability']}. Minutes are forecast from prior sourced games; rotations may change."+
                     (' The latest statistics recheck failed; previously verified history was used.'
@@ -561,6 +563,7 @@ def _capture_props(now):
                           'prop':row['market'],'side':row['side'],'line':row['line'],'quote_id':quote['quote_id']})
         player_ids={r['player_id'] for r in rows}
         sources=sorted({source,game['source_artifact_id']}|
+                {r['identity_source_artifact_id'] for r in rows if r.get('identity_source_artifact_id') is not None}|
                 {p['source_artifact_id'] for p in roster if p['player_id'] in player_ids}|
                 {h['source_artifact_id'] for h in history if h['player_id'] in player_ids})
         nba_store.save_forecast('props-'+game['game_id'],game['game_id'],model_info()['version'],

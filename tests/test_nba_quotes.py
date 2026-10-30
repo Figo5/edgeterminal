@@ -1,3 +1,5 @@
+import copy
+import hashlib
 import json
 from concurrent.futures import ThreadPoolExecutor
 
@@ -127,6 +129,76 @@ def test_quote_identity_requires_same_player_team_and_pretipoff():
     assert quotes[0]['line'] == 20.5
     event['players']['EXAMPLE_PLAYER']['name'] = 'Different Player'
     assert nba_quotes.normalize([event], [game], roster, 1792530000.)[0] == []
+
+
+def identity_artifact(event, **changes):
+    raw = json.dumps({'success': True, 'data': [event]}).encode()
+    return dict(id=7, kind='player-quotes', url=nba_quotes.URL+'?leagueID=NBA',
+                received_at=1792529000., http_status=200, body=raw,
+                sha256=hashlib.sha256(raw).hexdigest(), **changes)
+
+
+def test_nameless_current_player_uses_archived_exact_id_and_keeps_fresh_quote():
+    game, roster, event = sample()
+    prior = copy.deepcopy(event)
+    prior['players']['EXAMPLE_PLAYER']['teamID'] = 'OLD_TEAM_NBA'
+    prior['odds']['points-EXAMPLE_PLAYER-game-ou-over']['byBookmaker']['draftkings']['overUnder'] = '10.5'
+    catalog = nba_quotes.player_identity_catalog([identity_artifact(prior)], 1792530000.)
+    del event['players']['EXAMPLE_PLAYER']['name']
+    assert not nba_quotes.normalize([event], [game], roster, 1792530000.)[0]
+    quotes, _ = nba_quotes.normalize([event], [game], roster, 1792530000., identity_catalog=catalog)
+    assert len(quotes) == 1
+    assert quotes[0]['player_id'] == '42'
+    assert quotes[0]['identity_source_artifact_id'] == 7
+    assert quotes[0]['provider_player_id'] == 'EXAMPLE_PLAYER'
+    assert quotes[0]['line'] == 20.5 and quotes[0]['observed_at'] == 1792530000.
+
+
+@pytest.mark.parametrize('problem', ['hash', 'future', 'host', 'league', 'conflict', 'wrong_id'])
+def test_unverified_or_conflicting_archived_identity_cannot_supply_missing_name(problem):
+    game, roster, event = sample()
+    prior = copy.deepcopy(event)
+    source = identity_artifact(prior)
+    sources = [source]
+    if problem == 'hash': source['sha256'] = '0'*64
+    if problem == 'future': source['received_at'] = 1792530001.
+    if problem == 'host': source['url'] = 'https://example.com/v2/events'
+    if problem == 'league':
+        prior['leagueID'] = 'NFL'; sources = [identity_artifact(prior)]
+    if problem == 'wrong_id':
+        prior['players']['EXAMPLE_PLAYER']['playerID'] = 'OTHER'; sources = [identity_artifact(prior)]
+    if problem == 'conflict':
+        prior['players']['EXAMPLE_PLAYER']['name'] = 'Another Person'
+        other = identity_artifact(prior); other['id'] = 8; sources.append(other)
+    catalog = nba_quotes.player_identity_catalog(sources, 1792530000.)
+    del event['players']['EXAMPLE_PLAYER']['name']
+    assert not nba_quotes.normalize([event], [game], roster, 1792530000., identity_catalog=catalog)[0]
+
+
+def test_identity_fallback_never_overrides_current_names_teams_or_duplicate_rosters():
+    game, roster, event = sample()
+    catalog = nba_quotes.player_identity_catalog([identity_artifact(event)], 1792530000.)
+    event['players']['EXAMPLE_PLAYER']['name'] = 'Different Person'
+    assert not nba_quotes.normalize([event], [game], roster, 1792530000., identity_catalog=catalog)[0]
+    del event['players']['EXAMPLE_PLAYER']['name']
+    roster.append(dict(roster[0], player_id='43'))
+    assert not nba_quotes.normalize([event], [game], roster, 1792530000., identity_catalog=catalog)[0]
+    roster.pop()
+    event['players']['EXAMPLE_PLAYER']['teamID'] = 'OTHER_NBA'
+    assert not nba_quotes.normalize([event], [game], roster, 1792530000., identity_catalog=catalog)[0]
+
+
+def test_quote_replay_uses_the_saved_identity_artifact():
+    from edgeterminal.nba_learning_data import _verify_quote_body
+    game, roster, event = sample()
+    catalog = nba_quotes.player_identity_catalog([identity_artifact(event)], 1792530000.)
+    del event['players']['EXAMPLE_PLAYER']['name']
+    saved = nba_quotes.normalize([event], [game], roster, 1792530000., identity_catalog=catalog)[0][0]
+    quote = dict(quote_id=1, observed_at=1792530000.)
+    frozen_game = dict(game, game_id=game['id'], tipoff_utc=game['tipoff'])
+    _verify_quote_body(quote, saved, frozen_game, {'data': [event]}, roster, catalog)
+    with pytest.raises(ValueError, match='sourced main line'):
+        _verify_quote_body(quote, saved, frozen_game, {'data': [event]}, roster, {})
 
 
 def test_wrong_game_time_and_duplicate_roster_identity_fail_closed():

@@ -95,11 +95,13 @@ def _capture(forecast, cache):
     return history, history_sources + roster_sources, roster
 
 
-def _verify_quote_body(quote, saved, game, payload, roster):
+def _verify_quote_body(quote, saved, game, payload, roster, identity_catalog=None):
     normalized, _ = nba_quotes.normalize(payload.get('data', []),
                                          [dict(game, id=game['game_id'], tipoff=game['tipoff_utc'])],
-                                         roster, quote['observed_at'])
+                                         roster, quote['observed_at'], identity_catalog=identity_catalog)
     keys = ('player_id', 'player', 'team', 'market', 'side', 'line', 'price', 'sportsbook')
+    if saved.get('identity_source_artifact_id') is not None:
+        keys += ('provider_player_id', 'identity_source_artifact_id')
     matched = [row for row in normalized if all(row.get(key) == saved.get(key) for key in keys)]
     if len(matched) != 1 or matched[0].get('is_main') is not True:
         raise ValueError(f'NBA learning quote {quote["quote_id"]} differs from its sourced main line')
@@ -157,7 +159,15 @@ def validation_records(now, game_count=40):
             qsource, quote_body = _source(quote['source_artifact_id'], cache, quote['observed_at'])
             if qsource['kind'] != 'player-quotes':
                 raise ValueError(f'NBA learning quote {item["quote_id"]} lacks a quote source')
-            _verify_quote_body(quote, saved, game, quote_body, roster)
+            identity_sources = []
+            identity_id = saved.get('identity_source_artifact_id')
+            if identity_id is not None:
+                if identity_id not in json.loads(forecast['source_artifact_ids']):
+                    raise ValueError(f'NBA learning quote {item["quote_id"]} lacks its frozen identity source')
+                identity_row, _ = _source(identity_id, cache, quote['observed_at'])
+                identity_sources.append(identity_row)
+            identities = nba_quotes.player_identity_catalog(identity_sources, quote['observed_at'])
+            _verify_quote_body(quote, saved, game, quote_body, roster, identities)
             rsource = db.q1('SELECT * FROM nba_source_artifacts WHERE id=?', (grade['source_artifact_id'],))
             if grade['result'] == 'void':
                 # Participation-only official evidence may be PDF. The registry
@@ -192,7 +202,7 @@ def validation_records(now, game_count=40):
                                      observed_at=quote['observed_at'], kickoff_at=game['tipoff_ts'],
                                      result_observed_at=grade['graded_at'], actual=actual,
                                      history=history, saved=saved,
-                                     sources=[descriptor(s, 'validation') for s in history_sources + [qsource, rsource]]))
+                                     sources=[descriptor(s, 'validation') for s in history_sources + identity_sources + [qsource, rsource]]))
         selected_games.append(gid)
         records.extend(game_records)
     sources = {(s['id'], s['role']): s for record in records for s in record['sources']}
