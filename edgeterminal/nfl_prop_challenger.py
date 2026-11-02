@@ -2,9 +2,14 @@
 from __future__ import annotations
 import argparse
 import hashlib
+import io
 import json
+import os
+import re
+import stat
 import time
 import subprocess
+from contextlib import ExitStack, contextmanager
 from pathlib import Path
 import joblib
 import numpy as np
@@ -16,6 +21,7 @@ VERSION = 'prop-usage-empirical-v1'
 DIRECTORY = ROOT / 'data/research/prop_challenger'
 WEIGHTS = (0., .25, .5, .75, 1.)
 CUTOFF = (2026, 3)
+LEGACY_BASE = '/Users/giofiore/edgeterminal/data/research/prop_challenger'
 
 
 def usage(rows, market):
@@ -130,28 +136,128 @@ def train():
     return report
 
 
-def shadow(batch_id, season, week):
-    """Snapshot quotes already captured by the quota-controlled worker."""
-    pointer = DIRECTORY / 'active.json'
-    if not pointer.exists():
-        return {'status': 'not_trained'}
-    ref = json.loads(pointer.read_text())
-    directory = Path(ref['path']).resolve()
-    if directory.parent != DIRECTORY.resolve():
-        raise ValueError('challenger artifact outside trusted local directory')
-    body = (directory/'manifest.json').read_bytes()
+DIR_FLAGS = os.O_RDONLY | os.O_DIRECTORY | os.O_NOFOLLOW
+
+
+def _read(name, directory_fd):
+    """Read a regular, non-symlink file directly inside an already-trusted directory descriptor."""
+    fd = os.open(name, os.O_RDONLY | os.O_NOFOLLOW | os.O_NONBLOCK, dir_fd=directory_fd)
+    with os.fdopen(fd, 'rb') as handle:
+        if not stat.S_ISREG(os.fstat(handle.fileno()).st_mode):
+            raise ValueError('challenger evidence is not a regular file')
+        return handle.read()
+
+
+def _create(name, data, directory_fd):
+    """Exclusively create a read-only file inside the trusted directory descriptor."""
+    fd = os.open(name, os.O_WRONLY | os.O_CREAT | os.O_EXCL | os.O_NOFOLLOW, 0o666, dir_fd=directory_fd)
+    with os.fdopen(fd, 'wb') as handle:
+        handle.write(data)
+        handle.flush()
+        os.fchmod(handle.fileno(), 0o444)
+
+
+def _unique(pairs):
+    if len({key for key, _ in pairs}) != len(pairs):
+        raise ValueError('duplicate JSON key')
+    return dict(pairs)
+
+
+def _loads(raw):
+    return json.loads(raw, object_pairs_hook=_unique)
+
+
+@contextmanager
+def _active():
+    """Yield verified (artifact fd, artifact path, manifest sha256, manifest), or None when untrained.
+
+    Trust boundary: every directory from '/' down to the artifact is opened once with O_NOFOLLOW
+    relative to its parent and the descriptors stay open for the caller's whole lifetime. All later
+    IO is relative to those descriptors, so renaming or replacing a path after these checks can never
+    redirect reads, enumeration or fresh writes to a substitute directory.
+    """
+    base = Path(DIRECTORY)
+    if not base.is_absolute() or os.path.normpath(str(base)) != str(base):
+        raise ValueError('challenger directory is not canonical')
+    with ExitStack() as stack:
+        def descend(name, parent=None):
+            fd = os.open(name, DIR_FLAGS, dir_fd=parent)
+            stack.callback(os.close, fd)
+            return fd
+        try:
+            base_fd = descend('/')
+            for part in base.parts[1:]:
+                base_fd = descend(part, base_fd)
+        except FileNotFoundError:
+            base_fd = None  # Missing ordinary base: untrained. Symlinks and non-directories propagate.
+        active = None if base_fd is None else _verify(base, base_fd, descend)
+        yield active
+
+
+def _verify(base, base_fd, descend):
+    try:
+        pointer = _read('active.json', base_fd)
+    except FileNotFoundError:
+        return None  # A dangling symlink fails with ELOOP, not here.
+    ref = _loads(pointer)
+    if (not isinstance(ref, dict) or set(ref) != {'path', 'sha256'} or not isinstance(ref['path'], str)
+            or not isinstance(ref['sha256'], str) or not re.fullmatch(r'[0-9a-f]{64}', ref['sha256'])):
+        raise ValueError('invalid challenger pointer')
+    text = ref['path']
+    if text.startswith(LEGACY_BASE + '/') and re.fullmatch(r'[0-9]{19}', text[len(LEGACY_BASE) + 1:]):
+        name = text[len(LEGACY_BASE) + 1:]
+    else:
+        name = text.rpartition('/')[2]
+        if text != f'{base}/{name}' or not re.fullmatch(r'[A-Za-z0-9_-]+', name):
+            raise ValueError('challenger artifact outside trusted local directory')
+    artifact_fd = descend(name, base_fd)  # Held by the caller's ExitStack until it finishes.
+    body = _read('manifest.json', artifact_fd)
     if hashlib.sha256(body).hexdigest() != ref['sha256']:
         raise ValueError('challenger manifest changed')
-    manifest = json.loads(body)
-    if manifest.get('training_cutoff') != list(CUTOFF) or manifest.get('mode') != 'shadow':
+    manifest = _loads(body)
+    if (not isinstance(manifest, dict) or manifest.get('training_cutoff') != list(CUTOFF)
+            or manifest.get('mode') != 'shadow'):
         raise ValueError('challenger training contract changed')
-    path = directory / ('shadow-' + batch_id + '.json')
-    if path.exists():
+    return artifact_fd, base / name, ref['sha256'], manifest
+
+
+def _snapshot(name, artifact_fd, manifest_sha):
+    """Parse a snapshot after verifying its seal and model identity."""
+    raw = _read(name, artifact_fd)
+    if hashlib.sha256(raw).hexdigest() != _read(name[:-5] + '.sha256', artifact_fd).decode():
+        raise ValueError('challenger snapshot changed')
+    snapshot = _loads(raw)
+    if snapshot['model_manifest_sha256'] != manifest_sha:
+        raise ValueError('challenger model identity mismatch')
+    snapshot['_sha256'] = hashlib.sha256(raw).hexdigest()
+    return snapshot
+
+
+def shadow(batch_id, season, week):
+    """Snapshot quotes already captured by the quota-controlled worker."""
+    with _active() as active:
+        return _shadow(active, batch_id, season, week)
+
+
+def _shadow(active, batch_id, season, week):
+    if active is None:
+        return {'status': 'not_trained'}
+    artifact_fd, directory, manifest_sha, manifest = active
+    if not isinstance(batch_id, str) or not re.fullmatch(r'[A-Za-z0-9_.:-]+', batch_id):
+        raise ValueError('unsafe challenger batch id')
+    filename = 'shadow-' + batch_id + '.json'
+    path = directory / filename
+    try:
+        os.stat(filename, dir_fd=artifact_fd, follow_symlinks=False)
+    except FileNotFoundError:
+        pass
+    else:  # Any entry, even a dangling symlink, is existing evidence that must validate.
+        _snapshot(filename, artifact_fd, manifest_sha)
         return {'status': 'already_saved', 'path': str(path)}
-    model_path = directory/'models.joblib'
-    if hashlib.sha256(model_path.read_bytes()).hexdigest() != manifest['models_sha256']:
+    model_bytes = _read('models.joblib', artifact_fd)
+    if hashlib.sha256(model_bytes).hexdigest() != manifest['models_sha256']:
         raise ValueError('challenger model changed')
-    models = joblib.load(model_path)
+    models = joblib.load(io.BytesIO(model_bytes))
     stats = ROOT/'data/nflverse/prop_live'
     _, history, feature_hashes = lab.build_dataset((season, week), stats)
     inputs = lab._week3_features(history, season, week, stats)
@@ -197,17 +303,14 @@ def shadow(batch_id, season, week):
     if not output:
         return {'status': 'no_supported_pregame_quotes'}
     report = {'version': VERSION, 'readiness': 'RESEARCH_ONLY', 'designation': 'PASS', 'mode': 'shadow',
-              'created_at': time.time(), 'model_manifest_sha256': ref['sha256'], 'feature_hashes': feature_hashes,
+              'created_at': time.time(), 'model_manifest_sha256': manifest_sha, 'feature_hashes': feature_hashes,
               'batch_id': batch_id, 'season': season, 'week': week, 'projections': output}
     report['top_five'] = rank(output)
     if report['created_at'] >= min(q['kickoff_utc'] for q in pairs if any(r['quote_id']==q['id'] for r in output)):
         raise ValueError('challenger snapshot crossed kickoff')
-    with path.open('x') as handle:
-        json.dump(report, handle, sort_keys=True, allow_nan=False)
-    seal = path.with_suffix('.sha256')
-    seal.write_text(hashlib.sha256(path.read_bytes()).hexdigest())
-    seal.chmod(0o444)
-    path.chmod(0o444)
+    body = json.dumps(report, sort_keys=True, allow_nan=False).encode()
+    _create(filename, body, artifact_fd)
+    _create(filename[:-5] + '.sha256', hashlib.sha256(body).hexdigest().encode(), artifact_fd)
     return {'status': 'saved', 'path': str(path), 'projections': len(output)}
 
 
@@ -237,22 +340,13 @@ def rank(rows):
 
 def selected_rows():
     """Read the first sealed pregame challenger selections for each game."""
-    if not (DIRECTORY/'active.json').exists():
-        return []
-    ref = json.loads((DIRECTORY/'active.json').read_text())
-    directory = Path(ref['path']).resolve()
-    if directory.parent != DIRECTORY.resolve():
-        raise ValueError('invalid challenger report directory')
-    snapshots = []
-    for path in directory.glob('shadow-*.json'):
-        raw = path.read_bytes()
-        if hashlib.sha256(raw).hexdigest() != path.with_suffix('.sha256').read_text():
-            raise ValueError('challenger snapshot changed')
-        snapshot = json.loads(raw)
-        if snapshot['model_manifest_sha256'] != ref['sha256']:
-            raise ValueError('challenger model identity mismatch')
-        snapshot['_sha256'] = hashlib.sha256(raw).hexdigest()
-        snapshots.append(snapshot)
+    with _active() as active:
+        if active is None:
+            return []
+        artifact_fd, _, manifest_sha, _ = active
+        # Enumerate the held descriptor, never a path, so a replaced parent cannot hide sealed files.
+        names = [n for n in os.listdir(artifact_fd) if n.startswith('shadow-') and n.endswith('.json')]
+        snapshots = [_snapshot(name, artifact_fd, manifest_sha) for name in names]
     snapshots.sort(key=lambda s: s['created_at'])
     games, rows = set(), []
     for snapshot in snapshots:
@@ -287,8 +381,9 @@ def result_evidence(selected):
 
 def report():
     """Evaluate sealed selections using verified main and challenger evidence."""
-    if not (DIRECTORY/'active.json').exists():
-        return {'status': 'not_trained'}
+    with _active() as active:
+        if active is None:
+            return {'status': 'not_trained'}
     selected = selected_rows()
     evidence = result_evidence(selected)
     rows = []

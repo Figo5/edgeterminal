@@ -58,12 +58,15 @@ def test_shadow_record_uses_first_selection_and_verified_stat(tmp_path, monkeypa
     monkeypatch.setattr(model,'DIRECTORY',tmp_path)
     artifact=tmp_path/'artifact'
     artifact.mkdir()
-    (tmp_path/'active.json').write_text(json.dumps({'path':str(artifact),'sha256':'manifest'}))
+    manifest=json.dumps({'training_cutoff':[2026,3],'mode':'shadow','models_sha256':'0'*64}).encode()
+    digest=hashlib.sha256(manifest).hexdigest()
+    (artifact/'manifest.json').write_bytes(manifest)
+    (tmp_path/'active.json').write_text(json.dumps({'path':str(artifact),'sha256':digest}))
     row=dict(game_id='game',player_id='p',market='receptions',side='over',line=3.5,
              projection=5.,baseline_projection=4.)
     for i,side in enumerate(('over','under')):
         p=artifact/f'shadow-{i}.json'
-        raw=json.dumps({'created_at':i,'model_manifest_sha256':'manifest','top_five':{'game':[{**row,'side':side}]}}).encode()
+        raw=json.dumps({'created_at':i,'model_manifest_sha256':digest,'top_five':{'game':[{**row,'side':side}]}}).encode()
         p.write_bytes(raw)
         p.with_suffix('.sha256').write_text(hashlib.sha256(raw).hexdigest())
     monkeypatch.setattr(model.db,'q',lambda *a:[{'freeze_sha':'f'}])

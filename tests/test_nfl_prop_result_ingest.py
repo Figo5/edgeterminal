@@ -99,7 +99,10 @@ def challenger_setup(setup, monkeypatch):
     root = model.DIRECTORY
     artifact = root / 'model'
     artifact.mkdir(parents=True)
-    (root / 'active.json').write_text(json.dumps({'path': str(artifact), 'sha256': 'manifest'}))
+    manifest_bytes = json.dumps({'training_cutoff': [2026, 3], 'mode': 'shadow', 'models_sha256': '0' * 64}).encode()
+    digest = hashlib.sha256(manifest_bytes).hexdigest()
+    (artifact / 'manifest.json').write_bytes(manifest_bytes)
+    (root / 'active.json').write_text(json.dumps({'path': str(artifact), 'sha256': digest}))
     db.ex('INSERT INTO nfl_prop_capture_batches VALUES(?,?,?,?,?,?,?,?,?)',
           ('challenger-batch', 'sportsgameodds', 10., 'source', '{}', 1, 1, 3, '{}'))
     rows = []
@@ -116,7 +119,7 @@ def challenger_setup(setup, monkeypatch):
                       kickoff_utc=100., provider='sportsgameodds', source='fixture://source')
         db.ex('INSERT INTO nfl_prop_snapshots (' + ','.join(fields) + ') VALUES (' +
               ','.join('?' for _ in fields) + ')', fields.values())
-    raw = json.dumps({'created_at': 30., 'model_manifest_sha256': 'manifest', 'top_five': {GAME: rows}}).encode()
+    raw = json.dumps({'created_at': 30., 'model_manifest_sha256': digest, 'top_five': {GAME: rows}}).encode()
     (artifact / 'shadow-fixture.json').write_bytes(raw)
     (artifact / 'shadow-fixture.sha256').write_text(hashlib.sha256(raw).hexdigest())
     reader = csv.DictReader(io.StringIO(stats().decode()))
