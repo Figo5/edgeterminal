@@ -18,6 +18,7 @@ import time
 from zoneinfo import ZoneInfo
 
 from . import db,nba_store,nba_spread_data as data,nba_spread_model as model,nba_spread_market as market_model
+from . import learning_publication as publication
 
 DAY=86400;WEEK=7*DAY
 MIN_VALIDATION_GAMES=60
@@ -46,6 +47,9 @@ def ensure_schema():
           'game_id TEXT PRIMARY KEY,family TEXT NOT NULL,version TEXT NOT NULL '
           'REFERENCES nba_spread_model_candidates(version),consumed_at REAL NOT NULL,'
           'game_date_et TEXT NOT NULL,forecast_sha256 TEXT NOT NULL,label_sha256 TEXT NOT NULL)')
+    db.ex('CREATE TABLE IF NOT EXISTS nba_spread_publication_proofs ('
+          'version TEXT PRIMARY KEY REFERENCES nba_spread_model_candidates(version),'
+          'prepared_at REAL NOT NULL,state TEXT NOT NULL,code_sha256 TEXT NOT NULL)')
     db.ex("CREATE TRIGGER IF NOT EXISTS nba_spread_activation_gate BEFORE INSERT ON nba_spread_model_events "
           "WHEN NEW.kind='activated' AND NOT EXISTS (SELECT 1 FROM nba_spread_model_candidates c "
           "WHERE c.version=NEW.version AND c.training_cutoff<NEW.created_at "
@@ -57,7 +61,7 @@ def ensure_schema():
           "WHERE c.version=NEW.version AND json_extract(c.artifact,'$.kind')='nba-spread-market-v2') "
           "AND (SELECT COUNT(*) FROM nba_spread_validation_consumption v WHERE v.version=NEW.version)<60 "
           "BEGIN SELECT RAISE(ABORT,'NBA spread market holdout has not been sealed'); END")
-    for table in ('nba_spread_model_candidates','nba_spread_model_events','nba_spread_learning_runs','nba_spread_validation_consumption'):
+    for table in ('nba_spread_model_candidates','nba_spread_model_events','nba_spread_learning_runs','nba_spread_validation_consumption','nba_spread_publication_proofs'):
         for action in ('UPDATE','DELETE'):
             db.ex(f'CREATE TRIGGER IF NOT EXISTS {table}_no_{action.lower()} BEFORE {action} ON {table} '
                   "BEGIN SELECT RAISE(ABORT,'NBA spread research is append-only'); END")
@@ -362,22 +366,41 @@ def build_candidate(now):
                 sources=sources+artifact['market_training_sources']+artifact['feature_replay_sources'])
 
 
-def run(now=None):
-    """Called under the shared worker lock; never blocks source capture for fitting."""
-    stamp=time.time() if now is None else model._finite(now)
-    ensure_schema()
+def _publication_time(stamp):
+    return max(stamp,time.time())
+
+
+def _interval(last):
+    return DAY if last and last['status']=='waiting' else 300 if last and last['status'] in {'error','deferred'} else WEEK
+
+
+def _check_active(stamp):
+    previous=db.q1("SELECT id FROM nba_spread_model_events WHERE kind IN ('activated','rollback') ORDER BY id DESC LIMIT 1")
     try:active()
     except (ValueError,KeyError,TypeError,OSError) as exc:
-        # Restore the separately versioned baseline if an active bundle is
-        # damaged. The event and visible run record preserve the incident.
-        db.ex("INSERT INTO nba_spread_model_events(version,created_at,kind,detail) VALUES(NULL,?,'rollback',?)",
-              (stamp,_json(dict(reason=str(exc)[:200],fallback=model.BASELINE_VERSION))))
+        try:
+            with publication.publish_lock(allow_near=True):
+                with db.tx() as conn:
+                    conn.execute('BEGIN IMMEDIATE')
+                    current=db.q1("SELECT id FROM nba_spread_model_events WHERE kind IN ('activated','rollback') ORDER BY id DESC LIMIT 1")
+                    publication.same(previous,current)
+                    conn.execute("INSERT INTO nba_spread_model_events(version,created_at,kind,detail) VALUES(NULL,?,'rollback',?)",
+                        (_publication_time(stamp),_json(dict(reason=str(exc)[:200],fallback=model.BASELINE_VERSION))))
+        except publication.PublicationDeferred as deferred:
+            return dict(status='deferred',ok=False,reason=str(deferred),message='Game model integrity recovery awaits a short publication window.')
         return _record(stamp,'rolled_back',dict(reason='Invalid game artifact; restored verified baseline.',fallback=model.BASELINE_VERSION))
-    last=db.q1('SELECT * FROM nba_spread_learning_runs ORDER BY id DESC LIMIT 1')
+    return None
+
+
+def refresh_inputs(now=None):
+    """Bounded source collection and enqueue only; never replay or fit models."""
+    stamp=time.time() if now is None else model._finite(now)
+    ensure_schema()
+    recovery=_check_active(stamp)
+    if recovery:return recovery
     from .model_learning import _near_kickoff
     if _near_kickoff(stamp):return dict(status='deferred',ok=True,reason='near_tipoff_capture_priority',
         message='Upcoming NBA or NFL kickoff takes priority; spread learning resumes automatically.')
-    # Bootstrap continues each tick while fitting checks are independently cached.
     try:
         bootstrap=data.refresh(stamp,max_requests=4)
         if bootstrap.get('errors'):
@@ -385,21 +408,72 @@ def run(now=None):
     except Exception as exc:
         return _record(stamp,'error',dict(reason='Historical NBA source check failed; the worker retries automatically.',
             error_type=type(exc).__name__))
-    interval=DAY if last and last['status']=='waiting' else 300 if last and last['status']=='error' else WEEK
-    transitioned=(last and last['status']=='waiting' and
-        json.loads(last['detail']).get('reason')=='historical_seasons_bootstrapping' and
-        bootstrap.get('remaining_schedules')==0)
-    if last and stamp<last['started_at']+interval and not transitioned:return dict(status='cached',ok=True,bootstrap=bootstrap,
-        message='Spread learning is waiting for its next scheduled evidence check.')
-    try:
-        proposal=build_candidate(stamp)
-        if proposal['status']!='ready':return _record(stamp,'waiting',dict(proposal,bootstrap=bootstrap))
-        artifact=proposal['artifact'];encoded=_json(artifact);sha=hashlib.sha256(encoded.encode()).hexdigest()
+    last=db.q1('SELECT * FROM nba_spread_learning_runs ORDER BY id DESC LIMIT 1')
+    if bootstrap.get('remaining_schedules',0):
+        if last and json.loads(last['detail']).get('reason')=='historical_seasons_bootstrapping':
+            return dict(status='cached',ok=True,bootstrap=bootstrap,message='Historical NBA spread sources are still loading in bounded batches.')
+        return _record(stamp,'waiting',dict(reason='historical_seasons_bootstrapping',bootstrap=bootstrap))
+    transitioned=(last and json.loads(last['detail']).get('reason')=='historical_seasons_bootstrapping')
+    if last and stamp<last['started_at']+_interval(last) and not transitioned:
+        return dict(status='cached',ok=True,bootstrap=bootstrap,
+            message='Spread learning is waiting for its next scheduled evidence check.')
+    from . import learning_worker
+    job=learning_worker.enqueue('NBA_SPREAD','retuning',now=stamp)
+    state=job.get('status') or job.get('state') or 'queued'
+    return dict(status=state,ok=True,bootstrap=bootstrap,job=job,
+        message='Spread fitting runs separately; source capture and grading continue.')
+
+
+def run(now=None):
+    """Compatibility entry point for the fast ordinary source worker."""
+    return refresh_inputs(now)
+
+
+def _proposal_games(artifact):
+    games=set(artifact.get('validation_game_ids') or [])
+    games.update(r['game_id'] for r in artifact.get('validation_receipts') or [])
+    for values in (artifact.get('actual_line_cohorts') or {}).values():games.update(values)
+    return games
+
+
+def _verify_current_receipts(artifact,state):
+    for receipt in artifact.get('validation_receipts') or []:
+        game,grade,latest=state['games'].get(receipt['game_id'],(None,None,None))
+        if not game or game['status']!='final' or not grade:
+            raise ValueError('NBA spread validation no longer has a verified final grade')
+        payload=json.loads(grade['payload'])
+        source=db.q1('SELECT sha256 FROM nba_source_artifacts WHERE id=?',(grade['source_artifact_id'],))
+        if (payload.get('forecast_sha256')!=receipt['forecast_sha256'] or not source or
+                source['sha256']!=receipt['label_sha256'] or not latest or
+                latest['sha256']!=receipt['label_sha256']):
+            raise ValueError('NBA spread validation forecast or latest result source changed')
+
+
+def _verify_proposal_sources(artifact,evaluation,state,stamp):
+    receipts=artifact.get('validation_receipts') or []
+    if len(receipts)!=evaluation['rows'] or len(receipts)<MIN_VALIDATION_GAMES:
+        raise ValueError('NBA spread approval needs exact source-bound validation receipts')
+    _verify_current_receipts(artifact,state)
+    catalog={}
+    for source in (artifact.get('training_sources') or [])+(artifact.get('market_training_sources') or [])+(artifact.get('feature_replay_sources') or []):
+        catalog[source['id']]=source['sha256']
+    for receipt in receipts:
+        _,grade,_=state['games'][receipt['game_id']]
+        catalog[grade['source_artifact_id']]=receipt['label_sha256']
+    for ident,digest in catalog.items():
+        row=db.q1('SELECT * FROM nba_source_artifacts WHERE id=?',(ident,))
+        data.verify_source(row,received_by=stamp)
+        if row['sha256']!=digest:raise ValueError('NBA spread proposal source bytes changed')
+
+
+def _register_prepared(proposal,expected,code,stamp):
+    artifact=proposal['artifact'];encoded=_json(artifact);sha=hashlib.sha256(encoded.encode()).hexdigest()
+    with db.tx() as conn:
+        conn.execute('BEGIN IMMEDIATE')
         existing=db.q1('SELECT sha256 FROM nba_spread_model_candidates WHERE version=?',(artifact['version'],))
         if existing and existing['sha256']!=sha:raise ValueError('NBA spread immutable version conflict')
-        passed=proposal['evaluation']['passed'];kind='activated' if passed else 'rejected'
-        with db.tx() as conn:
-            if not existing:conn.execute('INSERT INTO nba_spread_model_candidates VALUES(?,?,?,?,?,?)',
+        if not existing:
+            conn.execute('INSERT INTO nba_spread_model_candidates VALUES(?,?,?,?,?,?)',
                 (artifact['version'],stamp,artifact['training_cutoff'],encoded,sha,_json(proposal['evaluation'])))
             if artifact.get('kind')=='nba-spread-market-v2':
                 receipts=artifact.get('validation_receipts') or []
@@ -413,11 +487,77 @@ def run(now=None):
                     conn.execute('INSERT INTO nba_spread_validation_consumption VALUES(?,?,?,?,?,?,?)',
                         (receipt['game_id'],EVALUATION_FAMILY,artifact['version'],stamp,
                          receipt['game_date_et'],receipt['forecast_sha256'],receipt['label_sha256']))
-            conn.execute('INSERT INTO nba_spread_model_events(version,created_at,kind,detail) VALUES(?,?,?,?)',
-                (artifact['version'],stamp,kind,_json(proposal['evaluation'])))
-        return _record(stamp,kind,dict(version=artifact['version'],evaluation=proposal['evaluation'],bootstrap=bootstrap))
+            conn.execute('INSERT INTO nba_spread_publication_proofs VALUES(?,?,?,?)',
+                (artifact['version'],stamp,_json(expected),_json(code)))
+        from . import learning_worker
+        checkpoint=getattr(learning_worker,'checkpoint_candidate',None)
+        if checkpoint:checkpoint(conn,artifact['version'])
+    return artifact['version']
+
+
+def resume_publication(version,now=None):
+    """Publish one already fitted/registered proposal; retries never fit it again."""
+    stamp=time.time() if now is None else model._finite(now)
+    ensure_schema()
+    try:
+        row=db.q1('SELECT * FROM nba_spread_model_candidates WHERE version=?',(version,))
+        proof=db.q1('SELECT * FROM nba_spread_publication_proofs WHERE version=?',(version,))
+        if not row or not proof:raise ValueError('prepared NBA spread proposal or proof is unavailable')
+        if hashlib.sha256(row['artifact'].encode()).hexdigest()!=row['sha256']:
+            raise ValueError('prepared NBA spread artifact hash mismatch')
+        artifact=json.loads(row['artifact']);evaluation=json.loads(row['evaluation'])
+        games=_proposal_games(artifact);kind='activated' if evaluation['passed'] else 'rejected'
+        invalid=None
+        try:
+            if _json(publication.spread_state(games))!=proof['state'] or _json(code_catalog())!=proof['code_sha256']:
+                raise publication.PublicationDeferred('publication_dependencies_changed')
+            if evaluation['passed']:
+                model.validate_artifact(artifact)
+                _verify_proposal_sources(artifact,evaluation,publication.spread_state(games),_publication_time(stamp))
+        except (ValueError,KeyError,TypeError,OSError) as exc:
+            invalid=str(exc)
+        with publication.publish_lock():
+            with db.tx() as conn:
+                conn.execute('BEGIN IMMEDIATE')
+                old=db.q1('SELECT kind,detail FROM nba_spread_model_events WHERE version=? '
+                    'AND kind IN ("activated","rejected") ORDER BY id DESC LIMIT 1',(version,))
+                if old:
+                    latest=db.q1('SELECT version FROM nba_spread_model_events WHERE kind IN ("activated","rollback") ORDER BY id DESC LIMIT 1')
+                    status='retained' if old['kind']=='activated' and (latest or {}).get('version')!=version else old['kind']
+                    return dict(status=status,ok=True,version=version,evaluation=json.loads(old['detail']))
+                if _json(publication.spread_state(games))!=proof['state'] or _json(code_catalog())!=proof['code_sha256']:
+                    invalid='publication_dependencies_changed'
+                if invalid:
+                    kind='rejected'
+                    evaluation=dict(evaluation,passed=False,reasons=list(evaluation.get('reasons') or [])+['publication:'+invalid])
+                conn.execute('INSERT INTO nba_spread_model_events(version,created_at,kind,detail) VALUES(?,?,?,?)',
+                    (version,_publication_time(stamp),kind,_json(evaluation)))
+        return _record(_publication_time(stamp),kind,dict(version=version,evaluation=evaluation))
+    except publication.PublicationDeferred as exc:
+        return _record(_publication_time(stamp),'deferred',dict(version=version,reason=str(exc),
+            message='Prepared spread model retained for publication; capture and grading take priority.'))
     except Exception as exc:
-        return _record(stamp,'error',dict(reason=str(exc)[:250],error_type=type(exc).__name__,bootstrap=bootstrap))
+        return _record(_publication_time(stamp),'error',dict(reason=str(exc)[:250],error_type=type(exc).__name__))
+
+
+def run_fitting(now=None):
+    """Dedicated learner entry point; never requests source data or owns capture."""
+    stamp=time.time() if now is None else model._finite(now)
+    ensure_schema()
+    recovery=_check_active(stamp)
+    if recovery:return recovery
+    from .model_learning import _near_kickoff
+    if _near_kickoff(stamp):return _record(stamp,'deferred',dict(reason='near_tipoff_capture_priority'))
+    before=publication.spread_state();code_before=code_catalog()
+    try:
+        proposal=build_candidate(stamp)
+        if proposal['status']!='ready':return _record(stamp,'waiting',proposal)
+        games=_proposal_games(proposal['artifact'])
+        expected=dict(before,games={gid:before['games'].get(gid,(None,None,None)) for gid in sorted(games)})
+        version=_register_prepared(proposal,expected,code_before,_publication_time(stamp))
+        return resume_publication(version,now=now)
+    except Exception as exc:
+        return _record(_publication_time(stamp),'error',dict(reason=str(exc)[:250],error_type=type(exc).__name__))
 
 
 def status(*,now=None):

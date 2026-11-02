@@ -9,6 +9,8 @@ ROOT = Path(__file__).resolve().parent.parent
 
 
 def _load_dotenv() -> None:
+    if os.getenv('EDGETERMINAL_OFFLINE_LEARNER') == '1':
+        return
     env = ROOT / ".env"
     if not env.exists():
         return

@@ -17,7 +17,7 @@ def isolated(tmp_path, monkeypatch):
     nba_store.ensure_schema()
     # Spread collection/learning has its own network-free contract tests.
     from edgeterminal import nba_spread_learning
-    monkeypatch.setattr(nba_spread_learning, 'run', lambda *a, **kw: {'ok': True, 'status': 'waiting'})
+    monkeypatch.setattr(nba_spread_learning, 'refresh_inputs', lambda *a, **kw: {'ok': True, 'status': 'waiting'})
     yield
     db._conn.close()
     db._conn = None
@@ -161,7 +161,9 @@ def test_automatic_boxscore_grading_preserves_zero_dnp_push_and_missing(isolated
     monkeypatch.setattr(nba_sources,'fetch',lambda *a,**kw:{'data':SUMMARY,'observed_at':after-100})
     monkeypatch.setattr(nba_ops,'artifact',lambda *a:result_source)
     result=nba_ops.grade_due(after)
-    assert result['ok'] and result['new_grades']==5
+    # The unknown selected identity has no captured roster for gamebook proof.
+    # Its source warning must remain visible while the other four props grade.
+    assert not result['ok'] and result['source_errors']==[gid] and result['new_grades']==5
     grades=nba_store.latest_grades(lock_id)
     assert [grades[i]['result'] for i in range(1,6)]==['win','push','loss','void','pending']
     assert grades[3]['actual_value']==0

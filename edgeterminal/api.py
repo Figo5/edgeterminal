@@ -239,6 +239,7 @@ def product_nba_check() -> Dict:
     status=nba_ops.status()
     learning=status.get('learning') or {}
     if (any(r['status']=='error' for r in status['checks']) or
+            (learning.get('runner') or {}).get('needs_attention') or
             any((learning.get(kind) or {}).get('status')=='error'
                 for kind in ('diagnostics','retuning','integrity'))):
         return dict(result,ok=False,attention='nba_updates')

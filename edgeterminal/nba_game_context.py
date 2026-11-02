@@ -115,4 +115,5 @@ def roster_availability(player):
     for status in ('out','doubtful','questionable','probable'):
         if any(status in value for value in statuses):return status
     if player.get('roster_status') not in {'active','Active'}:return 'inactive'
+    if any(value.replace(' ','-')=='day-to-day' for value in statuses):return 'day-to-day'
     return 'not_listed_on_roster_injury_feed'

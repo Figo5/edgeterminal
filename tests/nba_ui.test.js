@@ -2,6 +2,31 @@ const test = require('node:test');
 const assert = require('node:assert/strict');
 const ui = require('../edgeterminal/web/nba_ui.js');
 
+test('Separate learning jobs show real running time while capture and grading continue', () => {
+  const html=ui.learningStatus({enabled:true,schedule:'Scheduled automatic checks',
+    diagnostics:{status:'ok'},retuning:{status:'waiting'},runner:{needs_attention:false,
+      worker:{state:'running',last_heartbeat_at:1793644000},jobs:[{component:'NBA',kind:'retuning',
+        status:'running',started_at:1793643500,elapsed_seconds:450,cpu_seconds:400,
+        message:'Fitting from archived inputs'}]}});
+  assert.match(html,/Separate learning worker/);
+  assert.match(html,/Capture and grading continue/);
+  assert.match(html,/Running/);
+  assert.match(html,/7m 30s/);
+  assert.doesNotMatch(html,/undefined|NaN|Invalid Date/);
+});
+
+test('Queued retry keeps a learning failure visible and escapes its public message', () => {
+  const html=ui.learningStatus({enabled:true,diagnostics:{status:'ok'},retuning:{status:'error'},
+    runner:{needs_attention:true,worker:{state:'idle'},jobs:[
+      {component:'NFL',kind:'retuning',status:'queued',message:'Queued retry'},
+      {component:'NFL',kind:'retuning',status:'failed',message:'Evidence needs review <unsafe>'}]}});
+  assert.match(html,/Learning needs review/);
+  assert.match(html,/Queued/);
+  assert.match(html,/Failed/);
+  assert.match(html,/&lt;unsafe&gt;/);
+  assert.doesNotMatch(html,/<unsafe>|undefined|NaN|Invalid Date/);
+});
+
 test('NBA daily slate shows date controls and honest waiting states', () => {
   const html = ui.board({date:'2026-10-20',today:'2026-10-20',season:'2026-27',games:[{
     id:'nba-2026-1',home_team:'BOS',away_team:'NYK',tipoff:'2026-10-20T23:00Z',

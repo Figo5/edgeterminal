@@ -127,6 +127,11 @@ def test_non_game_specific_injury_or_wrong_report_cannot_void(isolated,change):
 @pytest.mark.parametrize('days',[0,8])
 def test_reviewed_void_survives_fresh_missing_player_checks_without_churn(isolated,monkeypatch,days):
     from edgeterminal import nba_participation as official
+    from edgeterminal import nba_participation_sources
+    # Exercise the separately reviewed path; automatic gamebooks have their
+    # own tests and would otherwise resolve this archived fixture immediately.
+    monkeypatch.setattr(nba_participation_sources,'collect_missing',lambda *a,**kw:
+        {'ok':True,'requests':0,'checked_at':kw['now']})
     raw,game,args=case()
     raw['boxscore']['players'][0]['statistics'][0]['athletes']=[r for r in raw['boxscore']['players'][0]['statistics'][0]['athletes'] if r['athlete']['id']!='2968436']
     calls=[];_summary_feed(monkeypatch,{game['espn_event_id']:raw},calls)

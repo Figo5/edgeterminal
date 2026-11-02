@@ -19,6 +19,14 @@ import pdfplumber
 
 from . import db, nba_data, nba_identity, nba_store
 
+REVIEWED_METHOD = 'reviewed_official_pdf'
+AUTOMATIC_METHOD = 'automatic_gamebook_v1'
+
+
+def _book_nickname(team):
+    # The official Portland score row and inactive list use the full nickname.
+    return 'Trail Blazers' if team == 'POR' else nba_identity.TEAMS[team][2].split()[-1]
+
 
 def ensure_schema():
     nba_store.ensure_schema()
@@ -103,7 +111,12 @@ def _pdf_proof(source,game,team,full_name,last,page):
     try:
         with pdfplumber.open(io.BytesIO(raw)) as pdf:
             if not 1<=len(pdf.pages)<=40:raise ValueError('unsupported participation PDF page count')
-            pages=[p.extract_text() or '' for p in pdf.pages]
+            if isinstance(page,bool) or not isinstance(page,int) or not 0<=page<len(pdf.pages):
+                raise ValueError('invalid proof page')
+            # Gamebooks have many quarter/play-by-play pages; the selected final
+            # box is sufficient. Injury reports retain their cross-page context.
+            pages=[p.extract_text() or '' if not book or i==page else ''
+                   for i,p in enumerate(pdf.pages)]
     except Exception as exc:
         raise ValueError('official participation PDF cannot be read') from exc
     if isinstance(page,bool) or not isinstance(page,int) or not 0<=page<len(pages):raise ValueError('invalid proof page')
@@ -117,11 +130,11 @@ def _pdf_proof(source,game,team,full_name,last,page):
                 _compact(day.strftime('%A, %B %d, %Y').replace(' 0',' ')) not in compact):
             raise ValueError('official final gamebook game/date header mismatch')
         for label,code,key in [('VISITOR',game['away_team'],'away_score'),('HOME',game['home_team'],'home_score')]:
-            name=nba_identity.TEAMS[code][2];nickname=name.split()[-1]
+            name=nba_identity.TEAMS[code][2];nickname=_book_nickname(code)
             if _compact(label+':'+name) not in compact:raise ValueError('official gamebook team mismatch')
             scores=re.findall(r'^'+re.escape(nickname)+r'\s+(?:\d+\s+){4,}(\d+)\s*$',text,re.M|re.I)
             if len(scores)!=1 or int(scores[0])!=game[key]:raise ValueError('official gamebook final score mismatch')
-        nickname=nba_identity.TEAMS[team][2].split()[-1]
+        nickname=_book_nickname(team)
         sections=re.findall(r'Inactive:\s*'+re.escape(nickname)+r'\s*-\s*(.*?)(?=\nInactive:|\nPoints in the Paint:|$)',text,re.I|re.S)
         if len(sections)!=1 or not re.search(r'(?<!\w)'+re.escape(last)+r'(?!\w)',sections[0],re.I):
             raise ValueError('official gamebook does not list this team/player inactive')
@@ -153,6 +166,13 @@ def _validate(row,now):
     source=_artifact(row['source_artifact_id'],now)
     roster,last=_identity(game,str(row['espn_player_id']),row['team'],row['full_name'],row['roster_artifact_id'],now)
     proof=_pdf_proof(source,game,row['team'],row['full_name'],last,row['page'])
+    saved_proof=json.loads(row.get('proof') or '{}')
+    method=saved_proof.get('verification_method',REVIEWED_METHOD)
+    if method not in {REVIEWED_METHOD,AUTOMATIC_METHOD}:
+        raise ValueError('unsupported participation verification method')
+    if method==AUTOMATIC_METHOD and proof['kind']!='final_gamebook':
+        raise ValueError('automatic participation requires an official final gamebook')
+    proof['verification_method']=method
     for field,value in [('source_sha256',source['sha256']),('roster_sha256',roster['sha256']),
                         ('home_score',game['home_score']),('away_score',game['away_score'])]:
         if field in row and row[field]!=value:raise ValueError('reviewed participation evidence changed')
@@ -160,16 +180,27 @@ def _validate(row,now):
                 home_score=game['home_score'],away_score=game['away_score'],proof=json.dumps(proof,sort_keys=True))
 
 
-def record_reviewed_inactive(game_id,player_id,team,full_name,source_artifact_id,roster_artifact_id,*,page,now=None):
-    """Register visually reviewed official proof, rechecking its text and frozen identity."""
+def _record_inactive(game_id,player_id,team,full_name,source_artifact_id,roster_artifact_id,*,page,now=None,method):
     ensure_schema();stamp=time.time() if now is None else now
     row=_validate({'game_id':game_id,'espn_player_id':str(player_id),'team':team,'full_name':full_name,
         'source_artifact_id':source_artifact_id,'roster_artifact_id':roster_artifact_id,'page':page,
-        'status':'inactive','reviewed_at':stamp},stamp)
+        'status':'inactive','reviewed_at':stamp,'proof':json.dumps({'verification_method':method})},stamp)
     fields=list(row)
     db.ex('INSERT OR IGNORE INTO nba_reviewed_participation('+','.join(fields)+') VALUES('+','.join('?'*len(fields))+')',tuple(row.values()))
     return db.q1('SELECT * FROM nba_reviewed_participation WHERE game_id=? AND espn_player_id=? AND source_artifact_id=? AND roster_artifact_id=?',
         (game_id,str(player_id),source_artifact_id,roster_artifact_id))
+
+
+def record_reviewed_inactive(game_id,player_id,team,full_name,source_artifact_id,roster_artifact_id,*,page,now=None):
+    """Register visually reviewed official proof, rechecking its text and frozen identity."""
+    return _record_inactive(game_id,player_id,team,full_name,source_artifact_id,roster_artifact_id,
+                            page=page,now=now,method=REVIEWED_METHOD)
+
+
+def record_verified_inactive(game_id,player_id,team,full_name,source_artifact_id,roster_artifact_id,*,page,now=None):
+    """Register strict machine-verified gamebook evidence without claiming human review."""
+    return _record_inactive(game_id,player_id,team,full_name,source_artifact_id,roster_artifact_id,
+                            page=page,now=now,method=AUTOMATIC_METHOD)
 
 
 def has_new_review(game_id,last_checked,now):

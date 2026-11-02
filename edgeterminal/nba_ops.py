@@ -651,11 +651,12 @@ def _saved_markets(forecast,game):
 
 
 def grade_due(now):
+    from . import nba_participation_sources
     ensure_schema()
     games=db.q('SELECT DISTINCT g.* FROM nba_games g JOIN nba_forecasts f ON f.game_id=g.game_id '
                "WHERE g.tipoff_ts<=? OR (g.status IN ('final','canceled') AND g.tipoff_ts<=?) "
                'ORDER BY g.tipoff_ts DESC',(now-4*3600,now))
-    count=0;pending_games=0;corrections=0;errors=[]
+    count=0;pending_games=0;corrections=0;errors=[];participation_requests=0
     for game in games:
         graded_at=now
         try:
@@ -697,6 +698,22 @@ def grade_due(now):
                     'participation':{'played':True} if p['status']=='played' else None})
             official={'game_id':game['game_id'],'game_status':actual_game['status'],'home_score':actual_game['home_score'],
                       'away_score':actual_game['away_score'],'players':players,'verified_final':True}
+            proof_budget=min(2,nba_participation_sources.MAX_REQUESTS_PER_RUN-participation_requests)
+            try:
+                proof_check=nba_participation_sources.collect_missing(
+                    nba_store.get_game(game['game_id']),lock,official,box_complete=parsed['box_complete'],
+                    now=graded_at,max_requests=proof_budget)
+                participation_requests+=proof_check['requests']
+                graded_at=max(graded_at,proof_check['checked_at'])
+                proof_failed=not proof_check['ok']
+            except (ValueError,TypeError,KeyError,OSError):
+                # An interrupted lookup may already have used its full allowance.
+                participation_requests+=proof_budget
+                proof_failed=True
+            if proof_failed:
+                errors.append(game['game_id'])
+                db.kv_set('nba_grade_error_'+game['game_id'],
+                          {'checked_at':graded_at,'error':'OfficialParticipationSource'})
             participation=nba_participation.overrides(game['game_id'],official,box_complete=parsed['box_complete'],now=graded_at)
             players.extend({'player_id':pid,'status':'inactive','stats':None} for pid in participation)
             if forecast:
@@ -722,8 +739,13 @@ def grade_due(now):
                     if old.get('result')==grade_result and old.get('actual_value')==graded['actual']:continue
                     proof=participation.get(item['espn_player_id'])
                     detail={'reason':graded['reason'],'source':'ESPN final box score','box_complete':True}
-                    if proof:detail.update(source='NBA official reviewed participation',participation_evidence_id=proof['id'],
-                        box_source_artifact_id=source,proof=json.loads(proof['proof']))
+                    if proof:
+                        proof_body=json.loads(proof['proof'])
+                        label=('NBA official machine-verified participation'
+                               if proof_body.get('verification_method')==nba_participation.AUTOMATIC_METHOD
+                               else 'NBA official reviewed participation')
+                        detail.update(source=label,participation_evidence_id=proof['id'],
+                            box_source_artifact_id=source,proof=proof_body)
                     nba_store.add_grade_revision(lock['lock_id'],item['rank'],grade_result,graded['actual'],
                         proof['source_artifact_id'] if proof else source,detail=detail,now=graded_at)
                     count+=1
@@ -731,7 +753,7 @@ def grade_due(now):
         except Exception as exc:
             db.kv_set('nba_grade_checked_'+game['game_id'],graded_at)
             db.kv_set('nba_grade_error_'+game['game_id'],{'checked_at':graded_at,'error':type(exc).__name__})
-            errors.append(game['game_id'])
+            if game['game_id'] not in errors:errors.append(game['game_id'])
     # Report the saved unresolved total even when a grade is unchanged or not due.
     pending_props=db.q1("SELECT COUNT(*) n FROM nba_selection_lock_items i "
         "JOIN nba_selection_locks l ON l.lock_id=i.lock_id JOIN nba_games g ON g.game_id=i.game_id "
@@ -740,7 +762,8 @@ def grade_due(now):
     return {'ok':not errors,'source_errors':errors,'message':f'{count} new statistical grades recorded; {pending_props} completed-game props still pending; {pending_games} games awaiting final results; {len(errors)} source errors.'+
                        (f' {corrections} final-score corrections retained as new evidence.' if corrections else ''),
             'new_grades':count,'pending':pending_props+pending_games,'pending_props':pending_props,
-            'pending_games':pending_games,'corrections':corrections}
+            'pending_games':pending_games,'corrections':corrections,
+            'participation_requests':participation_requests}
 
 
 def evaluate(now):
@@ -792,7 +815,7 @@ def run(now=None):
         nba_store.set_cadence('props',_props_cadence(stamp,nba_store.get_cadence('props')),now=stamp)
     results['grading']=step('grading',stamp,300,lambda:grade_due(stamp))
     from . import nba_spread_learning
-    results['spread_learning']=step('spread_learning',stamp,300,lambda:nba_spread_learning.run(stamp))
+    results['spread_learning']=step('spread_learning',stamp,300,lambda:nba_spread_learning.refresh_inputs(stamp))
     # Publish frozen historical evidence for this version, without refitting it.
     coverage=db.kv_get('nba_evaluation') or {}
     changed_model=(coverage.get('model') or {}).get('fingerprint')!=model_info()['fingerprint']

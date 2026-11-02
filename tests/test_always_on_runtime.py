@@ -104,6 +104,53 @@ def test_preflight_rejects_provider_key_in_web(tmp_path):
             'ODDS_PROVIDER': 'espn', 'SPORTSGAMEODDS_API_KEY': 'never-log'})
 
 
+def test_learning_child_has_independent_budget_and_no_credentials(tmp_path, monkeypatch):
+    monkeypatch.setenv('SPORTSGAMEODDS_API_KEY', 'must-not-inherit')
+    monkeypatch.setenv('OPENAI_API_KEY', 'must-not-inherit')
+    code = ('import os,json;assert not os.getenv("SPORTSGAMEODDS_API_KEY");'
+            'assert not os.getenv("OPENAI_API_KEY");'
+            'assert os.getenv("EDGETERMINAL_OFFLINE_LEARNER")=="1";'
+            'assert os.getenv("OMP_NUM_THREADS")=="1";'
+            'print(json.dumps(dict(success=True,designation="PASS",readiness="RESEARCH_ONLY")))')
+    result = runtime.run_cycle(tmp_path, threading.Event(), command=[sys.executable, '-c', code], learning=True)
+    assert result['success']
+    assert runtime.MAX_CYCLE_SECONDS == 900
+    assert runtime.MAX_LEARNING_SECONDS > runtime.MAX_CYCLE_SECONDS
+
+
+def test_preflight_rejects_provider_key_in_learner(tmp_path):
+    with pytest.raises(ValueError, match='learner'):
+        runtime.preflight(tmp_path, mode='learner', environ={
+            'HOSTED_MODE': 'true', 'PUBLIC_URL': 'https://private.example.com',
+            'ODDS_PROVIDER': 'espn', 'SPORTSGAMEODDS_API_KEY': 'never-log'})
+
+
+def test_learning_controller_uses_its_own_health_file(tmp_path):
+    runtime._heartbeat(tmp_path, {'status': 'running'}, learning=True)
+    assert (tmp_path / 'data/runtime/learning.json').is_file()
+    assert not (tmp_path / 'data/runtime/worker.json').exists()
+
+
+def test_learning_health_requires_its_own_recent_heartbeat(tmp_path):
+    root=state(tmp_path)
+    con=sqlite3.connect(str(root/'data/edgeterminal.db'))
+    con.execute('CREATE TABLE kv(k TEXT PRIMARY KEY,v TEXT,updated_at REAL)')
+    con.execute('INSERT INTO research_refresh_ticks VALUES(998,999,1)');con.commit()
+    assert not runtime.learner_health(root,now=1000)['ok']
+    con.execute('INSERT INTO kv VALUES(?,?,?)',('learning_worker_heartbeat',json.dumps({'checked_at':999}),999));con.commit()
+    assert runtime.learner_health(root,now=1000)['ok']
+    assert not runtime.learner_health(root,now=3000)['ok']
+    con.close()
+
+
+def test_learner_controller_rejects_a_symlink_lock(tmp_path):
+    directory=tmp_path/'data/runtime';directory.mkdir(parents=True)
+    target=tmp_path/'other';target.touch()
+    (directory/'learning-controller.lock').symlink_to(target)
+    with pytest.raises((OSError,ValueError)):
+        runtime.serve_worker(tmp_path,once=True,learning=True)
+
+
 def test_cycle_schedule_skips_missed_intervals():
     assert runtime.cycle_delay(1000, 1010, 300) == 290
     assert runtime.cycle_delay(1000, 1610, 300) == 290

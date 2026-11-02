@@ -45,8 +45,11 @@ def isolated(tmp_path,monkeypatch):
           'revision INTEGER,result TEXT,actual_value REAL,graded_at REAL,source_artifact_id INTEGER)')
     for i,at in ((1,90.),(2,150.),(3,201.),(4,350.)):
         body=json.dumps({'source':i}).encode();sha=hashlib.sha256(body).hexdigest()
+        kind='final-boxscore' if i==4 else 'fixture'
+        url=('https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=123'
+             if i==4 else 'https://site.api.espn.com/source')
         db.ex('INSERT INTO nba_source_artifacts VALUES(?,?,?,?,?,?,?)',
-              (i,'fixture','https://site.api.espn.com/source',at,200,sha,body))
+              (i,kind,url,at,200,sha,body))
     for row in evidence()['rows']:
         qid=row['quote_id'];gid=row['game_id']
         db.ex('INSERT OR IGNORE INTO nba_games VALUES(?,?,?)',(gid,row['kickoff_at'],'final'))

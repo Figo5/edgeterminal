@@ -1,6 +1,7 @@
 # Automatic NBA and NFL learning
 
-EdgeTerminal uses its existing five-minute built-in research worker. It does
+EdgeTerminal uses its existing five-minute built-in research worker and a
+separate offline learning process. It does
 not require a Codex heartbeat, an open browser, or a user to request grading.
 The Mac must be awake and online for source refresh and final grading. Fitting
 itself reads archived local data and makes no provider requests.
@@ -9,7 +10,7 @@ itself reads archived local data and makes no provider requests.
 
 - Completed games update the existing prior-game player inputs on normal
   source refreshes. Forecasts are saved before kickoff and never replaced.
-- After 4 AM Eastern, the first available worker tick runs daily diagnostics.
+- After 4 AM Eastern, the first available worker tick queues daily diagnostics.
   They describe saved probability accuracy, errors, market/version coverage
   and NBA role/season-transition cohorts. They do not tune parameters.
 - A first retuning attempt runs immediately; a completed activation or rejection
@@ -42,10 +43,24 @@ approved predecessor, or the original baseline, with an audit event. A losing
 night alone cannot trigger a rollback. Damaged original baseline artifacts
 still fail closed through their existing integrity guards.
 
-About & data displays the current version, last learning decision, diagnostics
-and next scheduled check. Reads never train or activate a model. The worker
-uses the same research lock as source capture, preserving provider quota
-guards and immutable forecasts, lines, selections and grades.
+About & data displays the current version, last learning decision, diagnostics,
+queued/running/failed jobs and next scheduled check. Reads never train or
+activate a model. Heavy diagnostics/fitting use a separate process and OS lock;
+only brief verified publication uses the source worker's research lock. No
+expensive proof replay holds the SQLite write transaction. Current relevant
+result/source/active-version fingerprints are checked before a decision.
+
+Job heartbeats never authorize duplicate fitting while the OS lock is held.
+Interrupted jobs recover automatically; durable registered proposals resume
+publication without consuming their held-out cohort again. A queued retry does
+not clear a failed check. Actual per-job wall/CPU timings replace the misleading
+shared outer-worker start timestamp for new automatic jobs.
+
+The independent learner has three-hour wall and one-hour CPU resource ceilings,
+one numeric-library thread, no provider credentials and blocked networking.
+These ceilings do not change the normal worker's 900-second hosted timeout,
+model parameters, cutoffs, source quotas or validation rules. Stop both source
+and learning writers for any future final state archive or host cutover.
 
 ## First evaluation, October 28, 2026
 

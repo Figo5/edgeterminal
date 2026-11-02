@@ -118,6 +118,39 @@ def test_unknown_combined_learning_error_remains_visible_to_both_sports(isolated
     assert product_insights.unresolved_failures(rows, 1000., sport='NBA')
 
 
+def test_successful_source_tick_does_not_hide_a_failed_background_fit(isolated, monkeypatch):
+    from edgeterminal import model_learning
+    monkeypatch.setattr(model_learning, 'status', lambda *a, **kw:
+                        {'runner': {'needs_attention': True, 'jobs': [{'status': 'queued'}]}})
+    db.ex('INSERT INTO research_refresh_ticks VALUES(?,?,?,?)', ('source-ok', 950., 951., 1))
+    db.kv_set('nfl_current_schedule', {'week': 8, 'game_ids': []})
+    health = product_insights.health(1000.)
+    assert health['state'] == 'attention'
+    assert any('learning' in s.lower() and 'review' in s for s in health['warnings'])
+    assert health['learning']['runner']['needs_attention']
+
+
+def test_nba_page_check_reports_independent_learning_failure(isolated, monkeypatch):
+    from edgeterminal import api
+    monkeypatch.setattr(api.visit_refresh, 'check', lambda:
+                        {'ok': True, 'status': 'cached', 'did_work': False})
+    monkeypatch.setattr(api.nba_ops, 'status', lambda:
+                        {'checks': [], 'learning': {'runner': {'needs_attention': True}}})
+    result = api.product_nba_check()
+    assert not result['ok'] and result['attention'] == 'nba_updates'
+
+
+def test_learning_metadata_failure_remains_a_readable_sanitized_health_warning(isolated, monkeypatch):
+    from edgeterminal import model_learning
+    def broken(*a, **kw):
+        raise ValueError('private-artifact-content')
+    monkeypatch.setattr(model_learning, 'status', broken)
+    health = product_insights.health(1000.)
+    assert health['state'] == 'attention'
+    assert health['learning']['runner']['needs_attention']
+    assert 'private-artifact-content' not in json.dumps(health)
+
+
 def test_result_source_retries_transport_once_without_using_cached_bytes(monkeypatch):
     calls = []
     class Source:

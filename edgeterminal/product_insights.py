@@ -150,7 +150,7 @@ def update_checks(steps: list[dict], now: float, *, sport: str = 'NFL') -> list[
               'top_five_capture': 'Five-prop selections',
               'top_five_grading': 'Player-prop grading', 'game_grading': 'Game grading',
               'challenger_grading': 'Challenger grading',
-              'model_learning': 'Automatic model learning',
+              'model_learning': 'Learning scheduling & model integrity',
               'near_kickoff_market': 'Near-kickoff game quotes'}
     checks = []
     for step in steps:
@@ -212,6 +212,14 @@ def health(now: float | None = None) -> dict:
                 near.append(item)
     lag = stamp - tick['started_at'] if tick else None
     warnings = []
+    from . import model_learning
+    try:
+        learning = model_learning.status('NFL', now=stamp)
+    except (ValueError,OSError,KeyError,TypeError):
+        learning = {'enabled': True, 'runner': {'needs_attention': True},
+                    'message': 'Learning metadata needs an integrity review.'}
+    if (learning.get('runner') or {}).get('needs_attention'):
+        warnings.append('Automatic learning needs review. Source capture and grading continue; see About & data.')
     if lag is None or lag > 12 * 60:
         warnings.append('The background worker has not checked in recently. Updates resume when the background service runs.')
     elif tick and not tick['success'] and (failures or not all_failures):
@@ -246,6 +254,7 @@ def health(now: float | None = None) -> dict:
             'near_kickoff_missing': near, 'checked_at': stamp,
             'prop_coverage': prop_coverage,
             'update_checks': checks,
+            'learning': learning,
             'runtime': 'hosted' if settings.hosted_mode else 'local',
             'last_backup_at': backup.get('created_at'),
             'readiness': 'RESEARCH_ONLY', 'designation': 'PASS'}

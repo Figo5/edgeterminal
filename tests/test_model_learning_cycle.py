@@ -127,7 +127,7 @@ def test_damaged_active_artifact_rolls_back_only_after_integrity_check(isolated,
 
 
 def test_built_in_worker_runs_learning_after_nba_sources_and_grades(isolated,monkeypatch):
-    from edgeterminal import research_refresh,nba_ops
+    from edgeterminal import research_refresh,nba_ops,learning_worker
     monkeypatch.setattr(settings,'nba_research_enabled',True)
     monkeypatch.setattr(research_refresh,'_events',lambda now:[])
     monkeypatch.setattr(research_refresh,'_due',lambda name,*args:name in {'nba_research','model_learning'})
@@ -138,7 +138,8 @@ def test_built_in_worker_runs_learning_after_nba_sources_and_grades(isolated,mon
     monkeypatch.setattr(research_refresh.paper_research,'evaluate',lambda *args,**kwargs:{})
     order=[]
     monkeypatch.setattr(nba_ops,'run',lambda now:order.append('NBA grading') or {'ok':True})
-    monkeypatch.setattr(model_learning,'run',lambda now:order.append('learning') or {'ok':True})
+    monkeypatch.setattr(model_learning,'run',lambda now:pytest.fail('heavy learning inside source refresh'))
+    monkeypatch.setattr(learning_worker,'refresh_checks',lambda now:order.append('learning') or {'ok':True})
     result=research_refresh._run_locked(1793188800.,record_tick=False)
     assert result['success'],result
     assert order==['NBA grading','learning']

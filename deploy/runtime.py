@@ -18,6 +18,7 @@ import os
 from pathlib import Path
 import re
 import signal
+import stat
 import sqlite3
 import subprocess
 import sys
@@ -29,6 +30,7 @@ from urllib.request import Request, urlopen
 
 INTERVAL = 300
 MAX_CYCLE_SECONDS = 900
+MAX_LEARNING_SECONDS = 3 * 3600
 
 
 def _git(root, *args):
@@ -51,8 +53,8 @@ def preflight(root, *, mode, environ=None):
         raise ValueError('An HTTPS PUBLIC_URL with one origin is required')
     if env.get('ODDS_PROVIDER') != 'espn' or env.get('ODDS_API_KEY', ''):
         raise ValueError('Use ODDS_PROVIDER=espn and omit the unused Odds API key')
-    if mode == 'web' and env.get('SPORTSGAMEODDS_API_KEY', ''):
-        raise ValueError('The web service must not receive the provider key')
+    if mode in {'web', 'learner'} and env.get('SPORTSGAMEODDS_API_KEY', ''):
+        raise ValueError(f'The {mode} service must not receive the provider key')
     raw = env.get('DATABASE_URL', 'sqlite:///./data/edgeterminal.db')
     if not raw.startswith('sqlite:///'):
         raise ValueError('This deployment requires one local SQLite state directory')
@@ -115,13 +117,38 @@ def worker_health(root, *, now=None, max_age=1500):
         return {'ok': False, 'status': 'worker_state_unavailable'}
 
 
-def run_cycle(root, stopping, *, command=None, timeout=MAX_CYCLE_SECONDS):
-    command = command or [sys.executable, '-m', 'edgeterminal.research_refresh', 'run']
+def learner_health(root, *, now=None, max_age=1500):
+    """Learning heartbeat is independent of genuine source-worker ticks."""
+    stamp=time.time() if now is None else now
+    try:
+        database=Path(root)/'data/edgeterminal.db'
+        con=sqlite3.connect(database.resolve().as_uri()+'?mode=ro',uri=True,timeout=5)
+        try:
+            con.execute('PRAGMA query_only=ON')
+            row=con.execute("SELECT v FROM kv WHERE k='learning_worker_heartbeat'").fetchone()
+        finally:
+            con.close()
+        at=json.loads(row[0])['checked_at'] if row else None
+        healthy=isinstance(at,(int,float)) and not isinstance(at,bool) and math.isfinite(at) and 0<=stamp-at<=max_age
+        return {'ok':healthy,'status':'current' if healthy else 'learning_heartbeat_stale'}
+    except (OSError,sqlite3.Error,TypeError,ValueError,KeyError):
+        return {'ok':False,'status':'learning_state_unavailable'}
+
+
+def run_cycle(root, stopping, *, command=None, timeout=None, learning=False):
+    timeout = (MAX_LEARNING_SECONDS if learning else MAX_CYCLE_SECONDS) if timeout is None else timeout
+    command = command or [sys.executable, '-m', 'edgeterminal.learning_worker' if learning else 'edgeterminal.research_refresh', 'run']
+    environment = dict(os.environ, PYTHONDONTWRITEBYTECODE='1')
+    if learning:
+        environment = {key: value for key, value in environment.items()
+                       if not any(part in key.upper() for part in ('KEY', 'SECRET', 'PASSWORD', 'TOKEN', 'CREDENTIAL'))}
+        environment.update(EDGETERMINAL_OFFLINE_LEARNER='1', OMP_NUM_THREADS='1', OPENBLAS_NUM_THREADS='1',
+                           MKL_NUM_THREADS='1', NUMEXPR_NUM_THREADS='1', VECLIB_MAXIMUM_THREADS='1')
     started = time.monotonic()
     process = subprocess.Popen(command, cwd=str(root), stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT, text=True,
                                start_new_session=True,
-                               env=dict(os.environ, PYTHONDONTWRITEBYTECODE='1'))
+                               env=environment)
     while True:
         if stopping.is_set() or time.monotonic() - started > timeout:
             try:
@@ -165,7 +192,7 @@ def cycle_delay(started, current, interval=INTERVAL):
     return max(0, max(1, math.ceil(elapsed / interval)) * interval - elapsed)
 
 
-def _heartbeat(root, status):
+def _heartbeat(root, status, *, learning=False):
     directory = Path(root) / 'data/runtime'
     directory.mkdir(parents=True, exist_ok=True)
     if directory.is_symlink():
@@ -178,34 +205,43 @@ def _heartbeat(root, status):
             json.dump(dict(status, checked_at=time.time()), stream, sort_keys=True)
             stream.flush()
             os.fsync(stream.fileno())
-        temporary.replace(directory / 'worker.json')
+        temporary.replace(directory / ('learning.json' if learning else 'worker.json'))
     finally:
         if temporary is not None:
             temporary.unlink(missing_ok=True)
 
 
-def serve_worker(root, *, once=False):
+def serve_worker(root, *, once=False, learning=False):
     stopping = threading.Event()
     for sig in (signal.SIGTERM, signal.SIGINT):
         signal.signal(sig, lambda *_: stopping.set())
     directory = Path(root) / 'data/runtime'
     directory.mkdir(parents=True, exist_ok=True)
-    with (directory / 'worker-controller.lock').open('a') as lock:
+    parent=os.open(str(directory),os.O_RDONLY|os.O_DIRECTORY|os.O_NOFOLLOW)
+    try:
+        fd=os.open('learning-controller.lock' if learning else 'worker-controller.lock',
+                   os.O_CREAT|os.O_RDWR|os.O_NOFOLLOW|os.O_NONBLOCK,0o600,dir_fd=parent)
+    finally:
+        os.close(parent)
+    if not stat.S_ISREG(os.fstat(fd).st_mode):
+        os.close(fd)
+        raise ValueError('Controller lock must be a regular file')
+    with os.fdopen(fd,'a') as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
         while not stopping.is_set():
             started = time.monotonic()
             # A host-side checkout must not switch the code of the next child.
             try:
-                preflight(root, mode='worker')
+                preflight(root, mode='learner' if learning else 'worker')
             except (ValueError, OSError, subprocess.SubprocessError):
-                _heartbeat(root, {'status': 'release_changed', 'success': False})
+                _heartbeat(root, {'status': 'release_changed', 'success': False}, learning=learning)
                 return 2
-            _heartbeat(root, {'status': 'running'})
+            _heartbeat(root, {'status': 'running'}, learning=learning)
             try:
-                result = run_cycle(root, stopping)
+                result = run_cycle(root, stopping, learning=learning)
             except OSError:
                 result = {'status': 'launch_failed', 'success': False}
-            _heartbeat(root, result)
+            _heartbeat(root, result, learning=learning)
             print(json.dumps(result, sort_keys=True), flush=True)
             if once:
                 return 0 if result['success'] else 2
@@ -215,12 +251,16 @@ def serve_worker(root, *, once=False):
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument('mode', choices=('web', 'worker', 'check-worker', 'check-web', 'preflight'))
+    parser.add_argument('mode', choices=('web', 'worker', 'learner', 'check-worker', 'check-learner', 'check-web', 'preflight'))
     parser.add_argument('--root', type=Path, default=Path(__file__).resolve().parents[1])
     parser.add_argument('--once', action='store_true')
     args = parser.parse_args()
     if args.mode == 'check-worker':
         result = worker_health(args.root)
+        print(json.dumps(result, sort_keys=True))
+        return 0 if result['ok'] else 1
+    if args.mode == 'check-learner':
+        result = learner_health(args.root)
         print(json.dumps(result, sort_keys=True))
         return 0 if result['ok'] else 1
     if args.mode == 'check-web':
@@ -232,12 +272,14 @@ def main():
         except (OSError, KeyError, ValueError):
             return 1
     try:
-        result = preflight(args.root, mode='web' if args.mode == 'web' else 'worker')
+        result = preflight(args.root, mode='web' if args.mode == 'web' else 'learner' if args.mode == 'learner' else 'worker')
         if args.mode == 'preflight':
             print(json.dumps(result, sort_keys=True))
             return 0
         if args.mode == 'worker':
             return serve_worker(args.root, once=args.once)
+        if args.mode == 'learner':
+            return serve_worker(args.root, once=args.once, learning=True)
         os.chdir(args.root)
         os.execv(sys.executable, [sys.executable, '-m', 'uvicorn', 'edgeterminal.api:app',
                                 '--host', '0.0.0.0', '--port', '8799', '--workers', '1'])

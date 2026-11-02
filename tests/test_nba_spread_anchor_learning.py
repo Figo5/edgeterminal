@@ -16,6 +16,7 @@ START=1700000000.
 def database(tmp_path,monkeypatch):
     if db._conn is not None:db._conn.close();db._conn=None
     monkeypatch.setattr(settings,'database_url',f'sqlite:///{tmp_path / "spread-anchor.db"}')
+    monkeypatch.setattr(learning,'_publication_time',lambda stamp:stamp,raising=False)
     db.init();nba_store.ensure_schema();learning.ensure_schema()
     yield
     db._conn.close();db._conn=None
@@ -115,14 +116,14 @@ def _rejected_proposal(version='proposal-one'):
 
 def test_rejection_consumes_holdout_once_and_family_rename_cannot_refund_it(database,monkeypatch):
     proposal=_rejected_proposal()
-    monkeypatch.setattr(learning.data,'refresh',lambda *a,**kw:dict(status='ok',requests=0))
+    monkeypatch.setattr(learning.data,'refresh',lambda *a,**kw:pytest.fail('learner fetched sources'))
     monkeypatch.setattr(learning,'build_candidate',lambda now:copy.deepcopy(proposal))
-    assert learning.run(10000.)['status']=='rejected'
+    assert learning.run_fitting(10000.)['status']=='rejected'
     assert db.q1('SELECT COUNT(*) n FROM nba_spread_validation_consumption')['n']==60
     assert learning.active() is None
     with pytest.raises(Exception,match='append-only'):db.ex('DELETE FROM nba_spread_validation_consumption')
     proposal=_rejected_proposal('renamed-family-proposal')
-    result=learning.run(10000.+learning.WEEK+1)
+    result=learning.run_fitting(10000.+learning.WEEK+1)
     assert result['status']=='error'
     assert db.q1('SELECT COUNT(*) n FROM nba_spread_model_candidates')['n']==1
     assert db.q1('SELECT COUNT(*) n FROM nba_spread_model_events')['n']==1

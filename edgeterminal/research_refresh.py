@@ -291,8 +291,10 @@ def run(now: float | None = None, *, record_tick: bool = True,
             fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
         except BlockingIOError:
             return {"status": "already_running", "steps": {}}
-        return _run_locked(stamp, record_tick=record_tick,
-                           force_prop_quotes=force_prop_quotes)
+        from .learning_publication import research_owned
+        with research_owned():
+            return _run_locked(stamp, record_tick=record_tick,
+                               force_prop_quotes=force_prop_quotes)
 
 
 def _run_locked(now: float, *, record_tick: bool = True,
@@ -391,8 +393,8 @@ def _run_locked(now: float, *, record_tick: bool = True,
         from . import nba_ops
         attempt('nba_research', lambda: nba_ops.run(now))
     if _due('model_learning', now, 300):
-        from . import model_learning
-        attempt('model_learning', lambda: model_learning.run(now))
+        from . import learning_worker
+        attempt('model_learning', lambda: learning_worker.refresh_checks(now))
     cadence = interval(now, events)
     complete = time.time()
     successful = all(item["ok"] for item in steps.values())

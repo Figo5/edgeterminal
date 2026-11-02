@@ -14,10 +14,11 @@ describe that installation. No browser background timer is required for grading.
 ## Deployment contract
 
 - One authoritative host, one clean committed checkout, one persistent local
-  state directory. Both containers mount the same `data/` and `reports/`.
-- One web process in `HOSTED_MODE=true`; one worker controller calling the normal
-  `edgeterminal.research_refresh run` CLI. Its existing cadence, quota guards,
-  append-only ledgers and shared research lock remain in effect.
+  state directory. The services mount the same `data/` and `reports/`.
+- One web process in `HOSTED_MODE=true`; one source/grading worker controller
+  calling the normal `edgeterminal.research_refresh run` CLI; and one independent
+  offline learner. Existing source cadence, quota guards, append-only ledgers
+  and shared publication lock remain in effect.
 - Keep every supported-game pick. This package adds no selection threshold,
   official-pick activation, stakes, Odds API call, or Codex automation.
 - SQLite WAL and `fcntl` locks require a normal local Linux filesystem; do not
@@ -28,6 +29,41 @@ describe that installation. No browser background timer is required for grading.
 - State includes the database, `data/research`, `data/nflverse`, and `reports`.
   Model artifacts, source snapshots, historical freezes and corrections move
   together. Do not migrate only the `.db` file.
+
+## Independent learning lifecycle
+
+The five-minute source/grading worker queues due learning without fitting or
+replaying whole validation histories. Bounded historical source collection
+remains with that worker. The learner consumes archived evidence, has its own
+OS lock and persistent job/event ledger, and never receives the provider env
+file. Its Compose service has no network, one CPU, background scheduling and
+single-thread numeric-library limits. Model parameters and acceptance gates
+are unchanged.
+
+The ordinary controller retains its **900-second** cycle limit. The separate
+learner controller and CLI have a **three-hour wall-time** limit; the CLI also
+has a **one-hour CPU** budget. These are resource ceilings, not expected task
+durations. Jobs record their own real start/end, elapsed and CPU time. The
+previous two-hour observation covered whole-cycle wall time and did not measure
+two hours of fitting CPU. `check-learner` reads an independent job heartbeat;
+it never substitutes for a genuine source/grading tick.
+
+One learner process owns each job until it exits. An old heartbeat cannot
+authorize a second fitter while the OS lock is held. Stopped or timed-out jobs
+are recorded as interrupted and retried by the next owner. Candidate
+registration checkpoints are stored in the same database transaction as the
+proposal, so recovery resumes guarded publication instead of refitting a spent
+holdout. Expensive proof verification runs before the brief research lock and
+SQLite publication transaction; relevant source/result heads are checked again
+before activation. Changed evidence or a busy capture lock defers publication.
+
+About & data displays separate learning job health. Queuing a retry does not
+erase a failed attempt, and a current source tick does not imply model learning
+has completed successfully. The Mac version uses the separate
+`com.edgeterminal.learning` LaunchAgent (`python -m
+edgeterminal.learning_scheduler install` after committing/releasing reviewed
+code). Its original app and five-minute source LaunchAgents stay separate.
+Both still require the Mac to be awake; this does not complete Windows cutover.
 
 ## Host and access decision still needed
 
@@ -107,8 +143,11 @@ are rejected. Nested SQLite files or unfinished WAL/journal/temp files under
 the filesystem archives are rejected rather than copied raw. Database triggers
 survive the backup.
 
-For a final migration, first stop the local web and research LaunchAgents and
-confirm the research lock is free. A lock on one host cannot stop a worker on a
+For a final migration, first stop the local web, research **and learning**
+LaunchAgents and confirm both research and learning locks are free. The archive
+tool is unchanged and its research lock alone cannot stop an offline fit from
+writing a new proposal. On an already hosted machine, stop all three Compose
+services before creating the final migration archive. A lock on one host cannot stop a worker on a
 different copied database; neither a file lock nor a local DB lease solves that.
 Keep the old local files intact and its services unloaded during cloud operation.
 
@@ -139,7 +178,7 @@ storage or claim offsite backups are already configured. Restore tests should us
 scratch state, never overwrite the running database. Archive hashes protect
 consistency; preserve the manifest independently if authenticity is required.
 
-Rollback requires stopping the hosted writer first, archiving its newest state,
+Rollback requires stopping the hosted source and learning writers first, archiving their newest state,
 restoring that state to the Mac, verifying it, and only then restarting launchd.
 Do not restart the old Mac database while the host is still writing.
 

@@ -1,4 +1,4 @@
-"""Recorded learning cycles run inside the shared research-refresh lock.
+"""Recorded learning dispatch and separately executed offline jobs.
 
 Reads never fit models. New fits are isolated from capture, have held-out
 validation, and can only become active through the append-only registry.
@@ -84,6 +84,8 @@ def _four_am(now):
 
 
 def _next_due(last, kind, now, evidence_key=None):
+    if last and last['status'] == 'deferred' and last['detail'].get('retry_after_seconds') == RETRY:
+        return last['started_at'] + RETRY
     if kind == 'diagnostics':
         start = _four_am(now)
         if now < start.timestamp():
@@ -136,9 +138,10 @@ def _train(sport, now):
     if family and not _registry().holdout_available(sport, family,
             {row['game_id'] for row in result['evaluation']['rows']}):
         return {'status': 'waiting', 'reason': 'New untouched outer validation games are required before another proposal.'}
+    publication_time = max(now, time.time())
     candidate = _registry().register_candidate(sport, result['version'], result['training_cutoff'],
-        result['artifact'], result['evaluation'], result['sources'], now=now)
-    decision = _registry().activate_if_passes(candidate['candidate_id'], now=now)
+        result['artifact'], result['evaluation'], result['sources'], now=publication_time)
+    decision = _registry().activate_if_passes(candidate['candidate_id'], now=publication_time)
     return {'status': decision['status'], 'candidate_id': candidate['candidate_id'],
             'version': result['version'],
             'reason': decision.get('reason'), 'reasons': decision.get('reasons', []),
@@ -163,6 +166,9 @@ def _integrity(sport, now):
     try:
         registry.verify_active(sport, now=now)
     except (ValueError, OSError, KeyError, TypeError) as exc:
+        from .learning_publication import PublicationDeferred
+        if isinstance(exc, PublicationDeferred):
+            raise
         if registry.active(sport) is None:
             raise
         result = registry.rollback(sport, 'Active artifact integrity check failed: ' + str(exc)[:180], now=now)
@@ -172,7 +178,7 @@ def _integrity(sport, now):
 
 
 def run(now=None):
-    """Attempt due learning work; caller holds research_refresh.LOCK."""
+    """Explicit synchronous maintenance entry; production refresh only dispatches."""
     now = time.time() if now is None else now
     if isinstance(now, bool) or not math.isfinite(now):
         raise ValueError('learning time must be finite')
@@ -235,6 +241,104 @@ def run(now=None):
                        'An automatic learning check needs review; the built-in worker retries.'}
 
 
+def refresh_checks(now=None):
+    """Cheap active checks and idempotent dispatch; never fit or replay sources."""
+    from . import learning_worker
+    stamp = time.time() if now is None else now
+    if isinstance(stamp, bool) or not math.isfinite(stamp):
+        raise ValueError('learning time must be finite')
+    ensure_schema()
+    sports = {}
+    healthy = True
+    for sport in SPORTS:
+        checks = {}
+        evidence = _evidence_key(sport)
+        damaged = False
+        try:
+            _registry().load_active(sport)
+        except (ValueError, OSError, KeyError, TypeError) as exc:
+            damaged = True; healthy = False
+            prior = _last(sport, 'integrity')
+            if not prior or prior['status'] != 'error':
+                _record(sport, 'integrity', stamp, evidence, {'status': 'error',
+                    'error_type': type(exc).__name__, 'message': 'Active model integrity needs an offline review; capture fails closed.'})
+            checks['integrity'] = {'status': 'error', 'message': 'Active model integrity needs review.'}
+        for kind in ('diagnostics', 'retuning'):
+            last = _last(sport, kind)
+            if not (damaged and kind == 'diagnostics') and stamp < _due(sport, last, kind, stamp, evidence):
+                checks[kind] = {'status': 'cached'}
+            elif kind == 'retuning' and (damaged or _near_kickoff(stamp)):
+                checks[kind] = {'status': 'deferred', 'reason': 'Capture and active integrity take priority.'}
+            else:
+                job = learning_worker.enqueue(sport, kind, now=stamp)
+                checks[kind] = {'status': job['state'], 'job_id': job['id']}
+        sports[sport] = checks
+    runner = learning_worker.status(now=stamp)
+    return {'ok': healthy, 'learning_ok': not runner['needs_attention'], 'sports': sports,
+            'runner': runner, 'designation': 'PASS', 'readiness': 'RESEARCH_ONLY',
+            'message': 'Due learning is queued separately; capture and grading continue.'}
+
+
+def run_kind(sport, kind, now=None):
+    """Execute exactly one job outside the capture lock, retaining all gates."""
+    if sport not in SPORTS or kind not in ('diagnostics', 'retuning'):
+        raise ValueError('unsupported learning action')
+    stamp = time.time() if now is None else now
+    if isinstance(stamp, bool) or not math.isfinite(stamp):
+        raise ValueError('learning time must be finite')
+    ensure_schema()
+    evidence = _evidence_key(sport)
+    monotonic, cpu = time.monotonic(), time.process_time()
+    try:
+        if kind == 'retuning' and _near_kickoff(stamp):
+            detail = {'status': 'deferred', 'retry_after_seconds': RETRY,
+                      'reason': 'Upcoming kickoff takes priority; fitting resumes automatically.'}
+        else:
+            recovery = _integrity(sport, stamp) if kind == 'diagnostics' else None
+            if kind == 'retuning':
+                _registry().load_active(sport)
+            detail = _diagnostics(sport, stamp) if kind == 'diagnostics' else _train(sport, stamp)
+            if not isinstance(detail, dict):
+                raise ValueError('learning adapter returned no structured result')
+            detail = dict(detail, status=detail.get('status', 'ok'))
+            if recovery:
+                detail['integrity_rollback'] = recovery
+            prior = _last(sport, 'integrity')
+            if kind == 'diagnostics' and prior and prior['status'] == 'error':
+                _record(sport, 'integrity', stamp, evidence,
+                        {'status': 'ok', 'message': 'Offline active integrity recheck succeeded.'})
+            if detail['status'] == 'deferred':
+                detail['retry_after_seconds'] = RETRY
+            json.dumps(detail, allow_nan=False)
+    except Exception as exc:
+        from .learning_publication import PublicationDeferred
+        detail = ({'status': 'deferred', 'retry_after_seconds': RETRY,
+                   'reason': 'Proof changed or capture owns publication; the learner retries.'}
+                  if isinstance(exc, PublicationDeferred) else
+                  {'status': 'error', 'error_type': type(exc).__name__,
+                   'message': 'Offline learning check failed; the next due attempt retries.'})
+    if kind == 'retuning':
+        detail['learning_protocol'] = _protocol(sport)
+    detail.update(execution_started_at=stamp, execution_elapsed_seconds=time.monotonic() - monotonic,
+                  execution_cpu_seconds=time.process_time() - cpu)
+    return _record(sport, kind, stamp, evidence, detail)
+
+
+def resume_candidate(sport, candidate_id):
+    """Finish a durably registered proposal after interruption, without refitting."""
+    if sport not in SPORTS:
+        raise ValueError('unsupported learning sport')
+    stamp = time.time()
+    candidate = _registry()._candidate(candidate_id)
+    if not candidate or candidate['sport'] != sport:
+        raise ValueError('learning checkpoint candidate identity mismatch')
+    detail = _registry().activate_if_passes(candidate_id, now=stamp)
+    detail = dict(detail, learning_protocol=_protocol(sport), resumed_registration=True)
+    if detail.get('status') == 'deferred':
+        detail['retry_after_seconds'] = RETRY
+    return _record(sport, 'retuning', stamp, _evidence_key(sport), detail)
+
+
 def status(sport=None, *, now=None):
     """Read recorded learning state. This function cannot train or activate."""
     now = time.time() if now is None else now
@@ -246,7 +350,9 @@ def status(sport=None, *, now=None):
         current = _registry().active(name)
         metadata = {key: current[key] for key in ('candidate_id', 'version', 'training_cutoff', 'fingerprint',
                     'activated_at') if key in current} if current else None
+        from . import learning_worker
         saved = {'enabled': True, 'sport': name, 'active': metadata,
+                 'runner': learning_worker.status(component=name, now=now),
                  'schedule': 'Nightly diagnostics after 4 AM Eastern; weekly retuning when evidence is sufficient.'}
         recovery = _last(name, 'integrity')
         if recovery:

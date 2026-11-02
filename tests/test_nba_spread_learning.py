@@ -14,6 +14,7 @@ def database(tmp_path,monkeypatch):
     from edgeterminal.config import settings
     if db._conn is not None:db._conn.close();db._conn=None
     monkeypatch.setattr(settings,'database_url',f'sqlite:///{tmp_path / "test.db"}')
+    monkeypatch.setattr(learning,'_publication_time',lambda stamp:stamp,raising=False)
     db.init(); nba_store.ensure_schema(); learning.ensure_schema()
     yield
     db._conn.close();db._conn=None
@@ -44,12 +45,16 @@ def test_source_verification_rejects_wrong_owner_hash_or_late_receipt():
 
 
 def test_run_is_bounded_and_retries_waiting_on_new_evidence(database,monkeypatch):
+    from test_spread_learning_isolation import queue
+    queued=queue(monkeypatch)
     monkeypatch.setattr(data,'refresh',lambda *a,**k:dict(status='ok',requests=0))
     calls=[]
     monkeypatch.setattr(learning,'build_candidate',lambda now: calls.append(now) or dict(status='waiting',reason='more_future_games'))
     first=learning.run(100000.)
-    assert first['status']=='waiting'
+    assert first['status']=='queued' and not calls
+    assert learning.run_fitting(100000.)['status']=='waiting'
     assert learning.run(100001.)['status']=='cached' and len(calls)==1
+    assert queued==[('NBA_SPREAD','retuning',100000.)]
     assert learning.status(now=100002.)['active'] is None
 
 
@@ -190,13 +195,13 @@ def test_enrichment_rejects_score_conflicts_and_altered_raw_boxes(database,monke
 
 
 def test_bootstrap_completion_refreshes_waiting_message_without_one_day_delay(database,monkeypatch):
-    calls=[]
-    monkeypatch.setattr(data,'refresh',lambda *a,**k:dict(status='ok',requests=0,remaining_schedules=1 if not calls else 0))
-    monkeypatch.setattr(learning,'build_candidate',lambda now:calls.append(now) or dict(status='waiting',
-        reason='historical_seasons_bootstrapping' if len(calls)==1 else 'more_verified_future_spread_games'))
+    from test_spread_learning_isolation import queue
+    calls=queue(monkeypatch);remaining=iter((1,0))
+    monkeypatch.setattr(data,'refresh',lambda *a,**k:dict(status='ok',requests=0,remaining_schedules=next(remaining)))
+    monkeypatch.setattr(learning,'build_candidate',lambda *a:pytest.fail('source tick fitted after bootstrap'))
     assert learning.run(100000.)['reason']=='historical_seasons_bootstrapping'
-    assert learning.run(100301.)['reason']=='more_verified_future_spread_games'
-    assert len(calls)==2
+    assert learning.run(100301.)['status']=='queued'
+    assert calls==[('NBA_SPREAD','retuning',100301.)]
 
 
 def test_training_rehashes_box_evidence_even_when_enrichment_parse_is_cached(database,monkeypatch):

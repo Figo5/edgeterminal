@@ -71,3 +71,23 @@ services:
       timeout: 10s
       retries: 3
       start_period: 10m
+  learner:
+    <<: *runtime
+    command: [python, deploy/runtime.py, learner]
+    # No env_file: learning consumes archived sources and receives no provider key.
+    environment:
+      <<: *environment
+      EDGETERMINAL_OFFLINE_LEARNER: "1"
+      OMP_NUM_THREADS: "1"
+      OPENBLAS_NUM_THREADS: "1"
+      MKL_NUM_THREADS: "1"
+      NUMEXPR_NUM_THREADS: "1"
+      VECLIB_MAXIMUM_THREADS: "1"
+    cpus: "1.0"
+    network_mode: none
+    healthcheck:
+      test: [CMD, python, deploy/runtime.py, check-learner]
+      interval: 60s
+      timeout: 10s
+      retries: 3
+      start_period: 10m

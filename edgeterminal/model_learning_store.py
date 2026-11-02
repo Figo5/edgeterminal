@@ -21,7 +21,7 @@ import tempfile
 import time
 from zoneinfo import ZoneInfo
 
-from . import db
+from . import db, learning_publication as publication
 from .config import ROOT
 
 DIRECTORY = ROOT / 'data/research/model_learning'
@@ -230,6 +230,9 @@ def register_candidate(sport,version,training_cutoff,artifact,evaluation,sources
                                    (sport,family,game,candidate_id))
         connection.execute('INSERT OR IGNORE INTO model_learning_candidates VALUES(?,?,?,?,?,?,?,?,?)',
             (candidate_id,sport,version,cutoff,stamp,relative,candidate_id,fingerprint,_json(evaluation)))
+        from . import learning_worker
+        checkpoint=getattr(learning_worker,'checkpoint_candidate',None)
+        if checkpoint:checkpoint(connection,candidate_id)
     return _candidate(candidate_id)
 
 
@@ -585,12 +588,16 @@ def verify_active(sport,*,now=None):
     candidate=active(sport)
     if candidate is None:return None
     stamp=time.time() if now is None else _number(now)
+    payload=_load(candidate)
+    before=_publication_state(candidate,payload,require_current=True)
     _verify_candidate(candidate,stamp)
+    publication.same(before,_publication_state(candidate,payload))
     return candidate
 
 
 def _verify_candidate(candidate,stamp):
     payload=_load(candidate)
+    publication.evidence_state(candidate['sport'],payload['evaluation'],payload['sources'],require_current=True)
     _check_sources(payload['sources'],candidate['training_cutoff'],payload['evaluation']['calibration_cutoff'],stamp)
     _verify_evaluation(candidate['sport'],payload['evaluation'],payload['artifact'])
 
@@ -620,37 +627,72 @@ def _verify_evaluation_rows(sport,evaluation,artifact):
             for row in game[name]:_verify_row(sport,row)
 
 
+def _publication_state(candidate,payload,*,require_current=False):
+    paths=[_owned(DIRECTORY/candidate['artifact_path'])]
+    for name,digest in payload['artifact']['code_sha256'].items():
+        paths.extend((_code_path(name),_owned(DIRECTORY/'code'/(digest+'.py'))))
+    paths.extend(_owned(DIRECTORY/'sources'/s['sha256']) for s in payload['sources'] if s.get('kind')=='file')
+    games={str(r['game_id']) for r in payload['evaluation'].get('rows',[])}
+    games.update(str(g['game_id']) for g in (payload['evaluation'].get('selection_policy') or {}).get('games',[]))
+    holdouts=[db.q1('SELECT family,candidate_id FROM model_learning_holdouts WHERE sport=? AND game_id=?',
+                   (candidate['sport'],game)) for game in sorted(games)]
+    return dict(candidate=_candidate(candidate['candidate_id']),files=publication.file_seals(paths),holdouts=holdouts,
+        evidence=publication.evidence_state(candidate['sport'],payload['evaluation'],payload['sources'],require_current=require_current))
+
+
+def _previous_decision(candidate_id,sport):
+    old=db.q1('SELECT event,evidence FROM model_learning_events WHERE candidate_id=? '
+              'AND event IN ("activated","rejected") ORDER BY id DESC LIMIT 1',(candidate_id,))
+    previous=db.q1('SELECT id,candidate_id,recorded_at FROM model_learning_events WHERE sport=? '
+        'AND event IN ("activated","rolled_back") ORDER BY id DESC LIMIT 1',(sport,))
+    if old:
+        status='retained' if old['event']=='activated' and (previous or {}).get('candidate_id')!=candidate_id else old['event']
+        return {'status':status,'candidate_id':candidate_id,**json.loads(old['evidence'])},previous
+    return None,previous
+
+
 def activate_if_passes(candidate_id,*,now=None):
+    """Replay evidence without writer locks, then briefly publish unchanged proof."""
     ensure_schema();stamp=time.time() if now is None else _number(now)
+    if db.conn().in_transaction:raise ValueError('learning publication requires no caller write transaction')
     candidate=_candidate(candidate_id)
     if not candidate:raise ValueError('unknown learning candidate')
     payload=_load(candidate)
+    old,_=_previous_decision(candidate_id,candidate['sport'])
+    if old:return old
     result=gate(payload['evaluation'],candidate['training_cutoff'],payload['artifact'],sport=candidate['sport'],now=stamp)
-    with db.tx() as connection:
-        connection.execute('BEGIN IMMEDIATE')
-        old=connection.execute('SELECT event,evidence FROM model_learning_events WHERE candidate_id=? '
-                               'AND event IN ("activated","rejected") ORDER BY id DESC LIMIT 1',(candidate_id,)).fetchone()
-        previous=connection.execute('SELECT candidate_id,recorded_at FROM model_learning_events WHERE sport=? '
-            'AND event IN ("activated","rolled_back") ORDER BY id DESC LIMIT 1',(candidate['sport'],)).fetchone()
-        previous_id=previous['candidate_id'] if previous else None
-        if old:
-            status='retained' if old['event']=='activated' and previous_id!=candidate_id else old['event']
-            return {'status':status,'candidate_id':candidate_id,**json.loads(old['evidence'])}
-        try:
-            _check_sources(payload['sources'],candidate['training_cutoff'],payload['evaluation']['calibration_cutoff'],stamp)
-            _verify_evaluation(candidate['sport'],payload['evaluation'],payload['artifact'])
-        except (ValueError,KeyError,TypeError,OSError) as exc:
-            result['passed']=False;result['reasons'].append('source_validation:'+str(exc))
-        if payload['evaluation'].get('baseline_candidate_id')!=previous_id:
-            result['passed']=False;result['reasons'].append('active_baseline_changed')
-        if previous and stamp<previous['recorded_at']:
-            raise ValueError('model activation event cannot be backdated')
-        if stamp<candidate['created_at']:raise ValueError('model activation predates candidate')
-        event='activated' if result['passed'] else 'rejected'
-        connection.execute('INSERT INTO model_learning_events(sport,candidate_id,event,previous_candidate_id,'
-            'recorded_at,reason,evidence) VALUES(?,?,?,?,?,?,?)',
-            (candidate['sport'],candidate_id,event,previous_id,stamp,
-             'paired chronological validation passed' if result['passed'] else '; '.join(result['reasons']),_json(result)))
+    invalid=None
+    try:before=_publication_state(candidate,payload,require_current=True)
+    except (ValueError,KeyError,TypeError,OSError) as exc:
+        invalid=exc;before=_publication_state(candidate,payload)
+    try:
+        if invalid:raise invalid
+        _check_sources(payload['sources'],candidate['training_cutoff'],payload['evaluation']['calibration_cutoff'],stamp)
+        _verify_evaluation(candidate['sport'],payload['evaluation'],payload['artifact'])
+    except (ValueError,KeyError,TypeError,OSError) as exc:
+        result['passed']=False;result['reasons'].append('source_validation:'+str(exc))
+    try:
+        with publication.publish_lock():
+            with db.tx() as connection:
+                connection.execute('BEGIN IMMEDIATE')
+                old,previous=_previous_decision(candidate_id,candidate['sport'])
+                if old:return old
+                publication.same(before,_publication_state(candidate,payload))
+                try:_load(candidate)  # Small artifact/implementation hashes, never source replay.
+                except (ValueError,OSError,KeyError,TypeError) as exc:
+                    raise publication.PublicationDeferred('candidate_or_code_changed') from exc
+                previous_id=previous['candidate_id'] if previous else None
+                if payload['evaluation'].get('baseline_candidate_id')!=previous_id:
+                    result['passed']=False;result['reasons'].append('active_baseline_changed')
+                if previous and stamp<previous['recorded_at']:raise ValueError('model activation event cannot be backdated')
+                if stamp<candidate['created_at']:raise ValueError('model activation predates candidate')
+                event='activated' if result['passed'] else 'rejected'
+                connection.execute('INSERT INTO model_learning_events(sport,candidate_id,event,previous_candidate_id,'
+                    'recorded_at,reason,evidence) VALUES(?,?,?,?,?,?,?)',
+                    (candidate['sport'],candidate_id,event,previous_id,stamp,
+                     'paired chronological validation passed' if result['passed'] else '; '.join(result['reasons']),_json(result)))
+    except publication.PublicationDeferred as exc:
+        return {'status':'deferred','candidate_id':candidate_id,'passed':False,'reasons':[str(exc)]}
     return {'status':event,'candidate_id':candidate_id,**result}
 
 
@@ -671,30 +713,41 @@ def rollback(sport,reason,*,now=None):
     event=db.q1('SELECT * FROM model_learning_events WHERE candidate_id=? AND event="activated" '
                 'ORDER BY id DESC LIMIT 1',(current['candidate_id'],))
     if not event:raise ValueError('rollback target has no approved activation')
-    with db.tx() as connection:
-        connection.execute('BEGIN IMMEDIATE')
-        latest=connection.execute('SELECT id,recorded_at FROM model_learning_events WHERE sport=? '
-            'AND event IN ("activated","rolled_back") ORDER BY id DESC LIMIT 1',(sport,)).fetchone()
-        if latest['id']!=current['activation_event_id']:raise ValueError('active model changed during rollback')
-        if stamp<latest['recorded_at']:raise ValueError('rollback event cannot be backdated')
-        target=event['previous_candidate_id'];skipped=[];seen={current['candidate_id']}
-        while target:
-            approved=db.q1('SELECT * FROM model_learning_events WHERE candidate_id=? AND event="activated" '
-                            'ORDER BY id DESC LIMIT 1',(target,))
-            if target in seen or not approved or approved['sport']!=sport:
-                skipped.append({'candidate_id':target,'reason':'invalid approved predecessor chain'})
-                target=None;break
-            seen.add(target)
-            try:
-                candidate=_candidate(target)
-                if not candidate or candidate['sport']!=sport:raise ValueError('rollback target missing or mismatched')
-                _verify_candidate(candidate,stamp)
-                break
-            except (ValueError,OSError,KeyError,TypeError) as exc:
-                skipped.append({'candidate_id':target,'reason':str(exc)[:250]})
-                target=approved['previous_candidate_id']
-        connection.execute('INSERT INTO model_learning_events(sport,candidate_id,event,previous_candidate_id,'
-            'recorded_at,reason,evidence) VALUES(?,?,?,?,?,?,?)',
-            (sport,target,'rolled_back',current['candidate_id'],stamp,reason,
-             _json({'previous':current['candidate_id'],'skipped_invalid':skipped})))
+    if db.conn().in_transaction:raise ValueError('learning rollback requires no caller write transaction')
+    target=event['previous_candidate_id'];skipped=[];seen={current['candidate_id']};proof=None;candidate=None
+    while target:
+        approved=db.q1('SELECT * FROM model_learning_events WHERE candidate_id=? AND event="activated" '
+                        'ORDER BY id DESC LIMIT 1',(target,))
+        if target in seen or not approved or approved['sport']!=sport:
+            skipped.append({'candidate_id':target,'reason':'invalid approved predecessor chain'})
+            target=None;break
+        seen.add(target)
+        try:
+            candidate=_candidate(target)
+            if not candidate or candidate['sport']!=sport:raise ValueError('rollback target missing or mismatched')
+            payload=_load(candidate)
+            proof=_publication_state(candidate,payload,require_current=True)
+            _verify_candidate(candidate,stamp)
+            break
+        except (ValueError,OSError,KeyError,TypeError) as exc:
+            skipped.append({'candidate_id':target,'reason':str(exc)[:250]})
+            target=approved['previous_candidate_id']
+    try:
+        with publication.publish_lock(allow_near=True):
+            with db.tx() as connection:
+                connection.execute('BEGIN IMMEDIATE')
+                latest=db.q1('SELECT id,recorded_at FROM model_learning_events WHERE sport=? '
+                    'AND event IN ("activated","rolled_back") ORDER BY id DESC LIMIT 1',(sport,))
+                if latest['id']!=current['activation_event_id']:
+                    raise publication.PublicationDeferred('active_model_changed_during_rollback')
+                if stamp<latest['recorded_at']:raise ValueError('rollback event cannot be backdated')
+                if target:
+                    publication.same(proof,_publication_state(candidate,payload))
+                    _load(candidate)
+                connection.execute('INSERT INTO model_learning_events(sport,candidate_id,event,previous_candidate_id,'
+                    'recorded_at,reason,evidence) VALUES(?,?,?,?,?,?,?)',
+                    (sport,target,'rolled_back',current['candidate_id'],stamp,reason,
+                     _json({'previous':current['candidate_id'],'skipped_invalid':skipped})))
+    except publication.PublicationDeferred as exc:
+        return {'status':'deferred','sport':sport,'reason':str(exc)}
     return {'status':'rolled_back','sport':sport,'candidate_id':target,'skipped_invalid':skipped}
