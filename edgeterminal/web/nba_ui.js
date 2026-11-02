@@ -13,7 +13,7 @@ const price=v=>v==null?'—':`${v>0?'+':''}${v}`;
 const sign=v=>v==null?'—':`${v>0?'+':''}${num(v)}`;
 const recordText=r=>(r?.won||r?.lost||r?.push)?`${r.won||0}–${r.lost||0}${r.push?`–${r.push}`:''}`:'No graded selections';
 const note=r=>`${r?.won+r?.lost>0?pct(r.won/(r.won+r.lost))+' win rate · ':''}${r?.pending||0} pending · ${r?.void||0} void`;
-const metric=(title,value,detail)=>`<div><span>${esc(title)}</span><strong>${esc(value)}</strong><small>${esc(detail||'')}</small></div>`;
+const metric=(title,value,detail)=>`<div class="record-metric"><small>${esc(title)}</small><strong>${esc(value)}</strong><span>${esc(detail||'')}</span></div>`;
 const probabilityNotes={
  historical_standardized_residual_cdf:'Estimated from historical forecast errors. Accuracy on current market lines is still being measured.',
  adaptive_residual_cdf:'Estimated from historical forecast errors. Accuracy on current market lines is still being measured.',
@@ -64,8 +64,21 @@ function matchup(d){
  return `<button class="backlink" data-section="nfl">← NBA board</button><div class="page-head"><div><h1>${esc(g.away_team)} at ${esc(g.home_team)}</h1><p>${time(g.tipoff)} · ${esc(g.venue||'Venue unavailable')}</p></div></div><div class="matchup-score"><div class="score-label">PROJECTED SCORE</div><div class="score-pair"><div><span>${esc(g.away_team)}</span><strong>${num(p.away_score)}</strong><small>${pct(p.away_win_probability)} win</small></div><div class="score-center">MODEL</div><div><span>${esc(g.home_team)}</span><strong>${num(p.home_score)}</strong><small>${pct(p.home_win_probability)} win</small></div></div></div><section class="performance-block"><h2>Game markets</h2><div class="record-grid nba-market-summary">${metric('Spread selection',spreadPick(g))}${metric('Model home spread',sign(p.home_margin==null?null:-p.home_margin))}${metric('Model total',num(p.total))}${metric('ESPN comparison spread',sign(m.home_spread),`Home ${price(m.home_price)} · Away ${price(m.away_price)}`)}${metric('ESPN comparison total',num(m.total),`Over ${price(m.over_price)} · Under ${price(m.under_price)}`)}</div><p class="source-note">${forecastNote(g)}</p><p class="source-note">Comparison lines observed ${time(m.comparison_observed_at||m.observed_at)} · ${esc(m.sportsbook||'No stored sportsbook quote')}</p></section><section class="prop-section"><h2>Top 5 player props</h2>${props(g,true)}</section><details class="research-disclosure"><summary>Latest observed ESPN lines</summary><p>Home spread ${sign(g.latest_market?.home_spread)} · total ${num(g.latest_market?.total)} · ${time(g.latest_market?.observed_at)}. These newer observations do not replace the comparison lines in the record.</p></details><details class="research-disclosure"><summary>Model and availability context</summary>${(p.notes||[]).map(n=>`<p>${esc(n)}</p>`).join('')}<p>Model ${esc(p.game_component_version||p.model_version)}. Versioned parameters; source history is available before this forecast. Rest and rotation changes can affect minutes.</p></details>${footer}`;
 }
 
+function versionHistory(versions,options={}){
+ const props=versions?.props||[],games=versions?.games||[];
+ if(!props.length&&!games.length)return '';
+ const saved=row=>row.first_saved_at==null?'Dates not recorded':`${time(row.first_saved_at)}${row.last_saved_at!=null&&row.last_saved_at!==row.first_saved_at?` – ${time(row.last_saved_at)}`:''}`;
+ const model=row=>`<strong>${esc(row.model_version||'Unrecorded version')}</strong>${row.game_component_version?`<small>Game component: ${esc(row.game_component_version)}</small>`:''}`;
+ const cell=summary=>{
+  const r=summary?.record||{},details=[summary?.win_rate!=null?`${pct(summary.win_rate)} win rate`:'',
+   ...['pending','void','pass','unavailable'].filter(key=>r[key]).map(key=>`${r[key]} ${key}`)].filter(Boolean);
+  return `<td><strong>${recordText(r)}</strong><small>${esc(details.join(' · '))}</small></td>`;
+ };
+ return `<section class="performance-block model-version-records"><h2>Live records by model version</h2><p class="source-note">Each saved live selection counts once under its original model version. Game records use the selected pregame forecast and its saved lines.${options.historical?' Reconstructed rankings and replays are shown in provenance below.':''}</p>${props.length?`<h3>Player props</h3><div class="records-scroll"><table class="weekly-records"><thead><tr><th scope="col">Saved model</th><th scope="col">Saved record dates</th><th scope="col">Selections</th><th scope="col">Record</th></tr></thead><tbody>${props.map(row=>`<tr><th scope="row">${model(row)}</th><td>${esc(saved(row))}</td><td>${esc(row.count)}<small>${esc(row.game_count)} games</small></td>${cell(row)}</tr>`).join('')}</tbody></table></div>`:''}${games.length?`<h3>Game forecasts</h3><div class="records-scroll"><table class="weekly-records"><thead><tr><th scope="col">Saved model</th><th scope="col">Saved record dates</th><th scope="col">Games</th><th scope="col">Winners</th><th scope="col">Spread</th><th scope="col">Total</th></tr></thead><tbody>${games.map(row=>`<tr><th scope="row">${model(row)}</th><td>${esc(saved(row))}</td><td>${esc(row.game_count)}</td>${cell(row.winner)}${cell(row.spread)}${cell(row.total)}</tr>`).join('')}</tbody></table></div>`:''}</section>`;
+}
+
 function record(d){
- return `<div class="page-head"><div><h1>${esc(d.season||'2026-27')} NBA season record</h1><p>Predictions saved before tipoff, graded from verified final results.</p></div></div><div class="record-grid">${[['Winners',d.winners],['Against the spread',d.spread],['Over / under',d.total],['Player props',d.props]].map(([t,r])=>metric(t,recordText(r),note(r))).join('')}</div><p class="source-note">Historical evaluation is separate from this prospective record. Missing pregame lines or forecasts are excluded; pushes and voids do not count in win rate.</p><section class="performance-block"><h2>Daily results</h2>${(d.days||[]).map(day=>`<div class="coverage-row"><button class="backlink" data-nba-date="${esc(day.date)}">${esc(day.date)}</button><span>${recordText(day.props)} · ${note(day.props)}</span></div>`).join('')||'<p>No saved NBA selections yet. The record starts with the first supported pregame capture.</p>'}</section>${footer}`;
+ return `<div class="page-head"><div><h1>${esc(d.season||'2026-27')} NBA full season record</h1><p>Predictions across all saved live model versions, graded from verified final results.</p></div></div><div class="record-grid">${[['Winners',d.winners],['Against the spread',d.spread],['Over / under',d.total],['Player props',d.props]].map(([t,r])=>metric(t,recordText(r),note(r))).join('')}</div><p class="source-note">Historical evaluation is separate from this prospective record. Missing pregame lines or forecasts are excluded; pushes and voids do not count in win rate.</p>${versionHistory(d.model_versions)}<section class="performance-block"><h2>Daily results</h2>${(d.days||[]).map(day=>`<div class="coverage-row"><button class="backlink" data-nba-date="${esc(day.date)}">${esc(day.date)}</button><span>${recordText(day.props)} · ${note(day.props)}</span></div>`).join('')||'<p>No saved NBA selections yet. The record starts with the first supported pregame capture.</p>'}</section>${footer}`;
 }
 
 function learningStatus(d){
@@ -89,6 +102,6 @@ async function show(section,ctx){
  if(d.date)ctx.state.nbaDate=d.date;
  return d;
 }
-root.EdgeNBA={board,matchup,record,about,show,learningStatus};
+root.EdgeNBA={board,matchup,record,about,show,learningStatus,versionHistory};
 if(typeof module!=='undefined')module.exports=root.EdgeNBA;
 })(typeof window!=='undefined'?window:globalThis);

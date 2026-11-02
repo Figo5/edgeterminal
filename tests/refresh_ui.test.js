@@ -18,7 +18,8 @@ function harness(fetch) {
     sections: {innerHTML: ''},
   };
   const scope = {document: {getElementById: id => elements[id]}, fetch,
-    setTimeout: () => 1, clearTimeout: () => {}, console, Date};
+    setTimeout: () => 1, clearTimeout: () => {}, console, Date,
+    EdgeNBA: require('../edgeterminal/web/nba_ui.js')};
   vm.runInNewContext(source + '\nglobalThis.__test = {refreshProduct, pollStoredBoard, state, paper, performance, updateChecks, captureHistory};', scope);
   return {elements, ...scope.__test};
 }
@@ -161,7 +162,7 @@ test('Combined season record includes replayed wins while preserving provenance 
   assert.doesNotMatch(elements.main.innerHTML,/Live top-five props|Excluded from the live/);
 });
 
-test('Linear research results render in a separate model table', () => {
+test('Linear research results stay in collapsed history outside the full season headline', () => {
   const {elements, performance} = harness(() => {throw Error('no request expected');});
   const empty={count:0,record:{},win_rate:null};
   performance({season_record:{season:2026,props:{...empty,games:[]},
@@ -173,16 +174,38 @@ test('Linear research results render in a separate model table', () => {
   assert.match(elements.main.innerHTML,/separate from the main forecast record/);
   assert.match(elements.main.innerHTML,/60.0% win rate/);
   assert.match(elements.main.innerHTML,/33.3% win rate/);
+  assert.match(elements.main.innerHTML,/<details class="research-disclosure" data-disclosure="model-history"><summary>Model history and research<\/summary>[\s\S]*Linear research model · weekly results[\s\S]*<\/details>/);
 });
 
-test('Archived comparison keeps saved results while new selections use active model', () => {
+test('Archived comparison stays inspectable without adding overlapping outcomes to the full record', () => {
   const {elements,performance}=harness(()=>{throw Error('no fetch');});
   const empty={count:0,record:{},win_rate:null};
-  performance({season_record:{season:2026,props:{...empty,games:[]},games:{rows:[],winner:empty,spread:empty,total:empty},weekly:[],
+  performance({season_record:{season:2026,props:{count:2,record:{won:1,lost:1},win_rate:.5,games:[]},games:{rows:[],winner:empty,spread:empty,total:empty},weekly:[],
     challenger:{record:{won:38,lost:23,void:5,pending:20},selections:86,comparison:{n:5,baseline_mae:2,challenger_mae:1.5},brier:.2}}});
   assert.match(elements.main.innerHTML,/Archived comparison model/);
   assert.match(elements.main.innerHTML,/New selections use the active model/);
   assert.match(elements.main.innerHTML,/<small>Challenger record<\/small><strong>38–23<\/strong>/);
   assert.match(elements.main.innerHTML,/86 saved · 20 pending · 5 void/);
   assert.match(elements.main.innerHTML,/Brier score/);
+  assert.match(elements.main.innerHTML,/2026 NFL full season record/);
+  const [headline,history]=elements.main.innerHTML.split('<details class="research-disclosure" data-disclosure="model-history">');
+  assert.ok(history,'alternate model history should be collapsed by default');
+  assert.match(headline,/<small>Player props<\/small><strong>1–1<\/strong>/);
+  assert.doesNotMatch(headline,/38–23|Challenger record/);
+  assert.match(history,/Overlapping alternative forecasts are excluded from the season totals/);
+});
+
+test('NFL version history shows live decisions while retaining reconstructed provenance', () => {
+  const {elements,performance}=harness(()=>{throw Error('no fetch');});
+  const empty={count:0,record:{},win_rate:null};
+  const live={count:2,game_count:1,record:{won:1,pending:1},win_rate:1,
+    model_version:'nfl-original<unsafe>',first_saved_at:1792500000,last_saved_at:1792500000};
+  performance({season_record:{season:2026,props:{...live,historical_count:5,locked:live,archived:empty,replayed:empty,games:[]},
+    games:{rows:[],winner:empty,spread:empty,total:empty},weekly:[],model_versions:{props:[live],games:[]}}});
+  assert.match(elements.main.innerHTML,/Live records by model version/);
+  assert.match(elements.main.innerHTML,/nfl-original&lt;unsafe&gt;/);
+  assert.match(elements.main.innerHTML,/1 pending/);
+  assert.match(elements.main.innerHTML,/Reconstructed rankings and replays are shown in provenance/);
+  assert.match(elements.main.innerHTML,/5 reconstructed and 2 locked/);
+  assert.doesNotMatch(elements.main.innerHTML,/<unsafe>|NaN|undefined/);
 });

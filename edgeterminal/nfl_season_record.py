@@ -24,6 +24,36 @@ def summary(rows: list[dict], field: str = 'result') -> dict:
             'win_rate': counts['won'] / decisions if decisions else None}
 
 
+def _model_versions(rows: list[dict], *, game_markets: bool = False) -> list[dict]:
+    """Attribute counted decisions to their saved identities, never today's model."""
+    grouped = defaultdict(list)
+    for row in rows:
+        for market in ('winner', 'spread', 'total') if game_markets else (None,):
+            version = ((row.get('market_model_versions') or {}).get(market, row.get('model_version'))
+                       if game_markets else row.get('model_version'))
+            version = version if isinstance(version, str) and version else None
+            stamp = ((row.get('market_saved_at') or {}).get(market, row.get('saved_at'))
+                     if game_markets else row.get('saved_at'))
+            grouped[version].append((row, market, stamp))
+    result = []
+    for version, items in grouped.items():
+        dates = [stamp for _, _, stamp in items if isinstance(stamp, (int, float))
+                 and not isinstance(stamp, bool) and math.isfinite(stamp)]
+        cohort = dict(model_version=version, game_count=len({r['game_id'] for r, _, _ in items}),
+                      first_saved_at=min(dates) if dates else None,
+                      last_saved_at=max(dates) if dates else None)
+        if game_markets:
+            cohort.update(game_component_version=None, **{
+                market: summary([{'result': row['results'][market]} for row, name, _ in items if name == market])
+                for market in ('winner', 'spread', 'total')})
+        else:
+            cohort.update(summary([row for row, _, _ in items]))
+        result.append(cohort)
+    return sorted(result, key=lambda r: (r['first_saved_at'] is None,
+                                        r['first_saved_at'] if r['first_saved_at'] is not None else 0,
+                                        r['model_version'] or ''))
+
+
 def props(season: int = 2026, now: float | None = None, *, include_replay: bool = True) -> dict:
     stamp = time.time() if now is None else now
     live = nfl_top_five.view()
@@ -73,7 +103,10 @@ def props(season: int = 2026, now: float | None = None, *, include_replay: bool 
                          'weekly': {w: summary([r for g in subset if g['week'] == w for r in g['rows']])
                                     for w in sorted({g['week'] for g in subset})},
                          'diagnostics': diagnostics(cohort_rows)}
+    live_versions = _model_versions([{**row, 'game_id': game['game_id'], 'saved_at': game.get('selected_at')}
+                                    for game in games if game['basis'] == 'locked' for row in game['rows']])
     return {'season': season, 'games': games, 'game_count': len(games), **cohorts,
+            'model_versions': live_versions,
             'selection_count': len(rows), 'readiness': 'RESEARCH_ONLY', **summary(rows),
             'weekly': {w: summary([r for g in games if g['week'] == w for r in g['rows']])
                        for w in sorted({g['week'] for g in games})},
@@ -181,7 +214,8 @@ def games(season: int = 2026) -> dict:
     def sums(items):
         return {market: summary([{'result': r['results'][market]} for r in items])
                 for market in ('winner', 'spread', 'total')}
-    return {'rows': rows, 'legacy_game_count': sum(r.get('basis') == 'legacy_market' for r in rows), **sums(rows), 'weekly': {w: sums([r for r in rows if r['week'] == w])
+    return {'rows': rows, 'model_versions': _model_versions(rows, game_markets=True),
+            'legacy_game_count': sum(r.get('basis') == 'legacy_market' for r in rows), **sums(rows), 'weekly': {w: sums([r for r in rows if r['week'] == w])
                                                 for w in sorted({r['week'] for r in rows})}}
 
 
@@ -235,6 +269,7 @@ def view(season: int = 2026) -> dict:
                'games': game['weekly'].get(w, {m: summary([]) for m in ('winner', 'spread', 'total')})}
               for w in range(1, max_week + 1)]
     return {'season': season, 'props': prop, 'games': game, 'weekly': weekly,
+            'model_versions': {'props': prop.get('model_versions', []), 'games': game.get('model_versions', [])},
             'linear_research': linear_research_record(season),
             'challenger': nfl_prop_challenger.view(),
             'historical_note': 'The season total includes locked selections, rankings from saved pregame forecasts, '
@@ -339,6 +374,11 @@ def _legacy_games(season, exclude):
         rows.append(dict(game_id=game, week=int(game.split('-')[3]), basis='legacy_market',
                          saved_at=max(p['created_at'] for p in predictions.values()),
                          model_version=next(iter(predictions.values()))['model_version'],
+                         market_model_versions={key: predictions[market]['model_version']
+                                                if market in predictions else None
+                                                for market, key in (('moneyline', 'winner'), ('spread', 'spread'), ('total', 'total'))},
+                         market_saved_at={key: predictions[market]['created_at'] if market in predictions else None
+                                          for market, key in (('moneyline', 'winner'), ('spread', 'spread'), ('total', 'total'))},
                          results=results, winner_team=winner_team,
                          projected_home_points=None, projected_away_points=None,
                          spread_line=(spread['line'] * (1 if spread['selection'] == event['home_team'] else -1))

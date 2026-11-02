@@ -29,7 +29,42 @@ test('NBA record separates historical evaluation from saved predictions', () => 
   assert.match(html,/No graded selections/);
   assert.match(html,/5 pending/);
   assert.match(html,/Historical evaluation/);
+  assert.match(html,/2026-27 NBA full season record/);
+  assert.match(html,/all saved live model versions/);
+  assert.match(html,/<div class="record-metric"><small>Player props<\/small><strong>No graded selections<\/strong><span>5 pending · 0 void<\/span><\/div>/);
   assert.doesNotMatch(html,/Not recorded|Week/);
+});
+
+test('Full NBA record attributes older and newer saved versions without changing headline totals', () => {
+  const html=ui.record({season:'2026-27',props:{won:3,lost:2,pending:1},winners:{},spread:{},total:{},days:[],
+    model_versions:{props:[
+      {model_version:'original<unsafe>',count:3,game_count:1,record:{won:1,lost:2},win_rate:1/3,first_saved_at:1792500000,last_saved_at:1792500000},
+      {model_version:'new-v2',count:3,game_count:1,record:{won:2,pending:1},win_rate:1,first_saved_at:1792600000,last_saved_at:1792600000}],games:[
+      {model_version:'wrapper-v2',game_component_version:'spread<component>',game_count:1,first_saved_at:1792600000,last_saved_at:1792600000,
+        winner:{count:1,record:{won:1},win_rate:1},spread:{count:1,record:{lost:1},win_rate:0},total:{count:0,record:{},win_rate:null}}]}});
+  const [headline,versions]=html.split('<section class="performance-block model-version-records">');
+  assert.match(headline,/<div class="record-metric"><small>Player props<\/small><strong>3–2<\/strong><span>/);
+  assert.ok(versions);
+  assert.match(versions,/Live records by model version/);
+  assert.match(versions,/original&lt;unsafe&gt;/);
+  assert.match(versions,/new-v2/);
+  assert.match(versions,/spread&lt;component&gt;/);
+  assert.match(versions,/1 pending/);
+  assert.match(versions,/33.3% win rate/);
+  assert.match(versions,/Saved record dates/);
+  assert.doesNotMatch(html,/<unsafe>|<component>|NaN|undefined/);
+});
+
+test('Version history keeps unknown identities and empty or void-only records honest', () => {
+  assert.equal(ui.versionHistory(), '');
+  const html=ui.versionHistory({props:[{model_version:null,count:1,game_count:1,
+    record:{void:1},win_rate:null,first_saved_at:null,last_saved_at:null}],games:[]});
+  assert.match(html,/Unrecorded version/);
+  assert.match(html,/1 void/);
+  assert.match(html,/No graded selections/);
+  assert.match(html,/Dates not recorded/);
+  assert.match(html,/Saved record dates/);
+  assert.doesNotMatch(html,/0.0% win rate|NaN|undefined/);
 });
 
 test('NBA probability disclosures follow the saved prediction method', () => {

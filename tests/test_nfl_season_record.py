@@ -200,7 +200,7 @@ def test_legacy_markets_match_exact_schedule_without_recreating_forecasts(tmp_pa
                 start_time=event['start_time'], meta='{}', created_at=30., model_version='old-model',
                 data_snapshot=json.dumps(dict(selected_quote_at=10.)))
     saved = [{**base, 'market': 'moneyline', 'selection': event['away_team'], 'model_prob': .2, 'line': None},
-             {**base, 'market': 'spread', 'selection': event['away_team'], 'model_prob': .8, 'line': 3.5},
+             {**base, 'model_version': 'spread-new', 'market': 'spread', 'selection': event['away_team'], 'model_prob': .8, 'line': 3.5},
              {**base, 'market': 'total', 'selection': 'Under', 'model_prob': .6, 'line': 44.5}]
     # A late prediction must not replace the saved pregame market forecasts.
     saved.insert(0, {**saved[0], 'created_at': 110., 'model_prob': .9})
@@ -210,6 +210,8 @@ def test_legacy_markets_match_exact_schedule_without_recreating_forecasts(tmp_pa
     assert rows[0]['results'] == dict(winner='won', spread='won', total='lost')
     assert rows[0]['winner_team'] == event['home_team']
     assert rows[0]['basis'] == 'legacy_market'
+    assert rows[0]['market_model_versions'] == dict(winner='old-model', spread='spread-new', total='old-model')
+    assert rows[0]['market_saved_at'] == dict(winner=30., spread=30., total=30.)
     assert rows[0]['projected_home_points'] is None
     assert record._legacy_games(2026, {GAME}) == []
     event['start_time'] = '1970-01-01T00:01:41Z'

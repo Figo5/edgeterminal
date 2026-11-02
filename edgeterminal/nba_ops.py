@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import math
 import re
 import time
 from collections import Counter
@@ -390,6 +391,7 @@ def matchup(game_id):
 
 def performance():
     ensure_schema();result={'props':_record(),'winners':_record(),'spread':_record(),'total':_record()};days={}
+    prop_versions=[];game_versions=[];forecasts={}
     year=_season(today())[0]
     for lock in db.q('SELECT l.lock_id FROM nba_selection_locks l JOIN nba_games g ON g.game_id=l.game_id '
                      'WHERE g.season_start_year=?',(year,)):
@@ -398,6 +400,10 @@ def performance():
             day=nba_store.get_game(item['game_id'])['game_date_et'];daily=days.setdefault(day,_record())
             state=(grades.get(item['rank']) or {}).get('result','pending')
             _inc(result['props'],state);_inc(daily,state)
+            fid=item['forecast_id']
+            if fid not in forecasts:forecasts[fid]=nba_store.get_forecast(fid)
+            prop_versions.append({'game_id':item['game_id'],'model_version':forecasts[fid]['model_version'],
+                                  'saved_at':saved['locked_at'],'result':state})
     for item in db.q('SELECT DISTINCT f.game_id FROM nba_forecasts f JOIN nba_games g ON g.game_id=f.game_id '
                     'WHERE g.season_start_year=? ORDER BY f.game_id',(year,)):
         row=_forecast(item['game_id'],'game')
@@ -405,12 +411,51 @@ def performance():
         payload=row['payload']
         grade=db.q1('SELECT payload FROM nba_game_grade_revisions WHERE game_id=? ORDER BY id DESC LIMIT 1',(row['game_id'],))
         outcome=json.loads(grade['payload']) if grade else {}
+        decisions={}
         for key in ('winners','spread','total'):
             # Lines absent at save time are excluded, never graded against later prices.
             if key=='winners' or comparison_market(row['game_id'],{'payload':payload}).get('home_spread' if key=='spread' else 'total') is not None:
                 _inc(result[key],outcome.get(key,'pending'))
+                decisions['winner' if key=='winners' else key]=outcome.get(key,'pending')
+        game_versions.append({'game_id':row['game_id'],'model_version':row['model_version'],
+                              'game_component_version':payload.get('game_component_version') or
+                                  (payload.get('projection') or {}).get('game_component_version'),
+                              'saved_at':row['created_at'],'results':decisions})
     return dict(result,sport='NBA',season=_season(today())[1],days=[{'date':d,'props':r} for d,r in sorted(days.items(),reverse=True)],
+                model_versions={'props':_model_versions(prop_versions),'games':_model_versions(game_versions,game_markets=True)},
                 designation='PASS',readiness='RESEARCH_ONLY')
+
+
+def _model_versions(rows, *, game_markets=False):
+    """Summarize the saved forecast versions behind the counted season decisions."""
+    grouped={}
+    for row in rows:
+        version=row.get('model_version')
+        version=version if isinstance(version,str) and version else None
+        component=row.get('game_component_version') if game_markets else None
+        component=component if isinstance(component,str) and component else None
+        grouped.setdefault((version,component),[]).append(row)
+    result=[]
+    for (version,component),items in grouped.items():
+        dates=[r['saved_at'] for r in items if isinstance(r.get('saved_at'),(int,float))
+               and not isinstance(r['saved_at'],bool) and math.isfinite(r['saved_at'])]
+        cohort={'model_version':version,'game_count':len({r['game_id'] for r in items}),
+                'first_saved_at':min(dates) if dates else None,'last_saved_at':max(dates) if dates else None}
+        def summarize(states):
+            record=_record()
+            for state in states:_inc(record,state)
+            decided=record['won']+record['lost']
+            return {'record':record,'count':sum(record.values()),
+                    'win_rate':record['won']/decided if decided else None}
+        if game_markets:
+            cohort.update(game_component_version=component,**{
+                market:summarize([r['results'][market] for r in items if market in r['results']])
+                for market in ('winner','spread','total')})
+        else:cohort.update(summarize([r['result'] for r in items]))
+        result.append(cohort)
+    return sorted(result,key=lambda r:(r['first_saved_at'] is None,
+        r['first_saved_at'] if r['first_saved_at'] is not None else 0,
+        r['model_version'] or '',r.get('game_component_version') or ''))
 
 
 def model_info():
