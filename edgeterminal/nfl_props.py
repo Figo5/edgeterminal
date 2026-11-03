@@ -64,6 +64,35 @@ def _name(value: Any) -> str | None:
     return result if result and len(result) <= 120 else None
 
 
+def _name_suffix(value: Any) -> tuple[str | None, str | None]:
+    """Separate one recognized final suffix without changing the complete core."""
+    name = _name(value)
+    if name is None:
+        return None, None
+    parts = name.casefold().rsplit(" ", 1)
+    if len(parts) == 2 and re.fullmatch(r"(?:jr|sr|ii|iii|iv|v)\.?", parts[1]):
+        if re.fullmatch(r"(?:jr|sr|ii|iii|iv|v)\.?", parts[0].rsplit(" ", 1)[-1]):
+            return None, None
+        return parts[0], parts[1].removesuffix(".")
+    return name.casefold(), None
+
+
+def _same_player_suffix(previous: str, current: str, player: dict, player_ref: str) -> bool:
+    """Accept a suffix rendering only for the bound ID and matching name fields."""
+    if player.get("playerID") != player_ref:
+        return False
+    old_core, old_suffix = _name_suffix(previous)
+    new_core, new_suffix = _name_suffix(current)
+    if (not old_core or len(old_core.split()) < 2 or old_core != new_core or not (old_suffix or new_suffix)
+            or (old_suffix and new_suffix and old_suffix != new_suffix)):
+        return False
+    first, last = _name(player.get("firstName")), _name(player.get("lastName"))
+    if first is None or last is None or re.fullmatch(r"(?:jr|sr|ii|iii|iv|v)\.?", last.casefold()):
+        return False
+    field_core, field_suffix = _name_suffix(first + " " + last)
+    return field_core == new_core and (field_suffix is None or field_suffix in {old_suffix, new_suffix})
+
+
 def _american(value: Any) -> int | None:
     if isinstance(value, bool):
         return None
@@ -321,7 +350,8 @@ def _quotes(event: dict, game: dict, batch_id: str, retrieved_at: float) -> tupl
             continue
         existing = db.q1("SELECT player_id,player_name FROM nfl_prop_player_aliases "
                          "WHERE provider=? AND provider_player_id=?", (PROVIDER, player_ref))
-        if existing and existing["player_name"].casefold() != name.casefold():
+        if (existing and existing["player_name"].casefold() != name.casefold()
+                and not _same_player_suffix(existing["player_name"], name, player, player_ref)):
             raise ValueError(f"provider player ID changed name: {player_ref}")
         canonical_player = existing["player_id"] if existing else f"sgo:{player_ref}"
         aliases[player_ref] = (canonical_player, name)
