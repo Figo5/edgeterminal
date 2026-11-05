@@ -1,6 +1,16 @@
 import json
+import pytest
 
 from edgeterminal.agents import llm, tools
+
+
+@pytest.fixture(autouse=True)
+def isolated_tool_transport_context(monkeypatch):
+    # These tests exercise tool transport/JSON and threshold enforcement. Event
+    # resolution and stale-schedule rejection have their own integration suites.
+    # A unit transport test must not depend on today's network or saved schedule.
+    from edgeterminal.agents import context
+    monkeypatch.setattr(context, 'build', lambda *args, **kwargs: None)
 
 
 class FakeProvider:

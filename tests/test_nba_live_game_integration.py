@@ -12,6 +12,7 @@ def isolated(tmp_path, monkeypatch):
         db._conn = None
     monkeypatch.setattr(settings, 'database_url', f'sqlite:///{tmp_path / "nba.db"}')
     monkeypatch.setattr(nba_ops, 'today', lambda now=None: '2026-10-30')
+    monkeypatch.setattr(db, 'now', lambda: NOW)
     db.init()
     nba_store.ensure_schema()
     yield

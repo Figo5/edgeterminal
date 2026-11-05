@@ -188,7 +188,7 @@ def test_nba_selected_revision_gets_its_own_version_and_timestamp(monkeypatch):
 
 def test_empty_records_have_empty_cohorts_and_no_implicit_model(monkeypatch):
     monkeypatch.setattr(nba_ops, 'today', lambda: '2026-10-21')
-    assert nba_ops.performance()['model_versions'] == {'props': [], 'games': []}
+    assert nba_ops.performance()['model_versions'] == {'props': [], 'games': [], 'totals': []}
     monkeypatch.setattr(nfl.nfl_top_five, 'view', lambda: {'games': []})
     assert nfl.props(include_replay=False)['model_versions'] == []
     assert nfl.games()['model_versions'] == []

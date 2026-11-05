@@ -18,6 +18,7 @@ ET = ZoneInfo('America/New_York')
 LABELS = {'schedule': 'Schedule & game prices', 'history': 'Historical inputs',
           'forecasts': 'Pregame forecasts', 'props': 'Player-prop capture', 'grading': 'Final results & grading',
           'spread_learning': 'Spread inputs & model checks',
+          'totals_learning': 'Totals inputs & model checks',
           'evaluation': 'Chronological evaluation'}
 PROP_BUDGET_REASONS = {
     'nba_monthly_budget':'the NBA monthly request allowance is exhausted',
@@ -391,7 +392,7 @@ def matchup(game_id):
 
 def performance():
     ensure_schema();result={'props':_record(),'winners':_record(),'spread':_record(),'total':_record()};days={}
-    prop_versions=[];game_versions=[];forecasts={}
+    prop_versions=[];game_versions=[];total_versions=[];forecasts={}
     year=_season(today())[0]
     for lock in db.q('SELECT l.lock_id FROM nba_selection_locks l JOIN nba_games g ON g.game_id=l.game_id '
                      'WHERE g.season_start_year=?',(year,)):
@@ -421,8 +422,16 @@ def performance():
                               'game_component_version':payload.get('game_component_version') or
                                   (payload.get('projection') or {}).get('game_component_version'),
                               'saved_at':row['created_at'],'results':decisions})
+        if 'total' in decisions:
+            projection=payload.get('projection') or {}
+            version=projection.get('total_component_version')
+            if not version:
+                version='legacy-total:'+str(projection.get('game_component_version') or row['model_version'])
+            total_versions.append({'game_id':row['game_id'],'model_version':version,
+                                   'saved_at':row['created_at'],'result':decisions['total']})
     return dict(result,sport='NBA',season=_season(today())[1],days=[{'date':d,'props':r} for d,r in sorted(days.items(),reverse=True)],
-                model_versions={'props':_model_versions(prop_versions),'games':_model_versions(game_versions,game_markets=True)},
+                model_versions={'props':_model_versions(prop_versions),'games':_model_versions(game_versions,game_markets=True),
+                                'totals':_model_versions(total_versions)},
                 designation='PASS',readiness='RESEARCH_ONLY')
 
 
@@ -474,6 +483,17 @@ def register_model(now):
               (info['version'],info['fingerprint'],info['cutoff'],now,encoded))
 
 
+def _totals_projection(game,projection,history,stamp):
+    from . import nba_totals_data, nba_totals_learning, nba_totals_model
+    if not nba_totals_learning.needs_inputs():
+        return projection,None
+    state=nba_totals_learning.serving_state()
+    rows=nba_totals_data.select_history(game,history,stamp)
+    mapped=nba_totals_data.prepare(game,rows,stamp)
+    nba_totals_data.verify_input_map(mapped,game,stamp)
+    return nba_totals_model.compose(projection,mapped,model_state=state),mapped
+
+
 def _refresh_game_projection(game,history,now):
     from . import nba_spread_model, nba_spread_data
     stamp=max(now,time.time())
@@ -487,6 +507,13 @@ def _refresh_game_projection(game,history,now):
     if projection['status']!='ok':return False
     rows=projection.pop('selected_rows')
     feature_cutoff=projection.pop('feature_cutoff')
+    totals_map=None
+    totals_key='nba_totals_projection_'+game['game_id']
+    try:
+        projection,totals_map=_totals_projection(game,projection,history,stamp)
+        db.kv_set(totals_key,{'ok':True,'checked_at':stamp})
+    except (ValueError,TypeError,KeyError,OSError) as exc:
+        db.kv_set(totals_key,{'ok':False,'checked_at':stamp,'error':type(exc).__name__})
     manifest={'rows':rows,'feature_cutoff':feature_cutoff,
         'schedule':{team:context for team,context in schedule.items() if context.get('source_artifact_id')},
         'coverage':projection.get('coverage') or {}}
@@ -496,12 +523,21 @@ def _refresh_game_projection(game,history,now):
     sources.update(p['source_artifact_id'] for p in availability)
     sources.add(game['source_artifact_id'])
     if market.get('source_artifact_id'):sources.add(market['source_artifact_id'])
+    if totals_map:
+        from . import nba_totals_data
+        sources.update(nba_totals_data.source_ids(totals_map))
     old=_forecast(game['game_id'],'game')
     stamp=max(stamp,time.time())
     if stamp>=game['tipoff_ts']:return False
     saved=nba_game_forecasts.save_revision(game['game_id'],projection,market,manifest,
         sorted(sources),now=stamp,model_info={'version':projection['model_version'],
             'fingerprint':projection['parameter_fingerprint'],'cutoff':projection['training_cutoff']})
+    if totals_map:
+        from . import nba_totals_learning
+        try:
+            nba_totals_learning.capture_forecast(saved,totals_map,now=max(stamp,time.time()))
+        except (ValueError,TypeError,KeyError,OSError) as exc:
+            db.kv_set(totals_key,{'ok':False,'checked_at':stamp,'error':type(exc).__name__})
     return not old or old['forecast_id']!=saved['forecast_id']
 
 
@@ -537,6 +573,9 @@ def forecasts(now):
                               'fingerprint':nba_model.PARAMETER_FINGERPRINT}},sources,now=stamp)
                 saved+=1
             revisions+=_refresh_game_projection(game,history,now)
+            totals_check=db.kv_get('nba_totals_projection_'+game['game_id']) or {}
+            if totals_check.get('ok') is False and totals_check.get('checked_at',0)>=now:
+                errors.append(game['game_id'])
         except Exception as exc:
             db.kv_set('nba_game_refresh_error_'+game['game_id'],
                 {'checked_at':max(now,time.time()),'error':type(exc).__name__,'message':str(exc)[:180]})
@@ -816,6 +855,8 @@ def run(now=None):
     results['grading']=step('grading',stamp,300,lambda:grade_due(stamp))
     from . import nba_spread_learning
     results['spread_learning']=step('spread_learning',stamp,300,lambda:nba_spread_learning.refresh_inputs(stamp))
+    from . import nba_totals_learning
+    results['totals_learning']=step('totals_learning',stamp,300,lambda:nba_totals_learning.refresh_inputs(stamp))
     # Publish frozen historical evidence for this version, without refitting it.
     coverage=db.kv_get('nba_evaluation') or {}
     changed_model=(coverage.get('model') or {}).get('fingerprint')!=model_info()['fingerprint']
@@ -829,6 +870,7 @@ def run(now=None):
 
 def status():
     from . import model_learning, nba_spread_model, nba_spread_learning
+    from . import nba_totals_learning
     from .config import settings
     ensure_schema()
     checks=[{'name':r['name'],'label':LABELS.get(r['name'],r['name'].replace('_',' ').title()),
@@ -841,6 +883,7 @@ def status():
                     'summary':'The active model changed. Its chronological evaluation is due on the built-in refresh.'}
     return {'sport':'NBA','checks':checks,'budget':nba_quotes.budget(time.time()),'model':model,
             'game_model':nba_spread_model.model_info(),'game_learning':nba_spread_learning.status(now=time.time()),
+            'totals_learning':nba_totals_learning.status(now=time.time()),
             'game_forecasts':nba_game_forecasts.status(),
             'runtime':{'mode':'hosted' if settings.runtime_mode=='always_on' else 'local',
                        'requires_awake_mac':settings.runtime_mode!='always_on'},

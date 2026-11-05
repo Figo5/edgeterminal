@@ -42,7 +42,7 @@ from . import db  # noqa: E402 — CLI environment is sanitized before config im
 from .config import settings  # noqa: E402
 
 COMPONENTS = {'NBA': ('diagnostics', 'retuning'), 'NFL': ('diagnostics', 'retuning'),
-              'NBA_SPREAD': ('retuning',)}
+              'NBA_SPREAD': ('retuning',), 'NBA_TOTAL': ('diagnostics', 'retuning')}
 HEARTBEAT_SECONDS = 30
 MAX_JOB_WALL_SECONDS = 3 * 3600
 MAX_JOB_CPU_SECONDS = 3600
@@ -203,6 +203,12 @@ def execution_limits(*, wall_seconds=MAX_JOB_WALL_SECONDS, cpu_seconds=None):
 def _execute(job):
     _catalog(job['component'], job['kind'])
     checkpoint = json.loads(job['detail']).get('candidate_id')
+    if job['component'] == 'NBA_TOTAL':
+        from . import nba_totals_learning
+        if checkpoint:
+            return nba_totals_learning.resume_publication(checkpoint)
+        return (nba_totals_learning.run_diagnostics() if job['kind'] == 'diagnostics' else
+                nba_totals_learning.run_fitting())
     if job['component'] == 'NBA_SPREAD':
         from . import nba_spread_learning
         return (nba_spread_learning.resume_publication(checkpoint) if checkpoint else
@@ -218,11 +224,13 @@ def checkpoint_candidate(connection, candidate_id):
     job = _CURRENT_JOB.get()
     if job is None:
         return
-    if job['kind'] != 'retuning' or job['component'] not in COMPONENTS:
+    totals_diagnostic = job['component'] == 'NBA_TOTAL' and job['kind'] == 'diagnostics'
+    if (job['kind'] != 'retuning' and not totals_diagnostic) or job['component'] not in COMPONENTS:
         raise ValueError('only the owning fit can checkpoint its candidate')
-    if job['component'] == 'NBA_SPREAD':
+    if job['component'] in ('NBA_SPREAD', 'NBA_TOTAL'):
+        table = 'nba_spread_model_candidates' if job['component'] == 'NBA_SPREAD' else 'nba_totals_candidates'
         valid = (isinstance(candidate_id, str) and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}', candidate_id)
-                 and connection.execute('SELECT 1 FROM nba_spread_model_candidates WHERE version=?', (candidate_id,)).fetchone())
+                 and connection.execute('SELECT 1 FROM ' + table + ' WHERE version=?', (candidate_id,)).fetchone())
     else:
         valid = (isinstance(candidate_id, str) and len(candidate_id) == 64 and
                  all(c in '0123456789abcdef' for c in candidate_id))
@@ -320,7 +328,7 @@ def status(component=None, *, now=None):
         raise ValueError('unsupported learning component')
     exists = db.q1("SELECT 1 FROM sqlite_master WHERE type='table' AND name='learning_jobs'")
     if component == 'NBA':
-        where, args = ' WHERE component IN (?,?)', ('NBA', 'NBA_SPREAD')
+        where, args = ' WHERE component IN (?,?,?)', ('NBA', 'NBA_SPREAD', 'NBA_TOTAL')
     else:
         where, args = (' WHERE component=?', (component,)) if component else ('', ())
     rows = db.q('SELECT * FROM learning_jobs' + where + ' ORDER BY id DESC LIMIT 12', args) if exists else []
@@ -335,7 +343,7 @@ def status(component=None, *, now=None):
     if exists:
         for row in db.q('SELECT j.component,j.kind,e.state FROM learning_job_events e JOIN learning_jobs j ON j.id=e.job_id '
                         "WHERE e.state IN ('completed','failed','interrupted')" +
-                        (' AND j.component IN (?,?)' if component == 'NBA' else ' AND j.component=?' if component else '') +
+                        (' AND j.component IN (?,?,?)' if component == 'NBA' else ' AND j.component=?' if component else '') +
                         ' ORDER BY e.id', args):
             latest[row['component'], row['kind']] = row['state']
     heartbeat = db.kv_get('learning_worker_heartbeat') or {}
