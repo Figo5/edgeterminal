@@ -448,7 +448,7 @@ def test_missing_historical_advanced_evidence_preserves_example_coverage():
     archive(dict(events=events))
     archive(dict(events=events),url='https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/18/schedule?season=2027&seasontype=2')
     before,_=data.training_examples(ASOF)
-    payload=summary(4); payload['boxscore']['teams']=[]
+    payload=summary(4); payload['boxscore']['teams']=[]; payload['header']['id']='401234500'
     archive(payload,kind='final-boxscore',url='https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=401234500')
     after,_=data.training_examples(ASOF)
     assert before==after and before
@@ -513,3 +513,342 @@ def test_espn_display_value_and_numeric_value_must_agree():
     payload['header']['competitions'][0]['competitors'][0]['linescores'][0]['displayValue']='21'
     bid=archive(payload,kind='final-boxscore',url='https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=401234567')
     with pytest.raises(ValueError,match='conflict'): data.prepare(game,[dict(row,possession_source_artifact_id=bid)],ASOF)
+
+
+def correction_history(*, partial_owner=False):
+    events=[event(eid=str(401234500+i),at=TIP-(i+3)*86400) for i in range(14)]
+    for tid in ('2','18'):
+        archive(dict(events=events[:-1] if partial_owner and tid=='18' else events),at=ASOF-100,
+            url=f'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/{tid}/schedule?season=2027&seasontype=2')
+    payload=summary(4); payload['header']['id']='401234513'
+    payload['header']['date']=payload['header']['competitions'][0]['date']=iso(TIP-16*86400)
+    return payload,'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=401234513'
+
+
+def corrected_box(payload,attempts='40-91'):
+    value=json.loads(json.dumps(payload))
+    value['boxscore']['teams'][0]['statistics'][0]['displayValue']=attempts
+    return value
+
+
+def advanced_rows(examples):
+    return [row for example in examples for row in example['rows'] if row.get('raw_possessions')]
+
+
+@pytest.mark.parametrize('offset,expected',[(-.001,100.8),(0,101.3),(1,101.3)])
+def test_historical_stat_correction_is_receipt_bound_and_sealed(offset,expected,monkeypatch):
+    payload,url=correction_history()
+    old=archive(payload,kind='final-boxscore',at=ASOF-20,url=url)
+    new=archive(corrected_box(payload),kind='final-boxscore',at=ASOF-10,url=url)
+    original=data._source; reads=[]
+    def guarded(ident,cutoff):
+        reads.append(ident)
+        assert not (offset<0 and ident==new), 'future correction body read'
+        return original(ident,cutoff)
+    monkeypatch.setattr(data,'_source',guarded)
+    examples,sources=data.training_examples(ASOF-10+offset)
+    rows=advanced_rows(examples); selected=old if offset<0 else new
+    assert rows and {r['team'] for r in rows}=={'BOS','NYK'}
+    assert all(r['raw_possessions']==pytest.approx(expected) for r in rows)
+    assert all(r['possession_source_artifact_id']==r['duration_source_artifact_id']==selected for r in rows)
+    assert all(r['possession_received_at']==r['duration_received_at']==(ASOF-20 if offset<0 else ASOF-10) for r in rows)
+    assert all(r['received_at']==ASOF-100 for r in rows)
+    assert all(r['offensive_efficiency']==pytest.approx(r['points']/expected) for r in rows)
+    assert all(r['pace48']==pytest.approx(expected) for r in rows)
+    assert all(e['label_received_at']==ASOF-100 for e in examples)
+    boxes={s['id']:s for s in sources if s['kind']=='final-boxscore'}
+    assert set(boxes)==({old} if offset<0 else {old,new})
+    assert boxes[selected]['disposition']=='selected'
+    for ident,descriptor in boxes.items():
+        stored=nba_store.get_artifact(ident)
+        assert descriptor['resolution_policy']=='verified_box_stat_correction_as_of_v1'
+        assert descriptor['selected_source_artifact_id']==selected and descriptor['event_id']=='401234513'
+        assert all(descriptor[k]==stored[k] for k in ('id','url','sha256','received_at','http_status'))
+    if offset>=0: assert boxes[old]['disposition']=='superseded'
+
+
+def test_correction_chain_uses_receipts_and_ignores_metadata_enumeration(monkeypatch):
+    payload,url=correction_history()
+    winner=archive(corrected_box(payload,'40-92'),kind='final-boxscore',at=ASOF-5,url=url)
+    archive(payload,kind='final-boxscore',at=ASOF-30,url=url)
+    archive(corrected_box(payload),kind='final-boxscore',at=ASOF-20,url=url)
+    expected=data.training_examples(ASOF)
+    original=db.q
+    def reversed_heads(sql,args=()):
+        rows=original(sql,args)
+        return list(reversed(rows)) if "kind='final-boxscore'" in sql else rows
+    monkeypatch.setattr(db,'q',reversed_heads)
+    assert data.training_examples(ASOF)==expected
+    assert all(r['possession_source_artifact_id']==winner and r['raw_possessions']==pytest.approx(101.8)
+        for r in advanced_rows(expected[0]))
+
+
+@pytest.mark.parametrize('reverse',[False,True])
+def test_any_equal_clock_semantic_conflict_fails_even_before_later_valid(reverse):
+    payload,url=correction_history(); versions=[payload,corrected_box(payload)]
+    for value in reversed(versions) if reverse else versions:
+        archive(value,kind='final-boxscore',at=ASOF-20,url=url)
+    archive(corrected_box(payload,'40-92'),kind='final-boxscore',at=ASOF-5,url=url)
+    with pytest.raises(ValueError,match='equal|ambiguous'): data.training_examples(ASOF)
+
+
+def test_equal_clock_equivalents_choose_smallest_id_and_seal_duplicates():
+    payload,url=correction_history()
+    first=archive(payload,kind='final-boxscore',at=ASOF-10,url=url)
+    equivalent=dict(payload,provider_note='same supported values')
+    second=archive(equivalent,kind='final-boxscore',at=ASOF-10,url=url)
+    examples,sources=data.training_examples(ASOF)
+    assert first<second and all(r['possession_source_artifact_id']==first for r in advanced_rows(examples))
+    assert {s['id']:s['disposition'] for s in sources if s['kind']=='final-boxscore'}=={first:'selected',second:'duplicate'}
+    before=data.map_hash(dict(sources=sources))
+    archive(dict(payload,provider_note='another duplicate'),kind='final-boxscore',at=ASOF-10,url=url)
+    assert before!=data.map_hash(dict(sources=data.training_examples(ASOF)[1]))
+
+
+def test_repeated_equivalent_later_receipt_is_the_actual_selected_evidence():
+    payload,url=correction_history()
+    archive(payload,kind='final-boxscore',at=ASOF-20,url=url)
+    newest=archive(payload,kind='final-boxscore',at=ASOF-10,url=url)
+    rows=advanced_rows(data.training_examples(ASOF)[0])
+    assert rows and all(r['possession_source_artifact_id']==newest and r['possession_received_at']==ASOF-10 for r in rows)
+
+
+@pytest.mark.parametrize('position',['old','new'])
+def test_correction_checks_every_eligible_body_after_cache_warmup(position,monkeypatch):
+    payload,url=correction_history()
+    old=archive(payload,kind='final-boxscore',at=ASOF-20,url=url)
+    new=archive(corrected_box(payload),kind='final-boxscore',at=ASOF-10,url=url)
+    data.training_examples(ASOF)
+    original=db.q1
+    def corrupt(sql,args=()):
+        result=original(sql,args)
+        if result and 'SELECT * FROM nba_source_artifacts' in sql and args==(old if position=='old' else new,):
+            return dict(result,body=result['body']+b' ')
+        return result
+    monkeypatch.setattr(db,'q1',corrupt)
+    with pytest.raises(ValueError,match='hash'): data.training_examples(ASOF)
+
+
+@pytest.mark.parametrize('bad',['route','query','host','event','team','orientation','score','time','season','period','lines','stat'])
+def test_invalid_incomplete_receipt_is_never_optional_missingness(bad):
+    payload,url=correction_history()
+    payload['boxscore']['teams']=[]
+    if bad=='route': url=url.replace('/summary?','/scoreboard?')
+    elif bad=='query': url+='&extra=1'
+    elif bad=='host': url=url.replace('site.api.espn.com','evil.example')
+    elif bad=='event': payload['header']['id']='401234512'
+    elif bad=='team': payload['header']['competitions'][0]['competitors'][0]['team']['id']='999'
+    elif bad=='orientation': payload['header']['competitions'][0]['competitors'][0]['homeAway']='away'
+    elif bad=='score': payload['header']['competitions'][0]['competitors'][0]['score']='111'
+    elif bad=='time': payload['header']['competitions'][0]['date']=iso(TIP-15*86400)
+    elif bad=='season': payload['header']['season']['type']=3
+    elif bad=='period': payload['header']['status']['period']=3
+    elif bad=='lines': payload['header']['competitions'][0]['competitors'][0]['linescores']=[dict(value=25)]*4
+    elif bad=='stat':
+        payload['boxscore']['teams']=corrected_box(summary(4))['boxscore']['teams']
+        del payload['boxscore']['teams'][0]['statistics'][1]
+        payload['boxscore']['teams'][0]['statistics'][0]['displayValue']='41-40'
+    archive(payload,kind='final-boxscore',at=ASOF-10,url=url)
+    with pytest.raises(ValueError): data.training_examples(ASOF)
+
+
+@pytest.mark.parametrize('newest',[True,False])
+def test_incomplete_policy_fails_new_head_but_seals_older_missingness(newest):
+    payload,url=correction_history(); missing=json.loads(json.dumps(payload)); missing['boxscore']['teams']=[]
+    complete=archive(payload,kind='final-boxscore',at=ASOF-20,url=url)
+    absent=archive(missing,kind='final-boxscore',at=ASOF-10 if newest else ASOF-30,url=url)
+    if newest:
+        with pytest.raises(ValueError,match='incomplete'): data.training_examples(ASOF)
+    else:
+        examples,sources=data.training_examples(ASOF)
+        descriptor=next(s for s in sources if s['id']==absent)
+        assert descriptor['disposition']=='incomplete' and descriptor['selected_source_artifact_id']==complete
+        assert advanced_rows(examples)
+
+
+def test_never_complete_receipts_preserve_scores_and_seal_verified_missingness():
+    payload,url=correction_history(); before,_=data.training_examples(ASOF)
+    payload['boxscore']['teams']=[]
+    absent=archive(payload,kind='final-boxscore',at=ASOF-10,url=url)
+    after,sources=data.training_examples(ASOF)
+    assert before==after and before
+    descriptor=next(s for s in sources if s['id']==absent)
+    assert descriptor['disposition']=='incomplete' and descriptor['selected_source_artifact_id'] is None
+
+
+@pytest.mark.parametrize('known_first',[True,False])
+def test_known_unknown_duration_changes_remain_correction_conflicts(known_first):
+    payload,url=correction_history(); unknown=json.loads(json.dumps(payload))
+    del unknown['header']['status']['period']; del unknown['header']['competitions'][0]['status']['period']
+    for value,receipt in zip((payload,unknown) if known_first else (unknown,payload),(ASOF-20,ASOF-10)):
+        archive(value,kind='final-boxscore',at=receipt,url=url)
+    with pytest.raises(ValueError,match='correction'): data.training_examples(ASOF)
+
+
+def test_stat_corrections_do_not_repin_old_saved_source_maps():
+    payload,url=correction_history(); old=archive(payload,kind='final-boxscore',at=ASOF-20,url=url)
+    examples,_=data.training_examples(ASOF-20)
+    example=examples[-1]
+    game=dict(game_id='nba-2026-401999999',home_team='BOS',away_team='NYK',tipoff_ts=TIP)
+    mapped=data.prepare(game,example['rows'],ASOF-20)
+    archive(corrected_box(payload),kind='final-boxscore',at=ASOF-10,url=url)
+    data.training_examples(ASOF)
+    assert data.verify_input_map(mapped,game,ASOF-20)==mapped
+    assert old in data.source_ids(mapped)
+
+
+def test_training_schedule_score_correction_is_still_rejected():
+    correction_history()
+    archive(dict(events=[event(eid='401234513',at=TIP-16*86400,score=(111,100))]),at=ASOF-1)
+    with pytest.raises(ValueError,match='source correction'): data.training_examples(ASOF)
+
+
+@pytest.mark.parametrize('bad',['prefixed-header-id','unproved-season','malformed-team','malformed-stats','malformed-line'])
+def test_offline_box_identity_and_present_structures_are_canonical(bad):
+    payload,url=correction_history()
+    if bad=='prefixed-header-id': payload['header']['id']='nba-2026-401234513'
+    elif bad=='unproved-season':
+        del payload['header']['season']['type']; del payload['header']['seasonType']
+    elif bad=='malformed-team': payload['boxscore']['teams'][0]='invalid'
+    elif bad=='malformed-stats': payload['boxscore']['teams'][0]['statistics']=[None]
+    elif bad=='malformed-line': payload['header']['competitions'][0]['competitors'][0]['linescores']=[None]*4
+    archive(payload,kind='final-boxscore',at=ASOF-10,url=url)
+    with pytest.raises(ValueError): data.training_examples(ASOF)
+
+
+def test_equal_clock_raw_statistics_conflict_even_when_estimated_possessions_match():
+    payload,url=correction_history(); same_raw=corrected_box(payload)
+    same_raw['boxscore']['teams'][0]['statistics'][2]['displayValue']='11'
+    archive(payload,kind='final-boxscore',at=ASOF-20,url=url)
+    archive(same_raw,kind='final-boxscore',at=ASOF-20,url=url)
+    archive(corrected_box(payload,'40-92'),kind='final-boxscore',at=ASOF-10,url=url)
+    with pytest.raises(ValueError,match='equal|ambiguous'): data.training_examples(ASOF)
+
+
+def test_invalid_middle_chain_member_cannot_be_hidden_by_a_newer_valid_box():
+    payload,url=correction_history(); invalid=corrected_box(payload)
+    invalid['header']['competitions'][0]['competitors'][0]['score']='111'
+    for value,receipt in zip((payload,invalid,corrected_box(payload,'40-92')),(ASOF-30,ASOF-20,ASOF-10)):
+        archive(value,kind='final-boxscore',at=receipt,url=url)
+    with pytest.raises(ValueError,match='score'): data.training_examples(ASOF)
+
+
+@pytest.mark.parametrize('missing',['one-team','one-stat','no-box'])
+def test_valid_partial_advanced_structures_remain_scoring_only(missing):
+    payload,url=correction_history(); before,_=data.training_examples(ASOF)
+    if missing=='one-team': payload['boxscore']['teams']=payload['boxscore']['teams'][:1]
+    elif missing=='one-stat': del payload['boxscore']['teams'][0]['statistics'][1]
+    else: del payload['boxscore']
+    archive(payload,kind='final-boxscore',at=ASOF-10,url=url)
+    after,sources=data.training_examples(ASOF)
+    assert before==after and sources[-1]['disposition']=='incomplete'
+
+
+def test_irrelevant_and_future_boxes_are_not_body_read_or_sealed(monkeypatch):
+    payload,url=correction_history(); expected=data.training_examples(ASOF)
+    future=archive(payload,kind='final-boxscore',at=ASOF+1,url=url)
+    irrelevant=archive(dict(malformed=True),kind='final-boxscore',at=ASOF-1,url=url.replace('401234513','401888888'))
+    original=data._source
+    def guarded(ident,cutoff):
+        assert ident not in {future,irrelevant}
+        return original(ident,cutoff)
+    monkeypatch.setattr(data,'_source',guarded)
+    assert data.training_examples(ASOF)==expected
+
+
+def test_historical_reconstruction_is_portable_read_only_and_source_bound(tmp_path,monkeypatch):
+    import sqlite3
+    payload,url=correction_history()
+    archive(payload,kind='final-boxscore',at=ASOF-20,url=url)
+    archive(corrected_box(payload),kind='final-boxscore',at=ASOF-10,url=url)
+    expected=data.training_examples(ASOF)
+    target=tmp_path/'relocated'/'archive.sqlite'; target.parent.mkdir()
+    relocated=sqlite3.connect(target); db.conn().backup(relocated); relocated.close()
+    before=hashlib.sha256(target.read_bytes()).hexdigest()
+    db._conn.close(); db._conn=None
+    monkeypatch.setattr(settings,'database_url',f'sqlite:///{target}')
+    db.conn().execute('PRAGMA query_only=ON')
+    assert data.training_examples(ASOF)==expected
+    assert hashlib.sha256(target.read_bytes()).hexdigest()==before
+
+
+@pytest.mark.parametrize('mismatch',[False,True])
+def test_missing_owner_coverage_does_not_hide_present_owner_identity(mismatch):
+    payload,url=correction_history(partial_owner=True)
+    if mismatch: payload['header']['competitions'][0]['competitors'][0]['score']='111'
+    selected=archive(payload,kind='final-boxscore',at=ASOF-10,url=url)
+    if mismatch:
+        with pytest.raises(ValueError,match='score'): data.training_examples(ASOF)
+    else:
+        examples,_=data.training_examples(ASOF)
+        rows=advanced_rows(examples)
+        assert examples and rows and {r['team'] for r in rows}=={'BOS'}
+        assert all(r['possession_source_artifact_id']==selected for r in rows)
+
+
+def actual_turnover_shape_history():
+    """Public incident's supported stats, with synthetic matching owner schedules."""
+    events=[event(eid=str(401909827+i),at=TIP-(i+3)*86400,score=(125,113)) for i in range(14)]
+    for ev in events:
+        for competitor,tid,abbr in zip(ev['competitions'][0]['competitors'],('10','6'),('HOU','DAL')):
+            competitor['team']=dict(id=tid,abbreviation=abbr)
+    for tid in ('10','6'):
+        archive(dict(events=events),at=ASOF-100,
+            url=f'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/{tid}/schedule?season=2027&seasontype=2')
+    payload=summary(4); payload['header']=events[-1]
+    for competitor in payload['header']['competitions'][0]['competitors']:
+        competitor['score']=str(competitor['score']['value'])
+    payload['boxscore']['teams']=[]
+    for tid,abbr,fg,ft,rebounds,individual,total in (
+            ('10','HOU','47-88','18-25','17','15','16'),('6','DAL','41-79','17-26','8','21','21')):
+        payload['boxscore']['teams'].append(dict(team=dict(id=tid,abbreviation=abbr),statistics=[
+            dict(name=name,displayValue=value) for name,value in (
+                ('fieldGoalsMade-fieldGoalsAttempted',fg),('freeThrowsMade-freeThrowsAttempted',ft),
+                ('offensiveRebounds',rebounds),('turnovers',individual),('totalTurnovers',total))]))
+    # Synthetic owner event has final status but no period; prove unchanged regulation.
+    payload['header']['status']['period']=4
+    payload['header']['competitions'][0]['status']['period']=4
+    return payload,'https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=401909840'
+
+
+@pytest.mark.parametrize('offset,expected',[(-.001,100.72),(0,101.22),(1,101.22)])
+def test_actual_hou_dal_counts_prefer_total_turnovers_through_correction(offset,expected):
+    payload,url=actual_turnover_shape_history()
+    old=archive(payload,kind='final-boxscore',at=ASOF-20,url=url)
+    corrected=json.loads(json.dumps(payload))
+    corrected['boxscore']['teams'][1]['statistics'][0]['displayValue']='41-80'
+    new=archive(corrected,kind='final-boxscore',at=ASOF-10,url=url)
+    examples,sources=data.training_examples(ASOF-10+offset)
+    rows=advanced_rows(examples); selected=old if offset<0 else new
+    assert rows and {r['team'] for r in rows}=={'HOU','DAL'}
+    assert all(r['raw_possessions']==pytest.approx(expected) and r['pace48']==pytest.approx(expected) for r in rows)
+    assert all(r['possession_source_artifact_id']==r['duration_source_artifact_id']==selected for r in rows)
+    assert all(r['possession_received_at']==r['duration_received_at']==(ASOF-20 if offset<0 else ASOF-10) for r in rows)
+    assert all(s['selected_source_artifact_id']==selected for s in sources if s['kind']=='final-boxscore')
+
+
+@pytest.mark.parametrize('individual,total,expected',[('17','16',100.72),('15',None,100.22)])
+def test_turnover_fields_are_distinct_with_total_preference_and_absent_fallback(individual,total,expected):
+    payload,url=actual_turnover_shape_history()
+    stats=payload['boxscore']['teams'][0]['statistics']; stats[3]['displayValue']=individual
+    if total is None: stats.pop()
+    else: stats[4]['displayValue']=total
+    archive(payload,kind='final-boxscore',at=ASOF-10,url=url)
+    rows=advanced_rows(data.training_examples(ASOF)[0])
+    assert rows and all(r['raw_possessions']==pytest.approx(expected) for r in rows)
+
+
+@pytest.mark.parametrize('invalid',['-1','NaN','1.5',True])
+def test_present_unused_individual_turnover_count_still_validates(invalid):
+    payload,url=actual_turnover_shape_history()
+    payload['boxscore']['teams'][0]['statistics'][3]['displayValue']=invalid
+    archive(payload,kind='final-boxscore',at=ASOF-10,url=url)
+    with pytest.raises(ValueError): data.training_examples(ASOF)
+
+
+def test_partial_owner_box_cannot_omit_the_known_owner_team():
+    payload,url=correction_history(partial_owner=True)
+    payload['header']['competitions'][0]['competitors'][0]['team']=dict(id='4',abbreviation='CHI')
+    payload['boxscore']['teams'][0]['team']=dict(id='4',abbreviation='CHI')
+    archive(payload,kind='final-boxscore',at=ASOF-10,url=url)
+    with pytest.raises(ValueError,match='score/team identity'): data.training_examples(ASOF)

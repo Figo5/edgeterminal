@@ -20,6 +20,7 @@ BASE = '/apis/site/v2/sports/basketball/nba/'
 FEATURE_LAG = 4 * 3600
 MAX_ROWS = 6000
 MAX_BODY = 8 * 1024 * 1024
+HISTORICAL_BOX_POLICY = 'verified_box_stat_correction_as_of_v1'
 _PARSED = {}
 _PARSED_CONNECTION = None
 
@@ -161,17 +162,49 @@ def source_history(source_id, as_of):
 def box_features(source_id, as_of):
     """Full-game possessions plus duration only when final-period evidence proves it."""
     source,body,url=_source(source_id,as_of)
+    return _box_evidence(source,body,url)[:3]
+
+
+def _box_evidence(source, body, url, *, allow_incomplete=False):
+    """Shared verification; only offline reconstruction permits missing statistics."""
+    source_id=source['id']
     if source['kind']!='final-boxscore': raise ValueError('Totals possession source kind conflict')
     query=parse_qs(url.query,keep_blank_values=True)
     if url.path!=BASE+'summary' or set(query)!={'event'} or len(query['event'])!=1:
         raise ValueError('Totals box route/query identity is invalid')
     eid=_event_id(query['event'][0]); header=body.get('header') or {}
+    if allow_incomplete:
+        if not isinstance(header,dict) or not isinstance(header.get('season'),dict):
+            raise ValueError('Totals box header/season structure is invalid')
+        if str(header.get('id'))!=eid: raise ValueError('Totals box numeric event identity conflict')
+        season_type=header.get('seasonType')
+        if season_type is not None and not isinstance(season_type,dict):
+            raise ValueError('Totals box season type structure is invalid')
+        if header['season'].get('type')!=2 and (season_type or {}).get('type')!=2:
+            raise ValueError('Totals box regular season is unproved')
+        competitions=header.get('competitions')
+        if not isinstance(competitions,list) or len(competitions)!=1 or not isinstance(competitions[0],dict):
+            raise ValueError('Totals box competition structure is invalid')
+        competitors=competitions[0].get('competitors')
+        if not isinstance(competitors,list) or any(not isinstance(c,dict) or not isinstance(c.get('team'),dict) for c in competitors):
+            raise ValueError('Totals box competitor structure is invalid')
+        for status in (header.get('status'),competitions[0].get('status')):
+            if status is not None and (not isinstance(status,dict) or not isinstance(status.get('type'),dict)):
+                raise ValueError('Totals box status structure is invalid')
     year=(header.get('season') or {}).get('year')
     if not isinstance(year,int) or isinstance(year,bool): raise ValueError('Totals box season missing')
     rows=_event(header,year)
     if not rows or rows[0]['game_id']!=eid or rows[0]['played_at']>=source['received_at']:
         raise ValueError('Totals box final/game identity conflict')
     comp=header['competitions'][0]
+    if allow_incomplete:
+        if url.query!=f'event={eid}': raise ValueError('Totals box route/query identity is invalid')
+        if header.get('date') and comp.get('date') and _stamp(header['date'])!=_stamp(comp['date']):
+            raise ValueError('Totals box played time conflict')
+        for status in (header.get('status'),comp.get('status')):
+            if status is not None and ((status.get('type') or {}).get('completed') is not True
+                    or (status.get('type') or {}).get('state') not in (None,'post')):
+                raise ValueError('Totals box final status conflict')
     periods=[]
     for status in (header.get('status') or {},comp.get('status') or {}):
         if 'period' in status:
@@ -187,6 +220,7 @@ def box_features(source_id, as_of):
         if not isinstance(lines,list) or not 4<=len(lines)<=20: raise ValueError('Totals line-score duration is invalid')
         counts=[]
         for index,line in enumerate(lines,1):
+            if allow_incomplete and not isinstance(line,dict): raise ValueError('Totals line-score structure is invalid')
             observed=[]
             if 'value' in line:
                 observed.append(_number(line['value']))
@@ -207,14 +241,30 @@ def box_features(source_id, as_of):
     if line_counts and len(line_counts)!=2: raise ValueError('Totals duration needs both line scores')
     if periods+line_counts and len(set(periods+line_counts))!=1: raise ValueError('Totals duration evidence conflicts')
     period=(periods+line_counts)[0] if periods+line_counts else None
-    teams=(body.get('boxscore') or {}).get('teams')
-    if not isinstance(teams,list) or len(teams)!=2: raise ValueError('Totals possessions need two team boxes')
-    estimates={}
+    duration={}
+    if period is not None:
+        minutes=48+5*(period-4)
+        duration=dict(duration_minutes=minutes,overtime_periods=period-4,duration_method='explicit_final_period_v1')
+    box=body.get('boxscore')
+    if allow_incomplete and box is not None and not isinstance(box,dict):
+        raise ValueError('Totals boxscore structure is invalid')
+    teams=(box or {}).get('teams')
+    if allow_incomplete and teams is None: teams=[]
+    if not isinstance(teams,list) or (len(teams)!=2 and not allow_incomplete) or len(teams)>2:
+        raise ValueError('Totals possessions need two team boxes')
+    estimates={}; supported={}; complete=len(teams)==2
     for team in teams:
+        if allow_incomplete and (not isinstance(team,dict) or not isinstance(team.get('team'),dict)):
+            raise ValueError('Totals team box structure is invalid')
         code=nba_identity.team_code(team.get('team') or {})
-        if code in estimates or code not in {r['team'] for r in rows}: raise ValueError('Totals box team conflict')
-        statistics=team.get('statistics') or []
+        if code in supported or code not in {r['team'] for r in rows}: raise ValueError('Totals box team conflict')
+        statistics=team.get('statistics')
+        if statistics is None or not allow_incomplete: statistics=statistics or []
+        if allow_incomplete and (not isinstance(statistics,list) or any(not isinstance(s,dict) for s in statistics)):
+            raise ValueError('Totals box statistics structure is invalid')
         names=[s.get('name') for s in statistics]
+        if allow_incomplete and any(not isinstance(name,str) for name in names):
+            raise ValueError('Totals box statistic name is invalid')
         if len(set(names))!=len(names): raise ValueError('Totals duplicate box statistic')
         stats={s.get('name'):s.get('displayValue',s.get('value')) for s in statistics}
         def count(name):
@@ -229,10 +279,29 @@ def box_features(source_id, as_of):
             if not match: raise ValueError('Totals possession attempts missing')
             made,attempted=map(int,match.groups())
             if not 0<=made<=attempted<=300: raise ValueError('Totals possession attempts invalid')
-            return attempted
+            return (made,attempted) if allow_incomplete else attempted
         if 'points' in stats and count('points')!=next(r['points'] for r in rows if r['team']==code):
             raise ValueError('Totals team box score conflict')
-        estimates[code]=attempts('fieldGoalsMade-fieldGoalsAttempted')+.44*attempts('freeThrowsMade-freeThrowsAttempted')-count('offensiveRebounds')+count('totalTurnovers' if 'totalTurnovers' in stats else 'turnovers')
+        if allow_incomplete:
+            # Validate present supported inputs even when another required field is absent.
+            values={name:(attempts(name) if name.endswith('Attempted') else count(name))
+                for name in ('fieldGoalsMade-fieldGoalsAttempted','freeThrowsMade-freeThrowsAttempted',
+                    'offensiveRebounds','totalTurnovers','turnovers') if name in stats}
+            # These are distinct provider counts. Match serving's total preference.
+            turnover=values.get('totalTurnovers',values.get('turnovers'))
+            supported[code]=dict(values)
+            supported[code].pop('turnovers',None); supported[code].pop('totalTurnovers',None)
+            if turnover is not None: supported[code]['turnovers']=turnover
+            required={'fieldGoalsMade-fieldGoalsAttempted','freeThrowsMade-freeThrowsAttempted','offensiveRebounds'}
+            if not required<=values.keys() or turnover is None:
+                complete=False
+                continue
+            estimates[code]=values['fieldGoalsMade-fieldGoalsAttempted'][1]+.44*values['freeThrowsMade-freeThrowsAttempted'][1]-values['offensiveRebounds']+turnover
+        else:
+            estimates[code]=attempts('fieldGoalsMade-fieldGoalsAttempted')+.44*attempts('freeThrowsMade-freeThrowsAttempted')-count('offensiveRebounds')+count('totalTurnovers' if 'totalTurnovers' in stats else 'turnovers')
+            supported[code]=None
+    evidence=dict(duration=duration,statistics=supported,complete=complete)
+    if not complete: return rows,None,source,evidence
     raw=sum(estimates.values())/2
     if not 50<=raw<=200: raise ValueError('Totals raw possessions implausible')
     result=dict(raw_possessions=raw,possession_method='symmetric_box_estimate_044',possession_source_artifact_id=source_id)
@@ -240,7 +309,7 @@ def box_features(source_id, as_of):
         duration=48+5*(period-4)
         result.update(duration_minutes=duration,overtime_periods=period-4,pace48=raw*48/duration,
             duration_method='explicit_final_period_v1',duration_source_artifact_id=source_id)
-    return rows,result,source
+    return rows,result,source,evidence
 
 
 def _game(game):
@@ -605,6 +674,68 @@ def validation_labels(reservation, now=None):
 read_labels=validation_labels
 
 
+def _historical_boxes(history, sources, at, signature):
+    """Resolve verified event-wide versions without changing selected-ID serving."""
+    event_rows={}
+    for (team,eid),row in history.items(): event_rows.setdefault(eid,{})[team]=row
+    events=set(event_rows)
+    heads=db.q("SELECT id,url FROM nba_source_artifacts WHERE kind='final-boxscore' "
+        'AND http_status=200 AND received_at<=? ORDER BY received_at,id',(at,))
+    versions={}
+    for head in heads:
+        route=urlsplit(head['url']); query=parse_qs(route.query,keep_blank_values=True)
+        relevant=set()
+        for value in query.get('event',[]):
+            try: relevant.add(_event_id(value))
+            except ValueError: continue
+        if not relevant & events: continue
+        source,body,route=_source(head['id'],at)
+        rows,features,source,evidence=_box_evidence(source,body,route,allow_incomplete=True)
+        eid=rows[0]['game_id']
+        box_by_team={row['team']:row for row in rows}
+        for team,original in event_rows[eid].items():
+            matched=box_by_team.get(team)
+            if matched is None or signature(original)!=signature(matched):
+                raise ValueError('Totals historical box score/team identity conflict')
+        versions.setdefault(eid,[]).append((source,features,evidence,rows))
+    for eid,candidates in versions.items():
+        candidates.sort(key=lambda item:(item[0]['received_at'],item[0]['id']))
+        fixed=None; clocks={}
+        for source,features,evidence,rows in candidates:
+            invariant=_json(dict(duration=evidence['duration'],possession_method='symmetric_box_estimate_044'))
+            if fixed is not None and fixed!=invariant:
+                raise ValueError('Totals historical box duration/method correction conflict')
+            fixed=invariant
+            semantic=_json(evidence)
+            clock=source['received_at']
+            if clock in clocks and clocks[clock]!=semantic:
+                raise ValueError('Totals historical box equal-clock correction is ambiguous')
+            clocks[clock]=semantic
+        complete=[item for item in candidates if item[1] is not None]
+        selected=None
+        if complete:
+            latest=max(item[0]['received_at'] for item in candidates)
+            if any(item[1] is None and item[0]['received_at']==latest for item in candidates):
+                raise ValueError('Totals historical box newest correction is incomplete')
+            selected=min((item for item in complete if item[0]['received_at']==latest),key=lambda item:item[0]['id'])
+            source,features,evidence,rows=selected
+            for row in rows:
+                original=history.get((row['team'],eid))
+                if original is None: continue  # Absent owner history is coverage, never synthesized evidence.
+                original.update(features,offensive_efficiency=original['points']/features['raw_possessions'],
+                    defensive_efficiency=original['opponent_points']/features['raw_possessions'],
+                    possession_received_at=source['received_at'],possession_source_sha256=source['sha256'])
+                if features.get('duration_source_artifact_id'):
+                    original.update(duration_received_at=source['received_at'],duration_source_sha256=source['sha256'])
+        selected_id=selected[0]['id'] if selected else None
+        for source,features,evidence,rows in candidates:
+            disposition=('incomplete' if features is None else 'selected' if source['id']==selected_id
+                else 'duplicate' if selected and source['received_at']==selected[0]['received_at'] else 'superseded')
+            sources[source['id']]=dict(_descriptor(source,'historical_possession_duration'),
+                resolution_policy=HISTORICAL_BOX_POLICY,event_id=eid,
+                selected_source_artifact_id=selected_id,disposition=disposition)
+
+
 def training_examples(cutoff):
     """Earlier-score reconstructions for fitting, never saved prospective pairs.
 
@@ -626,33 +757,8 @@ def training_examples(cutoff):
                 raise ValueError('Totals historical source correction conflict')
             if key not in history: history[key]=row
         sources[source['id']]=_descriptor(source,'historical_reconstruction')
-    # Historical replay alone may scan final-box metadata. Serving never does.
-    box_heads=db.q("SELECT id,url FROM nba_source_artifacts WHERE kind='final-boxscore' "
-        'AND http_status=200 AND received_at<=? ORDER BY received_at,id',(at,))
-    enriched={}
-    for head in box_heads:
-        route=urlsplit(head['url']); query=parse_qs(route.query,keep_blank_values=True)
-        event=query.get('event',[None])[0]
-        if event not in {key[1] for key in history}: continue
-        source,body,_route=_source(head['id'],at)
-        teams=(body.get('boxscore') or {}).get('teams') or []
-        required={'fieldGoalsMade-fieldGoalsAttempted','freeThrowsMade-freeThrowsAttempted','offensiveRebounds'}
-        complete=len(teams)==2 and all(required<={s.get('name') for s in t.get('statistics') or []}
-            and {'totalTurnovers','turnovers'} & {s.get('name') for s in t.get('statistics') or []} for t in teams)
-        if not complete: continue  # Absent advanced evidence preserves score-only examples.
-        boxrows,features,source=box_features(head['id'],at)
-        for boxrow in boxrows:
-            key=(boxrow['team'],boxrow['game_id'])
-            if key not in history: continue
-            original=history[key]
-            if signature(original)!=signature(boxrow): raise ValueError('Totals historical box score conflict')
-            semantic={k:v for k,v in features.items() if not k.endswith('_source_artifact_id')}
-            if key in enriched and enriched[key]!=semantic: raise ValueError('Totals historical box correction conflict')
-            if key not in enriched:
-                original.update(features,offensive_efficiency=original['points']/features['raw_possessions'],
-                    defensive_efficiency=original['opponent_points']/features['raw_possessions'])
-                sources[source['id']]=_descriptor(source,'historical_possession_duration')
-                enriched[key]=semantic
+    # Every relevant eligible body is verified before optional missingness/selection.
+    _historical_boxes(history,sources,at,signature)
     games={}
     for row in history.values():
         games.setdefault(row['game_id'],{})[row['team']]=row

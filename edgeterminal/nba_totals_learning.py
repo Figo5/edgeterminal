@@ -458,16 +458,23 @@ def resume_publication(version, now=None):
 
 
 def _training_examples(raw, cutoff):
+    received_by = store.stamp(cutoff)
     result = []
     for row in raw:
         if 'context' in row and 'ts' in row:
-            result.append(row)
-            continue
-        tip = row.get('ts', row.get('tipoff'))
-        context = model.features(row['home'], row['away'], row['rows'], tip, as_of=row['as_of'],
-            baseline_total=row['baseline_total'], reconstruction_cutoff=cutoff if row.get('reconstructed') else None)
+            tip, context = row['ts'], row['context']
+        else:
+            tip = row.get('ts', row.get('tipoff'))
+            context = model.features(row['home'], row['away'], row['rows'], tip, as_of=row['as_of'],
+                baseline_total=row['baseline_total'], reconstruction_cutoff=received_by if row.get('reconstructed') else None)
         if context['status'] == 'ok':
-            result.append(dict(row, ts=tip, context=context))
+            feature_receipt = model.feature_evidence_received_at(context)
+            if feature_receipt > received_by:
+                raise ValueError('NBA totals feature evidence receipt exceeds training cutoff')
+            declared = row.get('feature_evidence_received_at')
+            if declared is not None and store.stamp(declared) != feature_receipt:
+                raise ValueError('NBA totals feature evidence receipt differs from selected context')
+            result.append(dict(row, ts=tip, context=context, feature_evidence_received_at=feature_receipt))
     return result
 
 

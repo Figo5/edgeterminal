@@ -75,7 +75,8 @@ def test_duplicate_games_and_audited_dates_never_become_validation():
 
 
 def test_fitting_seals_one_candidate_without_ever_reading_outer_labels(monkeypatch):
-    monkeypatch.setattr(learning.data, 'training_examples', lambda cutoff: ([{'context': {}, 'ts': NOW - 172800, 'actual_total': 220.}], []))
+    from test_nba_totals_model import examples
+    monkeypatch.setattr(learning.data, 'training_examples', lambda cutoff: ([examples()[0]], []))
     monkeypatch.setattr(learning.model, 'fit_candidate', lambda examples, cutoff: dict(version='fresh', training_cutoff=cutoff, sd_total=20.))
     monkeypatch.setattr(learning.model, '_version', lambda artifact: 'fresh')
     monkeypatch.setattr(learning.data, 'read_labels', lambda *a, **k: pytest.fail('fit read prospective labels'))
@@ -451,8 +452,9 @@ def test_publication_timestamp_is_after_slow_verification(monkeypatch):
 
 
 def test_code_change_during_fitting_cannot_be_resealed_as_new_code(monkeypatch):
+    from test_nba_totals_model import examples
     monkeypatch.setattr(learning.data, 'training_examples', lambda cutoff:
-        ([dict(context={}, ts=NOW-86400, actual_total=220.)], []))
+        ([examples()[0]], []))
     def fit(examples, cutoff):
         (store.ROOT / 'edgeterminal/component.py').write_text('changed during fitting')
         return dict(version='wrong-fit-code', training_cutoff=cutoff, sd_total=20.)

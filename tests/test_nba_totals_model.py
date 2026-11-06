@@ -498,3 +498,205 @@ def test_raw_base_contract_is_versioned_and_spread_sigma_is_retained_in_metadata
     assert retained['sd_total'] == raw['sd_total']
     assert retained['total_base_total'] == raw['total']
     assert retained['total_base_sd_total'] == raw['sd_total']
+
+
+def _component_example(rows, index, component, receipt, *, declared=None):
+    example = rows[index]
+    evidence = history(example['ts'], pace=True)
+    prior_start = datetime(model._season(example['ts']) - 1, 7, 1, tzinfo=timezone.utc).timestamp()
+    evidence.extend(dict(team='CHI', opponent='LAL', game_id=f'opp-{i}',
+                         played_at=prior_start + i * DAY, received_at=prior_start + i * DAY + 4 * 3600,
+                         points=110, opponent_points=112, raw_possessions=100., duration_minutes=48.)
+                    for i in range(5))
+    for row in evidence:
+        row.update(possession_source_artifact_id=101, duration_source_artifact_id=101,
+                   possession_received_at=row['received_at'], duration_received_at=row['received_at'])
+    evidence[0][component + '_received_at'] = receipt
+    cutoff = rows[-1]['ts'] + DAY
+    example['context'] = context(evidence, tip=example['ts'], baseline_total=example['baseline_total'],
+                                 reconstruction_cutoff=max(cutoff, receipt))
+    assert example['context']['coverage']['pace_supported']
+    assert example['context']['coverage']['opponent_supported']
+    if declared is not None:
+        example['feature_evidence_received_at'] = declared
+    return example
+
+
+@pytest.mark.parametrize('component', ['possession', 'duration'])
+@pytest.mark.parametrize('earlier,later', [(0, 6), (6, 9)])
+@pytest.mark.parametrize('declared', ['omitted', 'forged'])
+def test_fitting_derives_actual_component_receipts_for_both_phase_boundaries(component, earlier, later, declared):
+    rows = examples()
+    before = copy.deepcopy(rows)
+    _component_example(rows, earlier, component, rows[later]['as_of'] + 1,
+                       declared=rows[earlier]['as_of'] - DAY if declared == 'forged' else None)
+    with pytest.raises(ValueError, match='receipt|chronology'):
+        fit(rows)
+    assert [r['label_received_at'] for r in rows] == [r['label_received_at'] for r in before]
+
+
+@pytest.mark.parametrize('component', ['possession', 'duration'])
+def test_fitting_feature_receipt_boundary_is_strict_and_uses_history_waiting_error(component):
+    for offset in (0, 1):
+        rows = examples()
+        _component_example(rows, 0, component, rows[6]['as_of'] + offset)
+        with pytest.raises(ValueError) as failure:
+            fit(rows)
+        assert str(failure.value) == 'NBA totals phase date/label receipt chronology conflict'
+    rows = examples()
+    _component_example(rows, 0, component, rows[6]['as_of'] - 1)
+    assert fit(rows)['params'] == fit()['params']
+
+
+def test_fitting_checks_feature_receipt_cutoff_independently_of_context_reconstruction_marker():
+    rows = examples()
+    example = _component_example(rows, 10, 'possession', rows[-1]['ts'] + 2 * DAY)
+    example['context']['reconstruction_cutoff'] = rows[-1]['ts'] + DAY
+    with pytest.raises(ValueError, match='receipt.*cutoff'):
+        fit(rows)
+
+
+@pytest.mark.parametrize('component', ['possession', 'duration'])
+def test_real_component_source_identity_needs_actual_receipt_during_fitting_only(component):
+    rows = examples()
+    example = _component_example(rows, 0, component, rows[0]['as_of'] - DAY)
+    example['context']['selected_rows'][0].pop(component + '_received_at')
+    with pytest.raises(ValueError, match='receipt'):
+        fit(rows)
+    # Ordinary saved serving maps predate these fitting-only receipt fields.
+    evidence = history(pace=True)
+    for row in evidence:
+        row.update(possession_source_artifact_id=101, duration_source_artifact_id=101)
+    ctx = context(evidence)
+    assert ctx['status'] == 'ok'
+    assert model.compose(projection(), input_map(evidence), fit())['total'] == 236.
+
+
+def test_feature_receipt_helper_uses_selected_actual_evidence_without_mutation():
+    rows = examples()
+    example = _component_example(rows, 0, 'possession', rows[6]['as_of'] - 1)
+    ctx = example['context']
+    original = copy.deepcopy(ctx)
+    assert model.feature_evidence_received_at(ctx) == rows[6]['as_of'] - 1
+    assert ctx == original
+    synthetic = context()
+    assert model.feature_evidence_received_at(synthetic) == max(r['received_at'] for r in synthetic['selected_rows'])
+
+
+def test_declared_feature_receipt_must_match_actual_selected_evidence():
+    for declared in (1., examples()[-1]['ts']):
+        rows = examples()
+        rows[0]['feature_evidence_received_at'] = declared
+        with pytest.raises(ValueError, match='receipt'):
+            fit(rows)
+    rows = examples()
+    for example in rows:
+        example['feature_evidence_received_at'] = model.feature_evidence_received_at(example['context'])
+    assert fit(rows)['params'] == fit()['params']
+
+
+def test_unused_late_opponent_and_unsupported_advanced_evidence_do_not_delay_fitting():
+    for unsupported in ('pace', 'opponent'):
+        rows = examples()
+        example = _component_example(rows, 0, 'possession', rows[6]['as_of'] + 1)
+        ctx = example['context']
+        ctx['coverage'][unsupported + '_supported'] = False
+        for row in ctx['selected_rows']:
+            if row['team'] == 'CHI':
+                row.update(received_at=rows[-1]['ts'] + 2 * DAY,
+                           possession_received_at=rows[-1]['ts'] + 2 * DAY,
+                           duration_received_at=rows[-1]['ts'] + 2 * DAY)
+        assert model.feature_evidence_received_at(ctx) < rows[6]['as_of']
+        assert fit(rows)['params']['method'] == 'intercept'
+
+
+def test_used_late_opponent_evidence_blocks_phase_boundary():
+    rows = examples()
+    example = _component_example(rows, 0, 'possession', rows[0]['as_of'] - DAY)
+    next(row for row in example['context']['selected_rows'] if row['team'] == 'CHI')[
+        'duration_received_at'] = rows[6]['as_of']
+    with pytest.raises(ValueError) as failure:
+        fit(rows)
+    assert str(failure.value) == 'NBA totals phase date/label receipt chronology conflict'
+
+
+@pytest.mark.parametrize('index,next_phase', [(0, 6), (6, 9)])
+def test_late_selected_score_receipt_blocks_phase_boundary(index, next_phase):
+    rows = examples()
+    example = _component_example(rows, index, 'possession', rows[index]['as_of'] - DAY)
+    example['context']['selected_rows'][0]['received_at'] = rows[next_phase]['as_of']
+    with pytest.raises(ValueError) as failure:
+        fit(rows)
+    assert str(failure.value) == 'NBA totals phase date/label receipt chronology conflict'
+
+
+def test_supported_synthetic_components_use_existing_score_receipts():
+    rows = examples()
+    example = _component_example(rows, 0, 'possession', rows[0]['as_of'] - DAY)
+    for row in example['context']['selected_rows']:
+        for name in ('possession', 'duration'):
+            row.pop(name + '_source_artifact_id')
+            row.pop(name + '_received_at')
+    expected = max(row['received_at'] for row in example['context']['selected_rows'])
+    assert model.feature_evidence_received_at(example['context']) == expected
+    assert fit(rows)['params']['method'] == 'intercept'
+
+
+def test_helper_uses_target_window_and_paired_components_instead_of_unused_union():
+    ctx = context(history(pace=True))
+    unused = dict(ctx['selected_rows'][-1], game_id='unused-old-target',
+                  played_at=min(row['played_at'] for row in ctx['selected_rows']) - DAY,
+                  received_at=TIP + DAY, possession_source_artifact_id=123,
+                  raw_possessions=100., duration_minutes=None)
+    ctx['selected_rows'].append(unused)
+    expected = max(row['received_at'] for row in ctx['selected_rows'] if row is not unused)
+    assert model.feature_evidence_received_at(ctx) == expected
+    # An unpaired raw-possession value does not contribute to pace/efficiency.
+    rows = examples()
+    example = _component_example(rows, 0, 'possession', rows[0]['as_of'] - DAY)
+    row = example['context']['selected_rows'][0]
+    row.update(duration_minutes=None, possession_received_at=rows[-1]['ts'] + 2 * DAY)
+    assert model.feature_evidence_received_at(example['context']) < rows[6]['as_of']
+
+
+def test_new_artifact_binds_feature_receipt_maxima_and_validates_them():
+    artifact = fit()
+    expected = {
+        name: max(model.feature_evidence_received_at(r['context']) for r in examples()[span])
+        for name, span in [('fit', slice(0, 6)), ('development', slice(6, 9)), ('calibration', slice(9, 12))]
+    }
+    assert artifact['phase_feature_receipt_max'] == expected
+    tampered = copy.deepcopy(artifact)
+    tampered['phase_feature_receipt_max']['fit'] -= 1
+    with pytest.raises(ValueError, match='seal'):
+        model.validate_artifact(tampered)
+    for name, receipt in [('fit', artifact['phase_asof_min']['development']),
+                          ('development', artifact['phase_asof_min']['calibration']),
+                          ('calibration', artifact['training_cutoff'] + 1)]:
+        invalid = copy.deepcopy(artifact)
+        invalid['phase_feature_receipt_max'][name] = receipt
+        with pytest.raises(ValueError, match='receipt|chronology'):
+            model.seal_version(invalid)
+    invalid = copy.deepcopy(artifact)
+    invalid['phase_feature_receipt_max']['outer'] = 1.
+    with pytest.raises(ValueError, match='receipt|contract'):
+        model.seal_version(invalid)
+
+
+def test_old_artifact_version_and_old_serving_maps_validate_without_resealing():
+    # The exact v1 seal captured before the feature-receipt implementation.
+    legacy = fit()
+    legacy.pop('phase_feature_receipt_max', None)
+    legacy['version'] = 'nba-total-v1-fa98e38f0f603068edb0'
+    encoded = json.dumps(legacy, sort_keys=True, separators=(',', ':'))
+    assert model.validate_artifact(legacy) == legacy
+    assert json.dumps(legacy, sort_keys=True, separators=(',', ':')) == encoded
+    serving_map = input_map()
+    original = copy.deepcopy(serving_map)
+    before = model.compose(projection(), serving_map, legacy)
+    after = model.compose(projection(), serving_map, fit())
+    assert serving_map == original
+    for name in ('total', 'proj_home', 'proj_away', 'home_score', 'away_score',
+                 'sd_total', 'margin', 'home_margin', 'sd_margin', 'uncertainty'):
+        assert after[name] == before[name]
+    assert (before['total'], before['home_score'], before['away_score'], before['sd_total']) == (236., 118., 118., 1.)

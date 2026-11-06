@@ -80,7 +80,8 @@ def artifact_sha256(artifact):
 def _version(artifact):
     sealed = {k: artifact[k] for k in IDENTITY_FIELDS}
     sealed.update({k: artifact[k] for k in ('code_sha256', 'training_sources_sha256',
-                                           'evaluation_protocol_sha256') if k in artifact})
+                                           'evaluation_protocol_sha256',
+                                           'phase_feature_receipt_max') if k in artifact})
     return 'nba-total-v1-' + artifact_sha256(sealed)[:20]
 
 
@@ -278,6 +279,49 @@ def features(home, away, rows, tipoff, *, as_of, baseline_total, reconstruction_
     return context
 
 
+def feature_evidence_received_at(context):
+    """Return the latest actual receipt used by the fixed numerical family.
+
+    This fitting-only check leaves saved serving maps unchanged. selected_rows
+    can include unused opponent estimates and older target-team rows; recover
+    the actual scoring windows and reachable pace/opponent dependencies first.
+    """
+    grouped = defaultdict(list)
+    for row in context['selected_rows']:
+        grouped[row['team']].append(row)
+    for values in grouped.values():
+        values.sort(key=lambda row: (_time(row['played_at']), str(row['game_id'])))
+    windows = {team: grouped[team][-TEAM_WINDOW:] for team in (context['home'], context['away'])}
+    scoring = {(row['team'], str(row['game_id'])): row for values in windows.values() for row in values}
+    possession = {}
+    if context['coverage']['pace_supported'] and context['coverage']['opponent_supported']:
+        possession = {key: row for key, row in scoring.items() if _pace(row) is not None}
+        for row in scoring.values():
+            prior = [r for r in grouped[row['opponent']]
+                     if _time(r['played_at']) <= _time(row['played_at']) - FEATURE_LAG_S
+                     and _pace(r) is not None][-TEAM_WINDOW:]
+            if len(prior) >= 5:
+                possession.update({(r['team'], str(r['game_id'])): r for r in prior})
+    used = dict(scoring)
+    used.update(possession)
+    receipts = []
+    for row in used.values():
+        if row.get('received_at') is None:
+            raise ValueError('NBA totals selected feature score receipt is missing')
+        receipts.append(_time(row['received_at']))
+    for row in possession.values():
+        for component in ('possession', 'duration'):
+            receipt = row.get(component + '_received_at')
+            if receipt is None:
+                if row.get(component + '_source_artifact_id') is not None:
+                    raise ValueError('NBA totals selected feature component receipt is missing')
+                receipt = row['received_at']
+            receipts.append(_time(receipt))
+    if not receipts:
+        raise ValueError('NBA totals selected feature receipts are missing')
+    return max(receipts)
+
+
 def fit_candidate(examples, training_cutoff, *, min_fit=660, min_development=120, min_calibration=120):
     """Select a finite family on earlier dates, then fit only calibration sigma.
 
@@ -319,6 +363,13 @@ def fit_candidate(examples, training_cutoff, *, min_fit=660, min_development=120
             raise ValueError('NBA totals incumbent/context conflict')
         if ctx.get('reconstructed') and _time(ctx['reconstruction_cutoff']) > cutoff:
             raise ValueError('NBA totals reconstruction receipt exceeds training cutoff')
+        feature_receipt = feature_evidence_received_at(ctx)
+        if feature_receipt > cutoff:
+            raise ValueError('NBA totals feature receipt exceeds training cutoff')
+        if ('feature_evidence_received_at' in row
+                and _time(row['feature_evidence_received_at']) != feature_receipt):
+            raise ValueError('NBA totals declared feature receipt conflict')
+        row['feature_evidence_received_at'] = feature_receipt
         _totals(ctx)
     rows.sort(key=lambda r: (r['ts'], str(r['game_id'])))
     if len({_season(r['ts']) for r in rows}) < 2:
@@ -343,7 +394,8 @@ def fit_candidate(examples, training_cutoff, *, min_fit=660, min_development=120
         raise ValueError('Insufficient NBA totals fit/development/calibration history')
     for earlier, later in (('fit', 'development'), ('development', 'calibration')):
         if (max(r['day'] for r in phases[earlier]) >= min(r['day'] for r in phases[later])
-                or max(r['label_received_at'] for r in phases[earlier]) >= min(r['as_of'] for r in phases[later])):
+                or max(max(r['label_received_at'], r['feature_evidence_received_at'])
+                       for r in phases[earlier]) >= min(r['as_of'] for r in phases[later])):
             raise ValueError('NBA totals phase date/label receipt chronology conflict')
 
     candidates = [dict(method='incumbent', shrinkage=10., recent_weight=.25),
@@ -371,6 +423,8 @@ def fit_candidate(examples, training_cutoff, *, min_fit=660, min_development=120
                     phase_dates={name: sorted({r['day'] for r in group}) for name, group in phases.items()},
                     phase_rows={name: len(group) for name, group in phases.items()},
                     phase_receipt_max={name: max(r['label_received_at'] for r in group) for name, group in phases.items()},
+                    phase_feature_receipt_max={name: max(r['feature_evidence_received_at'] for r in group)
+                                               for name, group in phases.items()},
                     phase_asof_min={name: min(r['as_of'] for r in group) for name, group in phases.items()},
                     preprocessing=PREPROCESSING, probability=PROBABILITY,
                     family='incumbent-intercept-season-pace-20-fixed-candidates-v1', model_base=MODEL_BASE)
@@ -399,6 +453,12 @@ def validate_artifact(artifact):
         dates = artifact['phase_dates']
         if set(dates) != {'fit', 'development', 'calibration'}:
             raise ValueError('Invalid NBA totals phase dates')
+        feature_receipts = artifact.get('phase_feature_receipt_max')
+        if 'phase_feature_receipt_max' in artifact:
+            if not isinstance(feature_receipts, dict) or set(feature_receipts) != set(dates):
+                raise ValueError('Invalid NBA totals phase feature receipt contract')
+            if any(_time(receipt) > cutoff for receipt in feature_receipts.values()):
+                raise ValueError('Invalid NBA totals phase feature receipt cutoff')
         for name in dates:
             if not dates[name] or dates[name] != sorted(set(dates[name])):
                 raise ValueError('Invalid NBA totals phase dates')
@@ -417,6 +477,10 @@ def validate_artifact(artifact):
         if any(artifact['phase_receipt_max'][earlier] >= artifact['phase_asof_min'][later]
                for earlier, later in (('fit', 'development'), ('development', 'calibration'))):
             raise ValueError('NBA totals phase label receipt chronology conflict')
+        if feature_receipts is not None and any(
+                _time(feature_receipts[earlier]) >= _time(artifact['phase_asof_min'][later])
+                for earlier, later in (('fit', 'development'), ('development', 'calibration'))):
+            raise ValueError('NBA totals phase feature receipt chronology conflict')
         if artifact['version'] != _version(artifact):
             raise ValueError('NBA totals artifact version seal mismatch')
         _json(artifact)

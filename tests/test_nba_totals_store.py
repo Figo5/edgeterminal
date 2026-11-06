@@ -19,6 +19,7 @@ def isolated(tmp_path, monkeypatch):
         db._conn.close()
         db._conn = None
     monkeypatch.setattr(settings, 'database_url', f'sqlite:///{tmp_path / "totals.db"}')
+    monkeypatch.setattr(store.time, 'time', lambda: NOW)
     repo = tmp_path / 'repo'
     (repo / 'edgeterminal').mkdir(parents=True)
     (repo / 'edgeterminal/component.py').write_text('immutable code\n')
