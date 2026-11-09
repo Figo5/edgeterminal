@@ -415,12 +415,19 @@ def forward_report(freeze_sha: str | None = None, calibration_path: str | Path |
     # sign-of-difference analysis, never a pick or staking policy.
     over_rows = [r for r in grades if r["frozen_side"] == "over" and
                  (r["projection"] != r["frozen_line"])]
+    first_grade_by_direction = {}
+    if over_rows:
+        for grade in grades:
+            key = (grade["canonical_game_id"], grade["player_id"], grade["market"],
+                   grade["sportsbook"], grade["frozen_line"], grade["frozen_side"])
+            # Repeated frozen markets retain the original scan's first match.
+            first_grade_by_direction.setdefault(key, grade)
     diagnostics = []
     for over in over_rows:
         direction = "over" if over["projection"] > over["frozen_line"] else "under"
         key = (over["canonical_game_id"], over["player_id"], over["market"],
                over["sportsbook"], over["frozen_line"])
-        companion = next((r for r in grades if (r["canonical_game_id"],r["player_id"],r["market"],r["sportsbook"],r["frozen_line"]) == key and r["frozen_side"] == direction), None)
+        companion = first_grade_by_direction.get((*key, direction))
         if companion:
             diagnostics.append(companion)
     by_book = {book: _record([r for r in diagnostics if r["sportsbook"] == book])
