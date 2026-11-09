@@ -42,7 +42,8 @@ from . import db  # noqa: E402 — CLI environment is sanitized before config im
 from .config import settings  # noqa: E402
 
 COMPONENTS = {'NBA': ('diagnostics', 'retuning'), 'NFL': ('diagnostics', 'retuning'),
-              'NBA_SPREAD': ('retuning',), 'NBA_TOTAL': ('diagnostics', 'retuning')}
+              'NBA_SPREAD': ('retuning',), 'NBA_TOTAL': ('diagnostics', 'retuning'),
+              'NFL_SPREAD': ('retuning',), 'NFL_WEEKLY': ('retuning',)}
 HEARTBEAT_SECONDS = 30
 MAX_JOB_WALL_SECONDS = 3 * 3600
 MAX_JOB_CPU_SECONDS = 3600
@@ -204,11 +205,18 @@ def _execute(job):
     _catalog(job['component'], job['kind'])
     checkpoint = json.loads(job['detail']).get('candidate_id')
     if job['component'] == 'NBA_TOTAL':
-        from . import nba_totals_learning
         if checkpoint:
+            from . import nba_totals_learning
             return nba_totals_learning.resume_publication(checkpoint)
-        return (nba_totals_learning.run_diagnostics() if job['kind'] == 'diagnostics' else
-                nba_totals_learning.run_fitting())
+        from . import nba_totals_stages
+        return (nba_totals_stages.run_diagnostics() if job['kind'] == 'diagnostics' else
+                nba_totals_stages.run_fitting())
+    if job['component'] == 'NFL_SPREAD':
+        from . import nfl_spread_learning
+        return nfl_spread_learning.run_fitting()
+    if job['component'] == 'NFL_WEEKLY':
+        from . import nfl_weekly_preparation
+        return nfl_weekly_preparation.run_job(job)
     if job['component'] == 'NBA_SPREAD':
         from . import nba_spread_learning
         return (nba_spread_learning.resume_publication(checkpoint) if checkpoint else
@@ -227,8 +235,10 @@ def checkpoint_candidate(connection, candidate_id):
     totals_diagnostic = job['component'] == 'NBA_TOTAL' and job['kind'] == 'diagnostics'
     if (job['kind'] != 'retuning' and not totals_diagnostic) or job['component'] not in COMPONENTS:
         raise ValueError('only the owning fit can checkpoint its candidate')
-    if job['component'] in ('NBA_SPREAD', 'NBA_TOTAL'):
-        table = 'nba_spread_model_candidates' if job['component'] == 'NBA_SPREAD' else 'nba_totals_candidates'
+    version_tables = {'NBA_SPREAD': 'nba_spread_model_candidates', 'NBA_TOTAL': 'nba_totals_candidates',
+                      'NFL_SPREAD': 'nfl_spread_candidates'}
+    if job['component'] in version_tables:
+        table = version_tables[job['component']]
         valid = (isinstance(candidate_id, str) and re.fullmatch(r'[A-Za-z0-9][A-Za-z0-9_.:-]{0,127}', candidate_id)
                  and connection.execute('SELECT 1 FROM ' + table + ' WHERE version=?', (candidate_id,)).fetchone())
     else:
@@ -327,8 +337,9 @@ def status(component=None, *, now=None):
     if component is not None and component not in COMPONENTS:
         raise ValueError('unsupported learning component')
     exists = db.q1("SELECT 1 FROM sqlite_master WHERE type='table' AND name='learning_jobs'")
-    if component == 'NBA':
-        where, args = ' WHERE component IN (?,?,?)', ('NBA', 'NBA_SPREAD', 'NBA_TOTAL')
+    if component in ('NBA', 'NFL'):
+        args = ('NBA', 'NBA_SPREAD', 'NBA_TOTAL') if component == 'NBA' else ('NFL', 'NFL_SPREAD', 'NFL_WEEKLY')
+        where = ' WHERE component IN (?,?,?)'
     else:
         where, args = (' WHERE component=?', (component,)) if component else ('', ())
     rows = db.q('SELECT * FROM learning_jobs' + where + ' ORDER BY id DESC LIMIT 12', args) if exists else []
@@ -343,7 +354,7 @@ def status(component=None, *, now=None):
     if exists:
         for row in db.q('SELECT j.component,j.kind,e.state FROM learning_job_events e JOIN learning_jobs j ON j.id=e.job_id '
                         "WHERE e.state IN ('completed','failed','interrupted')" +
-                        (' AND j.component IN (?,?,?)' if component == 'NBA' else ' AND j.component=?' if component else '') +
+                        (' AND j.component IN (?,?,?)' if component in ('NBA', 'NFL') else ' AND j.component=?' if component else '') +
                         ' ORDER BY e.id', args):
             latest[row['component'], row['kind']] = row['state']
     heartbeat = db.kv_get('learning_worker_heartbeat') or {}

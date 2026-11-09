@@ -207,11 +207,8 @@ def _failed_prop_pair_batches(now: float) -> list[tuple[str, str, str]]:
 
 
 def _weekly(season: int, now: float) -> dict:
-    result = nfl_forward_weekly.run(season=season, now=now)
-    if (str(result.get("freeze", "")).startswith("refused") or result.get("schedule_error") or
-            result.get("market_error") or result.get("live_schedule", {}).get("ok") is False):
-        raise ValueError(f"weekly research freeze refused: {result.get('freeze')}")
-    return result
+    from . import nfl_weekly_preparation
+    return nfl_weekly_preparation.dispatch(season=season, now=now)
 
 
 def _market(now: float) -> dict:
@@ -319,8 +316,13 @@ def _run_locked(now: float, *, record_tick: bool = True,
     if _due("schedule", now, _schedule_interval(now, events)):
         attempt("schedule", lambda: engine.refresh_schedule("NFL"))
         events = _events(now)
-        if steps["schedule"]["ok"]:
-            attempt("product_projections", engine.ensure_weekly_projections)
+    if events and _due('nfl_game_source', now, 300):
+        def source_due():
+            from . import nfl_game_sources
+            return {'ok': True, 'jobs': [nfl_game_sources.dispatch_maintenance(
+                target['season'], target['completed_week'], now=now)
+                for target in nfl_game_sources.maintenance_targets(now)]}
+        attempt('nfl_game_source', source_due)
     if any(0 < e['kickoff_utc']-now <= 7*86400 for e in events) and _due('availability', now, _availability_interval(now, events)):
         attempt('availability', lambda: _availability(events, now))
     missing_capture_interval = min((nfl_prop_capture_ops.cadence(e["kickoff_utc"] - now)
@@ -392,6 +394,14 @@ def _run_locked(now: float, *, record_tick: bool = True,
     if settings.nba_research_enabled and _due('nba_research', now, 300):
         from . import nba_ops
         attempt('nba_research', lambda: nba_ops.run(now))
+    # Use quotes captured during this cycle, including a schedule change near
+    # kickoff; the next tick may already be too late for a pregame revision.
+    if (steps.get('schedule', {}).get('ok') or
+            any(e['kickoff_utc'] > now for e in events) and _due('product_projections', now, 300)):
+        attempt('product_projections', engine.ensure_weekly_projections)
+    if events and _due('nfl_spread_learning', now, 300):
+        from . import nfl_spread_learning
+        attempt('nfl_spread_learning', lambda: nfl_spread_learning.refresh_checks(now))
     if _due('model_learning', now, 300):
         from . import learning_worker
         attempt('model_learning', lambda: learning_worker.refresh_checks(now))

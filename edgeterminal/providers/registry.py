@@ -124,14 +124,14 @@ def list_events(sport: str, prefer: Optional[str] = None) -> Tuple[List[Dict], s
 
 
 # ---------------------------------------------------------------------- stats
-def team_stats(sport: str) -> Tuple[Dict[str, Dict], str, bool]:
+def team_stats(sport: str, *, include_advanced: bool = True) -> Tuple[Dict[str, Dict], str, bool]:
     cands: List[Tuple[str, Callable]] = []
     if not _use_demo(sport) and settings.stats_provider in ("auto", "espn"):
         cands.append(("espn-stats", EspnStats))
     if _use_demo(sport):
         cands.append(("demo-stats", D.DemoStats))
     stats, source, is_demo = _chain("stats", cands, lambda p: p.team_stats(sport))
-    if sport == "NFL" and not is_demo and settings.stats_provider in ("auto", "espn", "nflverse"):
+    if include_advanced and sport == "NFL" and not is_demo and settings.stats_provider in ("auto", "espn", "nflverse"):
         from .nflverse import load_cached_team_features, merge_feature_seasons
         season = datetime.now(timezone.utc).year
         advanced = load_cached_team_features(season, settings.nflverse_cache_dir)

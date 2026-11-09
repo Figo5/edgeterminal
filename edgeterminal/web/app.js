@@ -17,14 +17,21 @@ function nav(){const unread=state.alerts.filter(x=>!x.read_at).length;$("section
 const savedGame=id=>state.saved.games.some(g=>g.id===id);
 const savedProp=id=>state.saved.props.some(r=>r.quote_id===id);
 const stamp=g=>g.market_observed_at?`${g.market_is_stale?"Last observed":"Observed"} ${time(g.market_observed_at)} · ESPN odds fallback`:"No stored pregame price";
-const modelSpread=g=>g.projection?.home_margin==null?"—":Math.abs(g.projection.home_margin)<0.05?"Pick'em":`${g.projection.home_margin>=0?g.home_team:g.away_team} -${num(Math.abs(g.projection.home_margin))}`;
-const shortSpread=g=>g.projection?.home_margin==null?"—":Math.abs(g.projection.home_margin)<0.05?"Pick'em":`${teamCode(g.projection.home_margin>=0?g.home_team:g.away_team)} -${num(Math.abs(g.projection.home_margin))}`;
+const spreadMargin=g=>g.projection?.spread_margin??g.projection?.home_margin;
+const modelSpread=g=>spreadMargin(g)==null?"—":Math.abs(spreadMargin(g))<0.05?"Pick'em":`${spreadMargin(g)>=0?g.home_team:g.away_team} -${num(Math.abs(spreadMargin(g)))}`;
+const shortSpread=g=>spreadMargin(g)==null?"—":Math.abs(spreadMargin(g))<0.05?"Pick'em":`${teamCode(spreadMargin(g)>=0?g.home_team:g.away_team)} -${num(Math.abs(spreadMargin(g)))}`;
 const dayKey=g=>new Date(g.kickoff_utc).toLocaleDateString("en-US",{weekday:"long",month:"long",day:"numeric",timeZone:"America/New_York"});
 const boardUrl=()=>`/api/product/nfl${state.week?`?week=${state.week}`:""}`;
 const resultName=r=>({won:"Win",lost:"Loss",push:"Push",void:"Void",pending:"Pending",unavailable:"Unavailable",pass:"Pass"}[r]||"Pending");
 function briefProp(r){return `<li><span class="prop-rank">${r.rank}</span><span><strong>${esc(r.player)}</strong><small>${esc(label(r.market))}${r.availability?` · ${esc(r.availability.label)}`:""}</small></span><b>${esc(label(r.stronger_side))} ${num(r.line)}</b><span class="prop-prob">${pct(r.confidence)}</span></li>`}
 function missingProps(g){if(g.props_state==="member_preview")return "Sign in with a beta invitation to see the full prop slate.";if(g.prop_coverage?.message)return g.prop_coverage.message;return g.props_state==="not_selected"?"No saved player prop predictions for this game.":"Waiting for five verified player prop lines. The app will select and track them automatically when available."}
 function propTiming(g){const c=g.prop_coverage;if(!c||g.top_props?.length||g.props_state==="member_preview"||g.props_state==="not_selected")return "";return `<p class="coverage-timing">${c.last_checked_at?`Prop feed checked ${esc(time(c.last_checked_at))}`:"Prop feed not checked yet"}${c.next_capture_at?`<br>${c.next_capture_at*1000>Date.now()?`Next scheduled check ${esc(time(c.next_capture_at))}`:"Next check when the worker runs"}`:""}</p>`}
+function forecastQuoteNote(g){
+ if(!g.newer_market_available)return '';
+ const s=g.latest_market?.spread?.home,t=g.latest_market?.total?.over||g.latest_market?.total?.under;
+ const observed=[s?`spread ${teamCode(g.home_team)} ${sign(s.line)}`:'',t?`total ${num(t.line)}`:''].filter(Boolean).join(' · ');
+ return `<p class="source-note">Latest observed ${esc(observed||'prices')} · ${esc(time(g.latest_market_observed_at))}. Forecast probabilities and the record use their saved line. Pregame updates run automatically.</p>`;
+}
 function boardCard(g){
  const p=g.projection||{},m=g.market||{},sp=m.spread?.home,t=m.total?.over;
  return `<article class="product-game">
@@ -33,7 +40,7 @@ function boardCard(g){
  <div class="product-score"><div><span>${esc(g.away_team)}</span><strong>${num(p.away_score)}</strong><small>${pct(p.away_win_probability)} win</small></div><div><span>${esc(g.home_team)}</span><strong>${num(p.home_score)}</strong><small>${pct(p.home_win_probability)} win</small></div></div>
  <div class="forecast-line"><span>Projected winner</span><b>${esc(p.preferred_team||"Unavailable")}</b></div>
  <dl class="forecast-grid"><div><dt>Model spread</dt><dd>${esc(shortSpread(g))}</dd></div><div><dt>Model total</dt><dd>${num(p.total)}</dd></div><div><dt>Market spread</dt><dd>${sp?`${esc(teamCode(g.home_team))} ${sign(sp.line)}`:"—"}</dd></div><div><dt>Market total</dt><dd>${t?num(t.line):"—"}</dd></div></dl>
- <div class="top-five-heading"><h4>Top 5 player props</h4><span>Model probability</span></div>
+ ${forecastQuoteNote(g)}<div class="top-five-heading"><h4>Top 5 player props</h4><span>Model probability</span></div>
  ${g.top_props?.length?`<ol class="brief-props">${g.top_props.map(briefProp).join("")}</ol>`:`<p class="prop-empty">${esc(missingProps(g))}</p>${propTiming(g)}`}
  <div class="product-foot"><button class="backlink" data-save-game="${esc(g.id)}" aria-pressed="${savedGame(g.id)}">${savedGame(g.id)?"Saved game":"Save game"}</button><span>${g.top_props?.length?(g.props_basis!=="locked"?`${g.top_props.length} reconstructed predictions`:`${g.top_props.length} selections locked for research`):`Quotes ${g.market_observed_at?time(g.market_observed_at):"unavailable"}`}</span><button class="backlink" data-event="${esc(g.id)}">View matchup →</button></div></article>`;
 }
@@ -57,7 +64,7 @@ function markets(g){
  return `<div class="market-cards">
  ${marketCard("Moneyline",fav?`${esc(fav)} to win`:"Model side unavailable",win==null?"Win probability unavailable":`Confidence: ${pct(win)} win`,mq?`${esc(fav)} ${odds(mq.price)}`:"Price unavailable",ml.home&&ml.away?`${esc(a)} ${odds(ml.away.price)} · ${esc(h)} ${odds(ml.home.price)}`:"Observed price unavailable")}
  ${marketCard("Spread",esc(modelSpread(g)),coverTeam?`Confidence: ${pct(cover)} ${esc(coverTeam)} cover`:"Cover probability unavailable",s.home?`${esc(h)} ${sign(s.home.line)} ${odds(s.home.price)}`:"Line unavailable",s.away?`${esc(a)} ${sign(s.away.line)} ${odds(s.away.price)}`:"Observed price unavailable")}
- ${marketCard("Total",num(p.total),totalSide?`Confidence: ${pct(totalProb)} ${totalSide}`:"Over/Under probability unavailable",t.over||t.under?`${num((t.over||t.under).line)} · Over ${odds(t.over?.price)} / Under ${odds(t.under?.price)}`:"Line unavailable",`Over ${pct(t.over_probability)} · Under ${pct(t.under_probability)}`)}</div>`;
+ ${marketCard("Total",num(p.total),totalSide?`Confidence: ${pct(totalProb)} ${totalSide}`:"Over/Under probability unavailable",t.over||t.under?`${num((t.over||t.under).line)} · Over ${odds(t.over?.price)} / Under ${odds(t.under?.price)}`:"Line unavailable",`Over ${pct(t.over_probability)} · Under ${pct(t.under_probability)}`)}</div>${forecastQuoteNote(g)}`;
 }
 function propCard(r){return `<article class="prop-card"><div class="prop-person"><strong>${esc(r.player)}</strong><span>${esc(r.team)} · ${esc(label(r.market))}</span></div><div class="prop-decision"><small>MODEL SIDE</small><b>${esc(r.stronger_side.toUpperCase())} ${num(r.line)}</b>${r.paper_position?'<span class="paper-mark">PAPER</span>':""}</div><div class="prop-confidence"><strong>${pct(r.confidence)}</strong><span>Confidence</span></div><div class="prop-meta"><span>Projection <b>${num(r.projection,2)}</b></span><span>${esc(book(r.sportsbook))} · Over ${odds(r.over_price)} · Under ${odds(r.under_price)}</span><span>${r.quote_is_stale?"Last observed":"Observed"} ${esc(time(r.quote_observed_at))}</span><span class="sr-only">Confidence: ${pct(r.confidence)}; model-estimated probability</span></div></article>`}
 function props(){
@@ -122,6 +129,9 @@ function researchArtifacts(index){
  const active=index.active_prop_model;
  if(active)$("main").insertAdjacentHTML("beforeend",`<section class="performance-block"><h2>Active player prop model</h2><p>${esc(active.version)} · training before ${active.training_cutoff_at?esc(time(active.training_cutoff_at)):`${esc(active.training_cutoff?.[0])} Week ${esc(active.training_cutoff?.[1])}`}.</p><p>New captures use this model. Previously saved selections keep their original estimates and results.</p></section>`);
  $("main").insertAdjacentHTML("beforeend",EdgeNBA.learningStatus(index.learning));
+ $("main").insertAdjacentHTML("beforeend",EdgeNBA.gameLearningStatus(index.spread_learning));
+ const src=index.game_source;
+ if(src)$("main").insertAdjacentHTML("beforeend",`<section class="performance-block"><h2>NFL game inputs</h2><p>${esc(src.message||String(src.status||"Not checked yet").replaceAll("_"," "))}.</p><p>Verified play-by-play through ${src.completed_week!=null?`Week ${esc(src.completed_week)}`:"a completed week not yet available"}. Pregame forecasts refresh automatically with verified inputs and lines.</p></section>`);
  const game=index.week3_game_freeze||{};
  $("main").insertAdjacentHTML("beforeend",`<section class="performance-block"><h2>Week 3 freeze integrity</h2><p>Game freeze SHA-256: <code class="hash">${esc(game.recorded_sha256)}</code></p><p>Current artifact ${game.matches_record?"matches the recorded hash":"does not match the recorded hash"} · ${game.game_count??"—"} games</p><details><summary>Prop freeze SHA-256</summary>${(index.prop_freeze_shas||[]).map(x=>`<p><code class="hash">${esc(x)}</code></p>`).join("")||"<p>Unavailable</p>"}</details></section><section class="performance-block"><h2>Research documents</h2><div class="document-links">${(index.documents||[]).map(x=>`<a href="${esc(x.url)}" target="_blank" rel="noopener">${esc(x.title)} ↗</a>`).join("")}</div></section>`);
 }

@@ -165,6 +165,9 @@ def games(season: int = 2026) -> dict:
     for item in saved:
         game = item['game_id']
         snapshot = json.loads(item['payload'])
+        if snapshot.get('forecast_policy_id') == 'nfl-game-source-revisions-v1':
+            if hashlib.sha256(item['payload'].encode()).hexdigest()[:24] != item['snapshot_id']:
+                raise ValueError('NFL saved forecast hash conflict')
         identity = snapshot.get('game') or {}
         if identity.get('id') != game:
             raise ValueError('saved forecast game identity mismatch')
@@ -177,7 +180,9 @@ def games(season: int = 2026) -> dict:
         seen.add(game)
         p = snapshot.get('projection') or {}
         probability = p.get('home_win_prob', item['home_win_probability'])
-        margin = p.get('margin', item['projected_margin'])
+        component = p.get('spread_component') or {}
+        margin = (component['margin'] if component.get('used') else
+                  p.get('margin', item['projected_margin']))
         total = p.get('total', item['projected_total'])
         home = identity.get('home_team')
         if (team_code(home) != game.split('-')[-1] or
@@ -203,6 +208,10 @@ def games(season: int = 2026) -> dict:
                                 _result((h+a-line) * (1 if total > line else -1)))
         rows.append({'game_id': game, 'week': int(game.split('-')[3]), 'saved_at': item['created_at'],
                      'model_version': item['model_version'], 'results': results,
+                     'market_model_versions': {'winner': item['model_version'],
+                         'total': item['model_version'],
+                         'spread': component['version'] if component.get('used') else item['model_version']},
+                     'input_policy_id': snapshot.get('forecast_policy_id'),
                      'winner_team': home if probability is not None and probability >= .5 else
                                     identity.get('away_team') if probability is not None else None,
                      'projected_home_points': p.get('proj_home', item['projected_home_points']),

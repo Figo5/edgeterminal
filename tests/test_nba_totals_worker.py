@@ -54,6 +54,8 @@ def test_totals_dispatch_does_not_use_the_prop_adapter(monkeypatch):
         resume_publication=lambda checkpoint: calls.append(checkpoint) or {'status': 'deferred'})
     monkeypatch.setitem(sys.modules, 'edgeterminal.nba_totals_learning', adapter)
     monkeypatch.setattr(edgeterminal, 'nba_totals_learning', adapter, raising=False)
+    monkeypatch.setattr(edgeterminal, 'nba_totals_stages', adapter, raising=False)
+    monkeypatch.setitem(sys.modules, 'edgeterminal.nba_totals_stages', adapter)
     monkeypatch.setattr('edgeterminal.model_learning.run_kind',
                         lambda *_: pytest.fail('totals cannot use the prop registry'))
     job = dict(component='NBA_TOTAL', kind='retuning', detail='{}')

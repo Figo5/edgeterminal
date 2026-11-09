@@ -9,6 +9,19 @@ from edgeterminal.config import settings
 
 
 @pytest.fixture(autouse=True)
+def no_unmocked_game_source_process(monkeypatch):
+    """Fixture refreshes may enqueue work but cannot launch a real network child."""
+    from edgeterminal import nfl_game_sources
+    dispatch = nfl_game_sources.dispatch_maintenance
+    popen = nfl_game_sources.subprocess.Popen
+    def guarded(*args, **kwargs):
+        if nfl_game_sources.subprocess.Popen is popen:
+            kwargs['launch'] = False
+        return dispatch(*args, **kwargs)
+    monkeypatch.setattr(nfl_game_sources, 'dispatch_maintenance', guarded)
+
+
+@pytest.fixture(autouse=True)
 def isolated_default_research_reports(tmp_path, monkeypatch):
     # NBA integration tests opt in explicitly. Legacy worker fixtures must not fetch live NBA feeds.
     monkeypatch.setattr(settings, 'nba_research_enabled', False)

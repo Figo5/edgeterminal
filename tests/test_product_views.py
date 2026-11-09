@@ -16,9 +16,9 @@ def test_weekly_board_uses_stored_pregame_quotes_and_marks_stale(monkeypatch):
     game = _game()
     kickoff = 1790295300.0
     monkeypatch.setattr(product_views.engine, "slate", lambda *a, **k: [game])
-    monkeypatch.setattr(product_views, "_prediction", lambda g: (
+    monkeypatch.setattr(product_views, "_prediction", lambda g, **kw: (
         {"proj_away": 19.86, "proj_home": 24.39, "margin": 4.53,
-         "total": 44.25, "home_win_prob": 0.6254}, 1790200000.0))
+         "total": 44.25, "home_win_prob": 0.6254}, 1790200000.0, {}))
     rows = [
         {"id": n, "book": "draftkings", "market": market, "selection": selection,
          "line": line, "price": price, "captured_at": kickoff - 3600, "source": "espn-odds"}
@@ -48,9 +48,9 @@ def test_weekly_board_uses_stored_pregame_quotes_and_marks_stale(monkeypatch):
 
 def test_missing_probability_stays_missing(monkeypatch):
     game = _game()
-    monkeypatch.setattr(product_views, "_prediction", lambda g: (
+    monkeypatch.setattr(product_views, "_prediction", lambda g, **kw: (
         {"proj_away": 20, "proj_home": 24, "margin": 4, "total": 44,
-         "home_win_prob": 0.6}, 1790200000.0))
+         "home_win_prob": 0.6}, 1790200000.0, {}))
     monkeypatch.setattr(product_views.db, "q", lambda *a, **k: [])
     item = product_views._game(game)
     assert item["market"]["spread"]["home_cover_probability"] is None

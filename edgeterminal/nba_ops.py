@@ -484,7 +484,7 @@ def register_model(now):
 
 
 def _totals_projection(game,projection,history,stamp):
-    from . import nba_totals_data, nba_totals_learning, nba_totals_model
+    from . import nba_totals_data, nba_totals_stages as nba_totals_learning, nba_totals_model
     if not nba_totals_learning.needs_inputs():
         return projection,None
     state=nba_totals_learning.serving_state()
@@ -533,7 +533,7 @@ def _refresh_game_projection(game,history,now):
         sorted(sources),now=stamp,model_info={'version':projection['model_version'],
             'fingerprint':projection['parameter_fingerprint'],'cutoff':projection['training_cutoff']})
     if totals_map:
-        from . import nba_totals_learning
+        from . import nba_totals_stages as nba_totals_learning
         try:
             nba_totals_learning.capture_forecast(saved,totals_map,now=max(stamp,time.time()))
         except (ValueError,TypeError,KeyError,OSError) as exc:
@@ -855,7 +855,7 @@ def run(now=None):
     results['grading']=step('grading',stamp,300,lambda:grade_due(stamp))
     from . import nba_spread_learning
     results['spread_learning']=step('spread_learning',stamp,300,lambda:nba_spread_learning.refresh_inputs(stamp))
-    from . import nba_totals_learning
+    from . import nba_totals_stages as nba_totals_learning
     results['totals_learning']=step('totals_learning',stamp,300,lambda:nba_totals_learning.refresh_inputs(stamp))
     # Publish frozen historical evidence for this version, without refitting it.
     coverage=db.kv_get('nba_evaluation') or {}
@@ -870,7 +870,7 @@ def run(now=None):
 
 def status():
     from . import model_learning, nba_spread_model, nba_spread_learning
-    from . import nba_totals_learning
+    from . import nba_totals_stages as nba_totals_learning
     from .config import settings
     ensure_schema()
     checks=[{'name':r['name'],'label':LABELS.get(r['name'],r['name'].replace('_',' ').title()),

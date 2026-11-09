@@ -59,10 +59,26 @@ function spreadStatus(d){
 function runtimeNote(d){
  return d.runtime?.requires_awake_mac===false?'Refreshes run on the always-on host independently of your Mac. Your phone reads the same stored forecasts and grades.':'This Mac must be awake and online for the local worker to refresh. An always-on host is needed for updates while it sleeps.';
 }
+function stageProgress(d){
+ const detail=d?.detail||{},coverage={...(d?.coverage||{}),...(detail.coverage||{})},required={...(d?.required||{}),...(detail.required||{})};
+ if(coverage.validation==null&&coverage.frozen_predictions!=null){coverage.validation=coverage.frozen_predictions;required.validation=coverage.required_pairs;}
+ const names={fit:'Training games',development:'Model selection',calibration:'Confidence calibration',validation:coverage.frozen_predictions!=null?'Future forecasts saved':'Future validation'};
+ const stages={fit:'training',development:'model selection',calibration:'confidence calibration',outer:'future validation',validation:'future validation'};
+ const rows=Object.entries(names).filter(([k])=>coverage[k]!=null).map(([k,name])=>{
+  const value=coverage[k],count=typeof value==='number'?value:value?.games??value?.count??0;
+  const target=required[k];
+  return `<p>${name}: ${esc(count)}${target!=null?` / ${esc(target)}`:''} games.</p>`;
+ }).join('');
+ return `${detail.stage?`<p>Current stage: ${esc(stages[detail.stage]||String(detail.stage).replaceAll('_',' '))}.</p>`:''}${rows}`;
+}
+function gameLearningStatus(d){
+ if(!d?.enabled)return '';
+ return `<section class="performance-block"><h2>NFL spread model</h2><p>Active: ${esc(d.active?.version||'Current scoring baseline')}.</p><p>${esc(d.message||d.detail?.reason||'Waiting for verified evidence.')}</p>${stageProgress(d)}<p>Last check: ${time(d.checked_at??d.last_check_at)} · Next check: ${time(d.next_due_at)}.</p><p>Every supported game keeps its pick. New spread versions require independent future-game validation.</p>${learningRunner(d.runner)}</section>`;
+}
 function totalsStatus(d){
  const t=d.totals_learning;if(!t?.enabled)return '';
  const name=t.active?.version||'Current scoring baseline';
- return `<section class="performance-block"><h2>Totals model</h2><p>${esc(name)}.</p><p>${esc(t.message||'Waiting for verified future-game validation.')}</p><p>Last automatic check: ${time(t.checked_at)} · Next automatic check: ${time(t.next_due_at)}.</p><p>Every supported game keeps a totals pick when a sourced line is available. Pregame forecasts and final-result grading continue automatically. New totals versions require separate chronological validation.</p>${learningRunner(t.runner)}</section>`;
+ return `<section class="performance-block"><h2>Totals model</h2><p>${esc(name)}.</p><p>${esc(t.message||'Waiting for verified future-game validation.')}</p>${stageProgress(t)}<p>Last automatic check: ${time(t.checked_at)} · Next automatic check: ${time(t.next_due_at)}.</p><p>Every supported game keeps a totals pick when a sourced line is available. Pregame forecasts and final-result grading continue automatically. New totals versions require separate chronological validation.</p>${learningRunner(t.runner)}</section>`;
 }
 function matchup(d){
  const g=d.game,p=g.projection||{},m=g.market||{};
@@ -92,7 +108,7 @@ function learningRunner(r){
  const worker=r.worker||{},jobs=r.jobs||[];
  const states={queued:'Queued',running:'Running',completed:'Completed',failed:'Failed',interrupted:'Interrupted',deferred:'Deferred',idle:'Idle',stale:'Check overdue',not_checked:'Not checked yet'};
  const duration=value=>typeof value!=='number'||!Number.isFinite(value)||value<0?'Not recorded':`${Math.floor(value/60)}m ${Math.floor(value%60)}s`;
- const task=row=>`${row.component==='NBA_SPREAD'?'NBA game model':row.component==='NBA_TOTAL'?'NBA totals':row.component||'Model'} ${row.kind==='diagnostics'?'diagnostics':row.kind==='retuning'?'model check':row.kind||'check'}`;
+ const task=row=>row.component==='NFL_WEEKLY'?'NFL research preparation':`${row.component==='NBA_SPREAD'?'NBA game model':row.component==='NBA_TOTAL'?'NBA totals':row.component==='NFL_SPREAD'?'NFL spread':row.component||'Model'} ${row.kind==='diagnostics'?'diagnostics':row.kind==='retuning'?'model check':row.kind||'check'}`;
  return `<div class="learning-runner"><h3>Separate learning worker</h3><p>Capture and grading continue on their own schedule while learning runs from archived inputs.</p><p>${r.needs_attention?'<strong>Learning needs review.</strong> ':''}Worker: ${esc(states[worker.state]||worker.state||'Not checked yet')} · Last checked ${time(worker.last_heartbeat_at)}.</p>${jobs.length?`<div class="records-scroll"><table class="weekly-records"><thead><tr><th scope="col">Task</th><th scope="col">State</th><th scope="col">Started</th><th scope="col">Elapsed</th></tr></thead><tbody>${jobs.slice(0,6).map(row=>`<tr><th scope="row">${esc(task(row))}</th><td>${esc(states[row.status]||row.status||'Not checked yet')}${row.message?`<small>${esc(row.message)}</small>`:''}</td><td>${time(row.started_at)}</td><td>${esc(duration(row.elapsed_seconds))}</td></tr>`).join('')}</tbody></table></div>`:'<p>No learning jobs have been recorded yet.</p>'}<p class="source-note">A queued or running retry does not resolve a failed learning check. Only a completed successful check does.</p></div>`;
 }
 
@@ -117,6 +133,6 @@ async function show(section,ctx){
  if(d.date)ctx.state.nbaDate=d.date;
  return d;
 }
-root.EdgeNBA={board,matchup,record,about,show,learningStatus,versionHistory};
+root.EdgeNBA={board,matchup,record,about,show,learningStatus,versionHistory,gameLearningStatus};
 if(typeof module!=='undefined')module.exports=root.EdgeNBA;
 })(typeof window!=='undefined'?window:globalThis);

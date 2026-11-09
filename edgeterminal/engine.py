@@ -418,7 +418,16 @@ def build_context(event: Dict, want_weather: bool = True) -> Dict:
 
     # --- team stats
     try:
-        stats, src, demo = R.team_stats(sport)
+        if (sport == 'NFL' and '-reg-' in event.get('id', '')
+                and NI.canonical_id(event) == event.get('id')):
+            stats, src, demo = R.team_stats(sport, include_advanced=False)
+        else:
+            stats, src, demo = R.team_stats(sport)
+        if (sport == 'NFL' and not demo and '-reg-' in event.get('id', '')
+                and NI.canonical_id(event) == event.get('id')):
+            from .nfl_game_forecasts import _sources
+            stats, game_input_map = _sources(event, stats, time.time())
+            ctx['game_input_map'] = game_input_map
         stats, mean_w = shrink_stats(stats, sport)
         ctx.update(stats=stats, stats_source=src, stats_demo=demo, stats_weight=mean_w)
         ctx["quality_parts"]["team_stats"] = 1.0
@@ -889,24 +898,20 @@ def analyze_event(event_id: str, persist: bool = True,
 
     if ev["sport"] == "NFL":
         kickoff = NI.kickoff_utc(ev.get("start_time"))
-        if kickoff and kickoff.timestamp() <= time.time():
+        if kickoff and (kickoff.timestamp() <= time.time() or not persist):
             # Never build a new forecast with postgame team form or context.
             # The only displayable projection is one frozen before kickoff.
-            latest = db.q1(
-                "SELECT * FROM nfl_game_predictions WHERE game_id=? "
-                "AND created_at<? ORDER BY created_at DESC LIMIT 1",
-                (event_id, kickoff.timestamp()),
-            )
-            frozen = db.q1("SELECT payload FROM nfl_game_snapshots WHERE id=?",
-                           (latest["snapshot_id"],)) if latest else None
-            snapshot = json.loads(frozen["payload"]) if frozen else {}
+            from . import nfl_game_forecasts
+            latest = nfl_game_forecasts.selected(ev)
+            snapshot = latest['payload'] if latest else {}
             return dict(
                 event=ev, projection=snapshot.get("projection"),
                 weather=snapshot.get("weather"), injuries=snapshot.get("injuries") or [],
                 news=snapshot.get("news") or [], sources=snapshot.get("sources") or [],
-                warnings=["GAME STARTED — only a pre-kickoff frozen projection is shown."
-                          if snapshot else
-                          "GAME STARTED — no pre-kickoff projection is available."],
+                warnings=[("GAME STARTED — only a pre-kickoff frozen projection is shown."
+                           if snapshot else "GAME STARTED — no pre-kickoff projection is available.")
+                          if kickoff.timestamp() <= time.time() else
+                          "Pregame forecasts update automatically through the background worker."],
                 data_quality=None, data_quality_tier="frozen" if snapshot else "unavailable",
                 stats=snapshot.get("team_form") or {}, recommendations=[], odds_age_s=None,
                 model_version=snapshot.get("model_version") if snapshot else settings.model_version,
@@ -960,7 +965,8 @@ def analyze_event(event_id: str, persist: bool = True,
         )
         snapshot_id = hashlib.sha256(json.dumps(snapshot, sort_keys=True,
                                     default=str).encode()).hexdigest()[:24]
-        if persist:
+        worker_owned = bool(db.kv_get('nfl_game_forecast_policy')) and not settings.demo_mode
+        if persist and not worker_owned:
             db.save_nfl_snapshot(snapshot_id, ev["id"], snapshot,
                                  settings.model_version, snapshot["feature_version"] or "unknown")
             db.save_nfl_game_prediction(uuid.uuid4().hex, ev["id"], snapshot_id,
@@ -970,6 +976,10 @@ def analyze_event(event_id: str, persist: bool = True,
                 capture_snapshot(snapshot)
             except ValueError as exc:
                 log.warning("prospective context capture refused for %s: %s",ev["id"],exc)
+        elif worker_owned:
+            from . import nfl_game_forecasts
+            saved = nfl_game_forecasts.selected(ev)
+            snapshot_id = saved['snapshot_id'] if saved else None
         for r in recs:
             r["snapshot_id"] = snapshot_id
     if persist:
@@ -1082,88 +1092,14 @@ def slate(sport: Optional[str] = None, limit_events: int = 40) -> List[Dict]:
 
 
 def weekly_board() -> List[Dict]:
-    """One current-week row per NFL game, with a frozen quantitative preview.
-
-    Team form is fetched once for the board. Injury, weather and news remain
-    contextual and cannot alter this model version's numeric projection.
-    A recent frozen prediction is reused so page loads do not create history.
-    """
+    """Read saved pregame previews; only the background worker writes history."""
+    from . import nfl_game_forecasts
     games = slate("NFL", limit_events=40)
-    if not games:
-        return games
-    now_ts = time.time()
-    pending = []
     for game in games:
-        kickoff = NI.kickoff_utc(game.get("start_time"))
-        latest = db.q1("SELECT * FROM nfl_game_predictions WHERE game_id=? "
-                       "AND model_version=? AND created_at<? ORDER BY created_at DESC LIMIT 1",
-                       (game["id"], settings.model_version,
-                        kickoff.timestamp() if kickoff else now_ts))
-        if latest and (latest["created_at"] >= now_ts - CTX_TTL or
-                       (kickoff and kickoff.timestamp() <= now_ts)):
-            frozen = db.q1("SELECT payload FROM nfl_game_snapshots WHERE id=?",
-                           (latest["snapshot_id"],))
-            frozen_projection = json.loads(frozen["payload"]).get("projection") if frozen else None
-            game["projection"] = frozen_projection or dict(
-                proj_home=latest["projected_home_points"],
-                proj_away=latest["projected_away_points"],
-                margin=latest["projected_margin"],
-                total=latest["projected_total"],
-                home_win_prob=latest["home_win_probability"],
-                uncertainty=latest["uncertainty"])
-            game["projection_created_at"] = latest["created_at"]
-            game["snapshot_id"] = latest["snapshot_id"]
-        elif kickoff and kickoff.timestamp() > now_ts:
-            pending.append(game)
-    if not pending:
-        return games
-    try:
-        raw_stats, stats_source, is_demo = R.team_stats("NFL")
-        stats, _weight = shrink_stats(raw_stats, "NFL")
-    except Exception as exc:  # noqa: BLE001
-        for game in pending:
-            game["projection_error"] = f"Team statistics unavailable: {type(exc).__name__}"
-        return games
-    for game in pending:
-        home, away = game.get("home_team"), game.get("away_team")
-        if not home or not away or home not in stats or away not in stats:
-            game["projection_error"] = "Team statistics unavailable for this matchup"
-            continue
-        try:
-            projection = football.project_game(
-                "NFL", home, away, stats,
-                neutral=_neutral_site(game))
-        except (KeyError, ValueError, TypeError) as exc:
-            game["projection_error"] = f"Projection unavailable: {type(exc).__name__}"
-            continue
-        retrieved_at = max((stats[t].get("retrieved_at") or 0 for t in (home, away)),
-                           default=0) or now_ts
-        snapshot = dict(
-            schema_version=1, kind="weekly_board", game=dict(
-                id=game["id"], home_team=home, away_team=away,
-                kickoff_utc=game.get("start_time"), venue=game.get("venue"),
-                status=game.get("status"), meta=game.get("meta")),
-            team_form={home: stats[home], away: stats[away]},
-            market=db.latest_odds(event_id=game["id"], max_age_s=settings.stale_odds_s),
-            injuries=None, weather=None, news=None,
-            sources=[dict(kind="stats", publisher=stats_source,
-                          retrieved_at=retrieved_at, is_demo=is_demo)],
-            missing_data={"injuries": True, "weather": True, "news": True,
-                          "market": not bool(game.get("markets"))},
-            model_version=settings.model_version,
-            feature_version=projection.get("feature_version"),
-            projection=projection,
-            features_retrieved_at=retrieved_at,
-            created_at=now_ts)
-        snapshot_id = hashlib.sha256(json.dumps(snapshot, sort_keys=True,
-                                     default=str).encode()).hexdigest()[:24]
-        db.save_nfl_snapshot(snapshot_id, game["id"], snapshot,
-                             settings.model_version, projection["feature_version"])
-        db.save_nfl_game_prediction(uuid.uuid4().hex, game["id"], snapshot_id,
-                                    projection, settings.model_version)
-        game["projection"] = projection
-        game["projection_created_at"] = now_ts
-        game["snapshot_id"] = snapshot_id
+        saved = nfl_game_forecasts.selected(game)
+        if saved:
+            game.update(projection=saved['payload'].get('projection'),
+                        projection_created_at=saved['created_at'], snapshot_id=saved['snapshot_id'])
     return games
 
 
@@ -1184,6 +1120,11 @@ def save_missing_forecast_lines() -> Dict:
             continue
         original = db.q1('SELECT payload FROM nfl_game_snapshots WHERE id=?', (latest['snapshot_id'],))
         payload = json.loads(original['payload'])
+        # New-policy revisions are paired with a candidate and exact quote in
+        # the normal maintenance path; never clone one side of that pair here.
+        from .nfl_game_forecasts import POLICY_ID
+        if payload.get('forecast_policy_id') == POLICY_ID:
+            continue
         home = event['home_team']
         def complete(quotes):
             return (any(q.get('market')=='spread' and q.get('selection')==home and q.get('line') is not None for q in quotes) and
@@ -1217,26 +1158,9 @@ def save_missing_forecast_lines() -> Dict:
 
 
 def ensure_weekly_projections() -> Dict:
-    """Create missing pregame board projections once for the stored NFL week."""
-    games = slate("NFL", limit_events=40)
-    now = time.time()
-    missing = []
-    for game in games:
-        kickoff = NI.kickoff_utc(game.get("start_time"))
-        if kickoff is None or kickoff.timestamp() <= now:
-            continue
-        if not db.q1("SELECT 1 FROM nfl_game_predictions WHERE game_id=? AND "
-                     "model_version=? AND created_at<? LIMIT 1",
-                     (game["id"], settings.model_version, kickoff.timestamp())):
-            missing.append(game["id"])
-    if missing:
-        weekly_board()
-    remaining = [game_id for game_id in missing if not db.q1(
-        "SELECT 1 FROM nfl_game_predictions WHERE game_id=? AND model_version=? LIMIT 1",
-        (game_id, settings.model_version))]
-    return {"ok": not remaining, "needed": len(missing),
-            "created": len(missing) - len(remaining), "missing": remaining,
-            "priced_snapshots": save_missing_forecast_lines()['saved']}
+    """Append due pregame revisions independently of page/schedule polling."""
+    from . import nfl_game_forecasts
+    return nfl_game_forecasts.maintain()
 
 
 def analyze_slate(sports: Optional[List[str]] = None, max_events: int = 24,

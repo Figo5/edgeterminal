@@ -23,21 +23,20 @@ def _quote(game: dict, market: str, selection: str) -> dict | None:
                  q["selection"] == selection), None)
 
 
-def _prediction(game: dict) -> tuple[dict | None, float | None]:
+def _prediction(game: dict, *, include_snapshot: bool = False) -> tuple:
     kickoff = parse_time(game["start_time"])
     if kickoff is None:
-        return None, None
-    row = db.q1("SELECT * FROM nfl_game_predictions WHERE game_id=? AND created_at<? "
-                "ORDER BY created_at DESC LIMIT 1", (game["id"], kickoff))
+        return (None, None, {}) if include_snapshot else (None, None)
+    from . import nfl_game_forecasts
+    row = nfl_game_forecasts.selected(game)
     if not row:
-        return None, None
-    snapshot = db.q1("SELECT payload FROM nfl_game_snapshots WHERE id=?", (row["snapshot_id"],))
-    payload = json.loads(snapshot["payload"]) if snapshot else {}
+        return (None, None, {}) if include_snapshot else (None, None)
+    payload = row['payload']
     projection = payload.get("projection") or {
         "proj_home": row["projected_home_points"], "proj_away": row["projected_away_points"],
         "margin": row["projected_margin"], "total": row["projected_total"],
         "home_win_prob": row["home_win_probability"]}
-    return projection, row["created_at"]
+    return (projection, row['created_at'], payload) if include_snapshot else (projection, row['created_at'])
 
 
 def _probability(projection: dict | None, market: str, line: float | None,
@@ -46,7 +45,11 @@ def _probability(projection: dict | None, market: str, line: float | None,
         return None
     try:
         if market == "spread" and projection.get("sd_margin") is not None:
-            return football.spread_prob({**projection, "home": home}, home, float(line))
+            component = projection.get('spread_component') or {}
+            spread_projection = ({**projection, 'margin': component['margin'],
+                                  'sd_margin': component['sd_margin']}
+                                 if component.get('used') else projection)
+            return football.spread_prob({**spread_projection, "home": home}, home, float(line))
         if market == "total" and projection.get("sd_total") is not None:
             return football.total_prob(projection, "Over", float(line))
     except (KeyError, TypeError, ValueError, ZeroDivisionError):
@@ -55,7 +58,7 @@ def _probability(projection: dict | None, market: str, line: float | None,
 
 
 def _game(game: dict) -> dict:
-    projection, projection_at = _prediction(game)
+    projection, projection_at, snapshot = _prediction(game, include_snapshot=True)
     home, away = game["home_team"], game["away_team"]
     kickoff = parse_time(game["start_time"])
     # The normal slate deliberately suppresses stale prices. Product views may
@@ -66,9 +69,18 @@ def _game(game: dict) -> dict:
         "WHERE event_id=? AND captured_at<? AND id NOT IN "
         "(SELECT CAST(ref_id AS INTEGER) FROM quarantine WHERE kind='odds')) "
         "WHERE quote_rank=1", (game["id"], kickoff))
-    markets = board_rows(latest, game)
+    latest_markets = board_rows(latest, game)
+    # A forecast and its probability always retain the line it actually saw.
+    # New observations are available separately until the worker saves a pair.
+    from .nfl_game_forecasts import POLICY_ID
+    markets = (board_rows(snapshot.get('market', []), game)
+               if snapshot.get('forecast_policy_id') == POLICY_ID else latest_markets)
+    latest_game = {**game, 'markets': latest_markets}
     game = {**game, "markets": markets}
     home_prob = projection.get("home_win_prob") if projection else None
+    component = (projection or {}).get('spread_component') or {}
+    spread_margin = (component['margin'] if component.get('used') else
+                     (projection or {}).get('margin'))
     preferred = home if home_prob is not None and home_prob >= .5 else away if home_prob is not None else None
     home_ml, away_ml = _quote(game, "moneyline", home), _quote(game, "moneyline", away)
     home_spread, away_spread = _quote(game, "spread", home), _quote(game, "spread", away)
@@ -77,11 +89,14 @@ def _game(game: dict) -> dict:
     over_prob = _probability(projection, "total", over["line"] if over else None, home)
     price_times = [q.get("captured_at") for q in game.get("markets", []) if q.get("captured_at")]
     market_at = max(price_times) if price_times else None
+    latest_at = max((q.get('captured_at') or 0 for q in latest_markets), default=0) or None
     return {"id": game["id"], "away_team": away, "home_team": home,
             "kickoff_utc": game["start_time"], "venue": game.get("venue"), "status": game.get("status"),
             "projection": {"away_score": projection.get("proj_away"),
                            "home_score": projection.get("proj_home"),
                            "home_margin": projection.get("margin"),
+                           "spread_margin": spread_margin,
+                           "spread_version": component.get('version') if component.get('used') else None,
                            "total": projection.get("total"),
                            "home_win_probability": home_prob,
                            "away_win_probability": 1 - home_prob if home_prob is not None else None,
@@ -91,11 +106,20 @@ def _game(game: dict) -> dict:
             "market": {"moneyline": {"home": home_ml, "away": away_ml},
                        "spread": {"home": home_spread, "away": away_spread,
                                   "home_cover_probability": cover_home,
+                                  "fair_home_spread": -spread_margin if spread_margin is not None else None,
                                   "away_cover_probability": 1 - cover_home if cover_home is not None else None},
                        "total": {"over": over, "under": under,
                                  "over_probability": over_prob,
                                  "under_probability": 1 - over_prob if over_prob is not None else None}},
             "market_observed_at": market_at,
+            "latest_market": {"spread": {"home": _quote(latest_game, 'spread', home),
+                                         "away": _quote(latest_game, 'spread', away)},
+                              "total": {"over": _quote(latest_game, 'total', 'Over'),
+                                        "under": _quote(latest_game, 'total', 'Under')},
+                              "moneyline": {"home": _quote(latest_game, 'moneyline', home),
+                                            "away": _quote(latest_game, 'moneyline', away)}},
+            "latest_market_observed_at": latest_at,
+            "newer_market_available": bool(latest_at and (market_at is None or latest_at > market_at)),
             "market_is_stale": market_at is None or time.time() - market_at > settings.stale_odds_s,
             "designation": "PASS"}
 
@@ -237,7 +261,7 @@ def matchup(game_id: str) -> dict:
     snapshot = db.q1(
         "SELECT s.payload,p.created_at FROM nfl_game_predictions p "
         "JOIN nfl_game_snapshots s ON s.id=p.snapshot_id "
-        "WHERE p.game_id=? AND p.created_at<? ORDER BY p.created_at DESC LIMIT 1",
+        "WHERE p.game_id=? AND p.created_at<? ORDER BY p.created_at DESC,p.id DESC LIMIT 1",
         (game_id, parse_time(game["kickoff_utc"])))
     stored = json.loads(snapshot["payload"]) if snapshot else {}
     context = {"weather": stored.get("weather"), "injuries": stored.get("injuries") or [],
@@ -289,7 +313,7 @@ RESEARCH_DOCUMENTS = {
 
 def research_index() -> dict:
     """Artifact pointers and recorded freeze hashes; never refresh or repair."""
-    from . import model_learning
+    from . import model_learning, nfl_game_sources, nfl_spread_learning
     integrity_path = ROOT / "reports/nfl_model_v2/week03_integrity_2026.json"
     integrity = json.loads(integrity_path.read_text()) if integrity_path.exists() else {}
     artifact_path = ROOT / "reports/nfl_model_v2/forward_2026_week03.json"
@@ -299,6 +323,8 @@ def research_index() -> dict:
     return {
         "active_prop_model": nfl_top_five.nfl_prop_model.model_info(),
         "learning": model_learning.status('NFL'),
+        "game_source": nfl_game_sources.status(),
+        "spread_learning": nfl_spread_learning.status(),
         "week3_game_freeze": {
             "recorded_sha256": integrity.get("freeze_sha256"),
             "current_sha256": actual_sha,

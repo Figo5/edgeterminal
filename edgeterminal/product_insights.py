@@ -74,7 +74,8 @@ def game(projection: dict | None) -> list[str]:
 
 NFL_STEPS = {'schedule', 'product_projections', 'availability', 'top_five_capture',
              'top_five_grading', 'challenger_grading', 'current_game_odds', 'forecast_lines',
-             'near_kickoff_market', 'context', 'game_grading', 'paper_settlement', 'paper_policy'}
+             'near_kickoff_market', 'context', 'game_grading', 'paper_settlement', 'paper_policy',
+             'nfl_game_source', 'nfl_spread_learning'}
 NFL_STEP_PREFIXES = ('weekly_freeze_', 'current_game_market_', 'prop_near_game_', 'prop_pair_')
 
 

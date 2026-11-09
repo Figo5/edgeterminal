@@ -426,8 +426,6 @@ def dashboard(sport: Optional[str] = None, refresh_analysis: bool = False) -> Di
         bool(refreshed.get(s, {}).get("is_demo")) for s in sports)
     upcoming = (engine.weekly_board() if sports == ["NFL"] else engine.slate(
         sport=sports[0], limit_events=20))
-    if sports == ["NFL"]:
-        shadow.freeze_pending()
     return dict(
         generated_at=time.time(), odds_age_s=engine.odds_age_s(),
         last_refresh=lr or None, demo_mode=serving_demo,
@@ -459,7 +457,7 @@ def event(event_id: str, refresh_odds: bool = False) -> Dict:
     if refresh_odds:
         engine.refresh([row["sport"]])
     try:
-        return engine.analyze_event(event_id)
+        return engine.analyze_event(event_id, persist=bool(refresh_odds) if row['sport'] == 'NFL' else True)
     except Exception as e:  # noqa: BLE001
         log.exception("analysis failed")
         raise HTTPException(500, f"analysis failed: {e}")

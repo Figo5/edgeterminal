@@ -177,8 +177,9 @@ def test_nfl_market_keeps_model_probability_independent(isolated_db):
     assert rec["state"] == "PASS"
 
 
-def test_weekly_board_projects_unpriced_games_and_reuses_frozen_prediction(
+def test_worker_projects_unpriced_games_and_passive_board_reuses_prediction(
         isolated_db, monkeypatch):
+    monkeypatch.setattr(engine.time, 'time', lambda: 1_800_000_100.)
     event = dict(_espn(), id="nfl-2027-reg-03-atl-gb")
     db.upsert_event(event)
     db.kv_set("nfl_current_schedule", {"game_ids": [event["id"]]})
@@ -188,12 +189,14 @@ def test_weekly_board_projects_unpriced_games_and_reuses_frozen_prediction(
         "Atlanta Falcons": {"points_for": 19, "points_against": 24,
                             "games": 8, "retrieved_at": 1_800_000_000},
     }
-    monkeypatch.setattr(registry, "team_stats", lambda sport: (stats, "test-stats", False))
+    monkeypatch.setattr(registry, "team_stats", lambda sport, **kw: (stats, "test-stats", False))
+    engine.ensure_weekly_projections()
     first = engine.weekly_board()
     assert len(first) == 1
     assert first[0]["markets"] == []
     assert first[0]["projection"]["proj_home"] > first[0]["projection"]["proj_away"]
     assert db.q1("SELECT COUNT(*) AS n FROM nfl_game_predictions")["n"] == 1
+    monkeypatch.setattr(registry, "team_stats", lambda sport, **kw: pytest.fail('passive board fetched provider'))
     second = engine.weekly_board()
     assert second[0]["snapshot_id"] == first[0]["snapshot_id"]
     assert db.q1("SELECT COUNT(*) AS n FROM nfl_game_predictions")["n"] == 1

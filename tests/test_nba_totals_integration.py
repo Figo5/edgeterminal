@@ -29,8 +29,8 @@ def test_source_cycle_queues_totals_after_grading_without_fitting(monkeypatch):
     from edgeterminal import nba_spread_learning
     calls = []
     adapter = SimpleNamespace(refresh_inputs=lambda now: calls.append('totals') or {'ok': True})
-    monkeypatch.setattr(edgeterminal, 'nba_totals_learning', adapter, raising=False)
-    monkeypatch.setitem(sys.modules, 'edgeterminal.nba_totals_learning', adapter)
+    monkeypatch.setattr(edgeterminal, 'nba_totals_stages', adapter, raising=False)
+    monkeypatch.setitem(sys.modules, 'edgeterminal.nba_totals_stages', adapter)
     monkeypatch.setattr(nba_ops, 'register_model', lambda *_: None)
     monkeypatch.setattr(nba_ops, 'model_info', lambda: {'fingerprint': 'fixture'})
     monkeypatch.setattr(db, 'kv_get', lambda *_: {'model': {'fingerprint': 'fixture'}})
@@ -83,7 +83,7 @@ def test_totals_composition_requires_source_replay_before_pure_inference(monkeyp
     mapping = {'sha256': 'sealed-map'}
     state = {'artifact': 'frozen-artifact'}
     adapters = {
-        'nba_totals_learning': SimpleNamespace(needs_inputs=lambda: True, serving_state=lambda: state),
+        'nba_totals_stages': SimpleNamespace(needs_inputs=lambda: True, serving_state=lambda: state),
         'nba_totals_data': SimpleNamespace(select_history=lambda *a: ['selected'],
             prepare=lambda *a: calls.append('prepare') or mapping,
             verify_input_map=lambda *a: calls.append('verify') or mapping),
@@ -104,8 +104,8 @@ def test_no_totals_candidate_keeps_the_incumbent_without_heavy_replay(monkeypatc
     import edgeterminal
     adapter = SimpleNamespace(needs_inputs=lambda: False,
         serving_state=lambda: pytest.fail('no component needs replay'))
-    monkeypatch.setattr(edgeterminal, 'nba_totals_learning', adapter, raising=False)
-    monkeypatch.setitem(sys.modules, 'edgeterminal.nba_totals_learning', adapter)
+    monkeypatch.setattr(edgeterminal, 'nba_totals_stages', adapter, raising=False)
+    monkeypatch.setitem(sys.modules, 'edgeterminal.nba_totals_stages', adapter)
     original = {'total': 220, 'home_margin': 3}
     result, mapping = nba_ops._totals_projection({'game_id': GID}, original, [], NOW)
     assert result is original and mapping is None
@@ -126,8 +126,8 @@ def test_refresh_composes_then_saves_before_freezing_candidate(monkeypatch):
               proj_home=115.5, proj_away=109.5, total_component_version='totals-fixture'), mapping))
     calls = []
     adapter = SimpleNamespace(capture_forecast=lambda saved, mapped, **kw: calls.append((saved, mapped)))
-    monkeypatch.setattr(edgeterminal, 'nba_totals_learning', adapter, raising=False)
-    monkeypatch.setitem(sys.modules, 'edgeterminal.nba_totals_learning', adapter)
+    monkeypatch.setattr(edgeterminal, 'nba_totals_stages', adapter, raising=False)
+    monkeypatch.setitem(sys.modules, 'edgeterminal.nba_totals_stages', adapter)
     assert nba_ops._refresh_game_projection(nba_store.get_game(GID), manifest['rows'], NOW)
     selected = nba_ops._forecast(GID, 'game')
     assert selected['payload']['projection']['total'] == 225.
@@ -159,8 +159,8 @@ def test_nba_status_exposes_totals_job_health_separately(monkeypatch):
     status = {'enabled': True, 'component': 'NBA_TOTAL', 'status': 'waiting',
               'message': 'Future whole-game validation is still collecting.', 'active': None}
     adapter = SimpleNamespace(status=lambda **kw: status)
-    monkeypatch.setattr(edgeterminal, 'nba_totals_learning', adapter, raising=False)
-    monkeypatch.setitem(sys.modules, 'edgeterminal.nba_totals_learning', adapter)
+    monkeypatch.setattr(edgeterminal, 'nba_totals_stages', adapter, raising=False)
+    monkeypatch.setitem(sys.modules, 'edgeterminal.nba_totals_stages', adapter)
     result = nba_ops.status()
     assert result['totals_learning'] is status
     assert 'game_learning' in result and 'learning' in result
