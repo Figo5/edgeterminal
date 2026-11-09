@@ -285,16 +285,44 @@ def _number(value, *, optional=False):
     return number
 
 
+def _source_team_code(value, season):
+    """Closed provider-era aliases, confined to the supported historical window.
+
+    Raw game IDs and schedule rows use OAK in 2019 and LV from 2020. This
+    resolver does not change global team identity or accept fuzzy/full-name
+    legacy aliases. Canonical franchise keys remain ``lv``.
+    """
+    if value == 'OAK':
+        return 'lv' if season == 2019 else None
+    code = identity.team_code(value)
+    if season == 2019 and code == 'lv':
+        return None  # A modern Raiders source spelling is not a 2019 identity.
+    return code
+
+
+def _pbp_team_code(value, season, game_match):
+    # The observed nflverse 2019 PBP keeps OAK in game_id but normalizes its
+    # team columns to LV. This field-specific representation is allowed only
+    # under that exact historical game identity, never in schedule/raw IDs.
+    if (value == 'LV' and season == 2019 and game_match and game_match[1] == '2019'
+            and 'OAK' in (game_match[3], game_match[4])):
+        return 'lv'
+    return _source_team_code(value, season)
+
+
 def _game_key(value):
     match = re.fullmatch(r'(\d{4})_(\d{2})_([A-Z]{2,3})_([A-Z]{2,3})', str(value))
     if match:
         season, week, away, home = match.groups()
+        away, home = _source_team_code(away, int(season)), _source_team_code(home, int(season))
     else:
         match = re.fullmatch(r'nfl-(\d{4})-reg-(\d{2})-([a-z]{2,3})-([a-z]{2,3})', str(value))
         if not match:
             raise ValueError('NFL game source expected-game identity is invalid')
         season, week, away, home = match.groups()
-    away, home = identity.team_code(away), identity.team_code(home)
+        # Canonical IDs use stable franchise codes; only raw provider fields
+        # carry the historical city abbreviation contract above.
+        away, home = identity.team_code(away), identity.team_code(home)
     if not away or not home or away == home:
         raise ValueError('NFL game source expected-game team is invalid')
     return int(season), int(week), away, home
@@ -326,11 +354,13 @@ def _parse(raw, season, completed_week, at, *, expected_games=None, expected_sco
                 except (TypeError, ValueError) as exc:
                     raise ValueError('NFL game source season/week/date is invalid') from exc
                 kind = row['season_type']
-                home, away = identity.canonical_team(row['home_team']), identity.canonical_team(row['away_team'])
+                home_code = _pbp_team_code(row['home_team'], row_season, match)
+                away_code = _pbp_team_code(row['away_team'], row_season, match)
+                home, away = identity.canonical_team(home_code), identity.canonical_team(away_code)
                 if (not match or row_season != season or int(match[1]) != season or int(match[2]) != week
                         or not 1 <= week <= 22 or kind not in {'REG', 'POST', 'PRE'} or not home or not away or home == away
-                        or identity.team_code(match[3]) != identity.team_code(away)
-                        or identity.team_code(match[4]) != identity.team_code(home)):
+                        or _source_team_code(match[3], row_season) != away_code
+                        or _source_team_code(match[4], row_season) != home_code):
                     raise ValueError('NFL game source row identity conflict')
                 hs, aws = _number(row['home_score']), _number(row['away_score'])
                 if hs != int(hs) or aws != int(aws) or not 0 <= hs <= 100 or not 0 <= aws <= 100:
@@ -342,24 +372,38 @@ def _parse(raw, season, completed_week, at, *, expected_games=None, expected_sco
                 for key in ('success', 'qb_dropback', 'rush_attempt', 'no_huddle'):
                     if values[key] not in (None, 0., 1.):
                         raise ValueError('NFL game source indicator is invalid')
+                historical_raiders = row_season == 2019 and 'OAK' in (match[3], match[4])
+                raiders_spelling = (row['home_team'] if home_code == 'lv' else row['away_team']) if historical_raiders else None
                 for key in ('posteam', 'defteam'):
-                    if row.get(key) not in (None, '', 'NA', 'None') and identity.canonical_team(row[key]) not in (home, away):
-                        raise ValueError('NFL game source play team identity conflict')
+                    if row.get(key) not in (None, '', 'NA', 'None'):
+                        play_code = _pbp_team_code(row[key], row_season, match)
+                        if play_code not in (home_code, away_code) or (
+                                historical_raiders and play_code == 'lv' and row[key] != raiders_spelling):
+                            raise ValueError('NFL game source play team identity conflict')
                 info = dict(game_id=row['game_id'], week=week, season_type=kind, home=home, away=away,
                             date=date, home_score=int(hs), away_score=int(aws))
-                group = groups.setdefault(row['game_id'], dict(info=info, ended=False, rows=[]))
-                if group['info'] != info:
+                group = groups.setdefault(row['game_id'], dict(info=info, ended=False, rows=[],
+                                                               raiders_spelling=raiders_spelling))
+                if group['info'] != info or group['raiders_spelling'] != raiders_spelling:
                     raise ValueError('NFL game source same-game score or identity conflict')
                 if str(row['desc']).strip().upper() == 'END GAME':
                     quarter = _number(row['qtr'])
                     # A genuine sudden-death overtime final has an END GAME
                     # marker while the OT clock still has time remaining.
+                    # Postseason periods are 15 minutes; REG/PRE stay at 10.
+                    overtime_limit = 900 if kind == 'POST' else 600
                     if quarter != int(quarter) or quarter < 4 or quarter > 10 or (
-                            remaining != 0 and (quarter < 5 or remaining is None or remaining > 600)):
+                            remaining != 0 and (quarter < 5 or remaining is None or remaining > overtime_limit)):
                         raise ValueError('NFL game source final clock conflicts with END GAME')
                     group['ended'] = True
                 if row.get('posteam') not in (None, '', 'NA', 'None'):
-                    group['rows'].append({key: row.get(key, '') for key in ('game_id', 'posteam') + METRICS})
+                    play = {key: row.get(key, '') for key in ('game_id', 'posteam') + METRICS}
+                    if row_season == 2019 and play['posteam'] == 'OAK':
+                        # The unchanged legacy aggregator otherwise leaves an
+                        # unknown OAK key. Adapt only this verified in-memory
+                        # input; original IDs, bytes and all metrics stay intact.
+                        play['posteam'] = 'LV'
+                    group['rows'].append(play)
     except (gzip.BadGzipFile, EOFError, UnicodeError, csv.Error) as exc:
         raise ValueError('NFL game source gzip/CSV is invalid') from exc
     finally:

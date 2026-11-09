@@ -307,3 +307,26 @@ def test_crossing_tipoff_during_final_link_aborts_only_owned_new_link(fixture, m
         weekly.run_job(dict(detail=json.dumps(dict(season=2026, week=9))))
     assert not final.exists()
     assert list((settings.nflverse_cache_dir.parent / 'forward_bundles').glob('*/manifest.json'))
+
+
+def test_cached_schedule_accepts_exact_2019_oakland_without_rewriting_rows(fixture):
+    historical = dict(schedule_rows()[0], season='2019', week='1', game_id='2019_01_DEN_OAK',
+                      home_team='OAK', away_team='DEN', gameday='2019-09-09')
+    raw = schedule_archive(fixture, [historical] + schedule_rows())
+    parsed = weekly._parse_schedule(raw, 2026, 8, NOW)
+    original_row = next(csv.DictReader(io.StringIO(gzip.decompress(raw).decode())))
+    assert parsed['rows'][0] == original_row
+    assert parsed['summary']['rows'] == 3
+    assert gzip.decompress(raw).decode().find('2019_01_DEN_OAK') >= 0
+
+
+@pytest.mark.parametrize('change', [dict(season='2020', game_id='2020_01_DEN_OAK'),
+                                  dict(home_team='LV'), dict(home_team='Las Vegas Raiders'),
+                                  dict(home_team='Oakland Raiders'), dict(game_id='2019_01_DEN_LV')])
+def test_cached_schedule_rejects_wrong_era_and_alias_conflicts(fixture, change):
+    historical = dict(schedule_rows()[0], season='2019', week='1', game_id='2019_01_DEN_OAK',
+                      home_team='OAK', away_team='DEN', gameday='2019-09-09')
+    historical.update(change)
+    raw = schedule_archive(fixture, [historical] + schedule_rows())
+    with pytest.raises(ValueError):
+        weekly._parse_schedule(raw, 2026, 8, NOW)

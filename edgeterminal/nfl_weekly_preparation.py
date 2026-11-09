@@ -83,8 +83,8 @@ def _parse_schedule(raw, season, completed_week, at):
                 if row['game_type'] != 'REG' or not 2019 <= year <= season:
                     continue
                 key = sources._game_key(row['game_id'])
-                if (key[:2] != (year, week) or key[2] != sources.identity.team_code(row['away_team'])
-                        or key[3] != sources.identity.team_code(row['home_team']) or not 1 <= week <= 18):
+                if (key[:2] != (year, week) or key[2] != sources._source_team_code(row['away_team'], year)
+                        or key[3] != sources._source_team_code(row['home_team'], year) or not 1 <= week <= 18):
                     raise ValueError('Weekly schedule game/team identity conflict')
                 try:
                     datetime.strptime(row['gameday'], '%Y-%m-%d')

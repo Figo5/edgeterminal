@@ -466,6 +466,34 @@ def test_real_nfl_overtime_end_marker_may_have_time_remaining(isolated):
         adopt(isolated, rows, received=NOW - 10)
 
 
+@pytest.mark.parametrize('remaining', ['640', '900'])
+def test_postseason_end_marker_uses_verified_fifteen_minute_period(isolated, remaining):
+    regular = game()
+    postseason = game(week=18, date='2026-10-01')
+    for row in postseason:
+        row['season_type'] = 'POST'
+    postseason[-1].update(qtr='5', game_seconds_remaining=remaining)
+    path, _ = archive(isolated, regular + postseason)
+    parsed = sources._parse(path.read_bytes(), 2026, 8, NOW)
+    assert parsed['complete'] and parsed['parsed_games'] == 2
+    regular_path, _ = archive(isolated, regular)
+    assert parsed['games'] == sources._parse(regular_path.read_bytes(), 2026, 8, NOW)['games']
+    assert parsed['stats'] == sources.aggregate_team_features(regular, 2026, retrieved_at=NOW)
+
+
+@pytest.mark.parametrize('kind,quarter,remaining', [
+    ('REG', '5', '601'), ('PRE', '5', '601'), ('POST', '5', '901'),
+    ('POST', '4', '640'), ('POST', '5', ''), ('POST', '5.5', '640')])
+def test_overtime_clock_limit_does_not_relax_other_final_checks(isolated, kind, quarter, remaining):
+    rows = game()
+    for row in rows:
+        row['season_type'] = kind
+    rows[-1].update(qtr=quarter, game_seconds_remaining=remaining)
+    path, _ = archive(isolated, rows)
+    with pytest.raises(ValueError, match='final clock'):
+        sources._parse(path.read_bytes(), 2026, 8, NOW)
+
+
 def test_independent_child_waits_for_capture_release_without_reparsing_or_network(isolated, monkeypatch):
     from edgeterminal import learning_publication
     calls, parses = [], []
@@ -588,3 +616,84 @@ def test_queued_live_pid_only_gets_bounded_nonce_startup_grace(isolated, monkeyp
     assert json.loads(sources.status(2026)['job']['detail'])['startup_nonce'] != first_nonce
     with pytest.raises(ValueError, match='nonce'):
         sources.run_job(first['job_id'], allow_network=False, startup_nonce=first_nonce)
+
+
+def historical_oakland_rows():
+    rows = game(week=17, home='OAK', away='DEN', date='2019-12-29')
+    for row in rows:
+        row.update(season='2019', game_id='2019_17_DEN_OAK')
+    return rows
+
+
+def normalized_2019_pbp_rows():
+    rows = historical_oakland_rows()
+    for row in rows:
+        for key in ('home_team', 'away_team', 'posteam', 'defteam'):
+            if row.get(key) == 'OAK':
+                row[key] = 'LV'
+    return rows
+
+
+def test_observed_2019_pbp_normalized_fields_require_historical_oakland_game_id(isolated):
+    rows = normalized_2019_pbp_rows()
+    path, _ = archive(isolated, rows)
+    parsed = sources._parse(path.read_bytes(), 2019, 17, NOW)
+    assert parsed['games'][0]['game_id'] == '2019_17_DEN_OAK'
+    assert parsed['stats']['Las Vegas Raiders']['games'] == 1
+    assert parsed['stats'] == sources.aggregate_team_features(rows, 2019, retrieved_at=NOW)
+    assert sources.identity.team_code('OAK') is None  # global/pinned identity is untouched
+
+
+@pytest.mark.parametrize('index,key', [(1, 'home_team'), (1, 'posteam'), (2, 'defteam')])
+def test_pbp_2019_does_not_mix_raw_and_normalized_raidership_spelling(isolated, index, key):
+    rows = normalized_2019_pbp_rows()
+    rows[index][key] = 'OAK'
+    path, _ = archive(isolated, rows)
+    with pytest.raises(ValueError):
+        sources._parse(path.read_bytes(), 2019, 17, NOW)
+
+
+def test_verified_2019_oakland_source_preserves_raw_ids_and_aggregates_same_franchise(isolated):
+    rows = historical_oakland_rows()
+    path, _ = archive(isolated, rows)
+    raw = path.read_bytes()
+    parsed = sources._parse(raw, 2019, 17, NOW)
+    assert sources._game_key('2019_17_DEN_OAK') == (2019, 17, 'den', 'lv')
+    assert parsed['complete'] and parsed['parsed_games'] == 1
+    assert parsed['games'][0]['game_id'] == '2019_17_DEN_OAK'
+    assert parsed['games'][0]['home'] == 'Las Vegas Raiders'  # stable franchise identity
+    assert parsed['teams']['Las Vegas Raiders']['selected_game_ids'] == ['2019_17_DEN_OAK']
+    assert 'OAK' not in parsed['stats'] and parsed['stats']['Las Vegas Raiders']['games'] == 1
+    original = sources.aggregate_team_features(rows, 2019, retrieved_at=NOW)
+    assert parsed['stats']['Las Vegas Raiders'] == original['OAK']
+    assert parsed['stats']['Denver Broncos'] == original['Denver Broncos']
+    assert path.read_bytes() == raw
+
+
+@pytest.mark.parametrize('game_id', ['2018_17_DEN_OAK', '2020_17_DEN_OAK', '2026_17_DEN_OAK',
+                                  '2019_17_DEN_LV', '2019_17_DEN_RAIDERS', '2019_17_DEN_O.A.K'])
+def test_historical_alias_is_exact_and_rejects_wrong_era_or_fuzzy_raw_id(isolated, game_id):
+    with pytest.raises(ValueError):
+        sources._game_key(game_id)
+
+
+@pytest.mark.parametrize('field,alias', [('home_team', 'LV'), ('home_team', 'Las Vegas Raiders'),
+                                        ('home_team', 'Oakland Raiders'), ('posteam', 'LV'),
+                                        ('posteam', 'Raiders'), ('defteam', 'LV')])
+def test_2019_alias_conflicts_or_unverified_spelling_fail_before_aggregation(isolated, field, alias):
+    rows = historical_oakland_rows()
+    if field == 'defteam':
+        rows[2][field] = alias
+    else:
+        rows[1][field] = alias
+    path, _ = archive(isolated, rows)
+    with pytest.raises(ValueError):
+        sources._parse(path.read_bytes(), 2019, 17, NOW)
+
+
+def test_future_era_oakland_play_team_is_not_accepted(isolated):
+    rows = game(home='LV', away='DEN')
+    rows[1]['posteam'] = 'OAK'
+    path, _ = archive(isolated, rows)
+    with pytest.raises(ValueError):
+        sources._parse(path.read_bytes(), 2026, 8, NOW)
