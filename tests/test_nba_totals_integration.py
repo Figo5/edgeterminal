@@ -1,11 +1,12 @@
 """Totals jobs and records extend the existing live NBA flow."""
 import json
+import hashlib
 import sys
 from types import SimpleNamespace
 import pytest
 from edgeterminal import db, nba_ops, nba_store
 from edgeterminal.config import settings
-from test_nba_game_forecasts import GID, NOW, seed, save
+from test_nba_game_forecasts import GID, NOW, TIP, seed, save, total_market
 
 
 @pytest.fixture(autouse=True)
@@ -52,11 +53,13 @@ def test_totals_version_record_counts_once_and_preserves_original(monkeypatch):
     original = nba_store.get_forecast(legacy['forecast_id'])
     projection = dict(projection, total_component_version='totals-v2', total=225,
         home_score=115.5, away_score=109.5, proj_home=115.5, proj_away=109.5)
-    monkeypatch.setattr(nba_ops.nba_game_forecasts, '_validate_market', lambda *_: None)
-    save(projection, dict(market, total=220.5), manifest, sources)
-    encoded = json.dumps({'winners': 'won', 'spread': 'lost', 'total': 'won'})
+    sourced_total, total_source = total_market()
+    chosen = save(projection, sourced_total, manifest, sources+[total_source], NOW+200)
+    encoded = json.dumps({'winners': 'won', 'total': 'won',
+        'forecast_id': chosen['forecast_id'], 'forecast_sha256': chosen['payload_sha256'],
+        'forecast_policy_id': chosen['payload']['policy_id']},sort_keys=True)
     db.ex('INSERT INTO nba_game_grade_revisions(game_id,source_artifact_id,graded_at,payload,sha256) VALUES(?,?,?,?,?)',
-        (GID, sources[0], NOW + 100, encoded, 'fixture'))
+        (GID, total_source, TIP + 100, encoded, hashlib.sha256((encoded+':0').encode()).hexdigest()))
     result = nba_ops.performance()
     assert result['total']['won'] == 1
     totals, = result['model_versions']['totals']

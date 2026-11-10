@@ -173,9 +173,17 @@ def games(season: int = 2026) -> dict:
             raise ValueError('saved forecast game identity mismatch')
         kickoff = parse_time((snapshot.get('game') or {}).get('kickoff_utc') or item['start_time'])
         current_kickoff = parse_time(item['start_time'])
+        if snapshot.get('forecast_policy_id') == 'nfl-game-source-revisions-v1' and kickoff != current_kickoff:
+            continue
         if (game in seen or not kickoff or not current_kickoff or
                 item['created_at'] >= min(kickoff, current_kickoff)):
             continue
+        if snapshot.get('line_retention') is not None:
+            from . import nfl_game_forecasts
+            event=db.q1('SELECT * FROM events WHERE id=?',(game,))
+            canonical=nfl_game_forecasts.selected(event)
+            if not canonical or canonical['snapshot_id']!=item['snapshot_id']:
+                continue
         # Match the forecast used by the board: latest saved before kickoff.
         seen.add(game)
         p = snapshot.get('projection') or {}
@@ -188,7 +196,8 @@ def games(season: int = 2026) -> dict:
         if (team_code(home) != game.split('-')[-1] or
                 team_code(identity.get('away_team')) != game.split('-')[-2]):
             raise ValueError('saved forecast team identity mismatch')
-        quotes = [q for q in snapshot.get('market', []) if not q.get('is_demo') and
+        from . import nfl_game_lines
+        quotes = [q for q in nfl_game_lines.effective_quotes(snapshot) if not q.get('is_demo') and
                   q.get('event_id') == game and parse_time(q.get('captured_at')) is not None and
                   parse_time(q['captured_at']) <= item['created_at'] and
                   parse_time(q['captured_at']) < kickoff]
@@ -217,6 +226,8 @@ def games(season: int = 2026) -> dict:
                      'projected_home_points': p.get('proj_home', item['projected_home_points']),
                      'projected_away_points': p.get('proj_away', item['projected_away_points']),
                      'spread_line': spread, 'total_line': line,
+                     **({'line_provenance':nfl_game_lines.line_refs(snapshot)}
+                        if snapshot.get('line_retention') is not None else {}),
                      'final_home_points': finals.get(game, (None, None))[0],
                      'final_away_points': finals.get(game, (None, None))[1]})
     rows.extend(_legacy_games(season, seen))

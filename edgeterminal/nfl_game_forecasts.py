@@ -10,7 +10,7 @@ import json
 import math
 import time
 
-from . import db, nfl_identity, nfl_market
+from . import db, nfl_identity, nfl_market, nfl_game_lines
 from .analytics import football
 from .analytics.ratings import shrink_stats
 from .config import settings
@@ -55,6 +55,11 @@ def selected(event):
                     or identity.get('home_team') != event['home_team']
                     or identity.get('away_team') != event['away_team']):
                 raise ValueError('NFL saved forecast identity/hash conflict')
+            if original != kickoff:
+                # A legitimate reschedule needs newly verified prices. Keep the
+                # old snapshot in history without carrying its old kickoff proof.
+                continue
+            nfl_game_lines.effective_quotes(payload,event)
         return dict(row, payload=payload)
     return None
 
@@ -135,17 +140,22 @@ def maintain(now=None):
             teams = {home: shrunk[home], away: shrunk[away]}
             if any(float(row.get('retrieved_at') or 0) > at for row in teams.values()):
                 raise ValueError('NFL team statistics have a future receipt')
-            projection = football.project_game('NFL', home, away, shrunk,
-                                               neutral=engine._neutral_site(event))
-            projection['feature_groups']['scoring_margin'] = (
-                projection['margin'] - projection['feature_groups'].get('efficiency_points', 0))
-            quotes = nfl_market.valid_game_quotes(
-                db.latest_odds(event_id=event['id'], max_age_s=settings.stale_odds_s), event)
+            offered = [q for q in db.latest_odds(event_id=event['id'], max_age_s=settings.stale_odds_s)
+                       if q.get('provider')=='espn-odds' and not q.get('is_demo')]
+            quotes = nfl_market.valid_game_quotes(offered, event)
             quotes = [q for q in quotes if (settings.demo_mode or not q.get('is_demo'))
                       and parse_time(q.get('captured_at')) is not None
                       and parse_time(q['captured_at']) <= at < parse_time(event['start_time'])
                       and (settings.demo_mode or q.get('provider') == 'espn-odds')
                       and q.get('quote_phase', 'current') == 'current']
+            previous = selected(event)
+            # Seal comparison provenance before inference. The component still
+            # sees only current quotes; retained lines never reset price TTL.
+            retained = nfl_game_lines.resolve(event, offered, at, previous)
+            projection = football.project_game('NFL', home, away, shrunk,
+                                               neutral=engine._neutral_site(event))
+            projection['feature_groups']['scoring_margin'] = (
+                projection['margin'] - projection['feature_groups'].get('efficiency_points', 0))
             try:
                 component = nfl_spread_learning.project_component(projection, event, quotes, input_map, at)
             except (ValueError, KeyError, TypeError, OSError) as exc:
@@ -168,16 +178,17 @@ def maintain(now=None):
             if component:
                 stable_projection['spread_component'] = {k: v for k, v in component.items()
                     if k not in ('forecast_input_sha256', 'as_of', 'forecast_at')}
+            stable_lines = {k:v for k,v in retained.items() if k not in ('parent_snapshot_id','sha256')}
             fingerprint = _digest(dict(game=identity, team_form={k: _stable_team(v) for k, v in teams.items()},
                 input_map=source_identity, quotes=quotes, projection=stable_projection,
-                formula=settings.model_version, policy=POLICY_ID))
-            previous = selected(event)
+                comparison_lines=stable_lines,formula=settings.model_version, policy=POLICY_ID))
             if previous and previous['payload'].get('revision_input_sha256') == fingerprint:
                 _capture(previous['snapshot_id'], at)
                 continue
             saved_at = _physical(at)
             payload = dict(schema_version=2, kind='automatic_pregame_revision', forecast_policy_id=POLICY_ID,
-                game=identity, team_form=teams, market=quotes, injuries=None, weather=None, news=None,
+                game=identity, team_form=teams, market=quotes, line_retention=retained,
+                injuries=None, weather=None, news=None,
                 sources=[dict(kind='stats', publisher=source, is_demo=is_demo,
                               retrieved_at=max(float(r.get('retrieved_at') or 0) for r in teams.values()))],
                 missing_data=dict(injuries=True, weather=True, news=True, market=not bool(quotes)),
@@ -198,6 +209,10 @@ def maintain(now=None):
                         event['start_time'], home, away):
                     continue
                 current_saved = selected(event)
+                if (current_saved or {}).get('snapshot_id') != (previous or {}).get('snapshot_id'):
+                    continue
+                if nfl_game_lines.resolve(event,offered,at,current_saved) != retained:
+                    raise ValueError('NFL retained line parent changed before publication')
                 if current_saved and current_saved['payload'].get('revision_input_sha256') == fingerprint:
                     continue
                 con.execute('INSERT INTO nfl_game_snapshots VALUES(?,?,?,?,?,?)',

@@ -52,13 +52,14 @@ def event_game(raw):
 
 def quote_context(quotes, event, as_of, kickoff):
     """Use the exact first saved home line, as the season record does."""
+    from . import nfl_game_lines
     home,away = event['home_team'],event['away_team']; selected=[]
     for raw in quotes or []:
         if raw.get('market') != 'spread': continue
         if raw.get('selection') not in (home,away): raise ValueError('NFL spread quote team mismatch')
         if raw.get('event_id') != event['id'] or raw.get('provider') != 'espn-odds' or raw.get('is_demo'):
             raise ValueError('NFL spread quote provider/event mismatch')
-        if raw.get('quote_phase') != 'current' or raw.get('source_url') != SCOREBOARD:
+        if raw.get('quote_phase') != 'current' or not nfl_game_lines.valid_source_url(raw.get('source_url'),event):
             raise ValueError('NFL spread quote source/phase mismatch')
         captured = parse_time(raw.get('captured_at'))
         if captured is None or not captured <= as_of < kickoff:
@@ -104,7 +105,8 @@ def observation(snapshot_id, *, now, deep=False, proof_cache=None):
     from . import nfl_game_sources
     verified_source=nfl_game_sources.verify_input_map(source,game,source['as_of'],deep=deep,proof_cache=proof_cache)
     if source['as_of'] > at: raise ValueError('NFL spread snapshot uses future source context')
-    quote = quote_context(payload.get('market'),game,at,kickoff)
+    from . import nfl_game_lines
+    quote = quote_context(nfl_game_lines.effective_quotes(payload,game),game,at,kickoff)
     if quote is None: return None
     projection = payload.get('projection') or {}; stats = payload.get('team_form') or {}
     home,away=game['home_team'],game['away_team']

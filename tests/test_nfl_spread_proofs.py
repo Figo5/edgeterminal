@@ -27,7 +27,8 @@ def environment(isolated,monkeypatch):
 
 def proposal(environment,outer_season=2027,outer_first_week=1):
     store,learning=environment
-    state=dict(stage='outer',fit_rows=[],development_rows=[],calibration_rows=[])
+    state=dict(stage='outer',fit_rows=[],development_rows=[],calibration_rows=[],
+               code_sha256=store.code_catalog(),protocol_sha256=learning.model.sha(learning.model.protocol()))
     stage=store.append_stage(None,state,now=NOW-1)
     member=dict(method='affine',feature_names=['baseline_margin'],alpha=100.,means=[0.],scales=[1.],coefficients=[1.],intercept=-5.)
     artifact=dict(kind=learning.model.KIND,member=member,sd_margin=13.2,training_cutoff=NOW-100,

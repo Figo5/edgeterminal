@@ -79,7 +79,8 @@ def validation_labels(reservation, now=None):
                 raise ValueError('Totals latest final source coverage/game/team/time conflict')
             if (latest_game['home_score'],latest_game['away_score'])!=(parsed['home_score'],parsed['away_score']):
                 raise ResultPending('Totals latest final correction is awaiting a matching graded label')
-        market=saved['payload'].get('market') or {}; line=market.get('total')
+        from . import nba_game_lines
+        market=nba_game_lines.effective_market(saved, market='total'); line=market.get('total')
         if line is not None:
             _verify_total_market(market,game,saved['payload'].get('as_of',saved['created_at']),saved['source_artifact_ids'])
             over=saved['payload']['projection']['total']>=line
@@ -146,7 +147,8 @@ def forecast_inputs(now=None, limit=1000, *, start_date=None):
                 for item in mapped['source_artifacts']:
                     if saved_descriptors.get(item['id'])!={k:item[k] for k in ('id','sha256','received_at')}:
                         raise ValueError('Totals input receipt differs from common saved source descriptor')
-        market=payload.get('market') or {}
+        from . import nba_game_lines
+        market=nba_game_lines.effective_market(saved, market='total')
         line=market.get('total',market.get('total_line'))
         if line is not None:
             _number(line)

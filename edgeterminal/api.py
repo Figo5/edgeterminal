@@ -224,7 +224,8 @@ def product_nba_board(request: Request, date: Optional[str] = None) -> Dict:
 
 @app.get('/api/product/nba/performance')
 def product_nba_performance() -> Dict:
-    return nba_ops.performance()
+    from . import game_line_audit
+    return {**nba_ops.performance(), 'historical_line_audit': game_line_audit.public_view('NBA')}
 
 
 @app.get('/api/product/nba/status')

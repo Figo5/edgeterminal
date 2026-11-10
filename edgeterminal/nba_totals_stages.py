@@ -89,16 +89,21 @@ def append_event(chain_id,kind,payload,*,now,expected):
         head=con.execute('SELECT sha256 FROM nba_totals_training_stages WHERE chain_id=? ORDER BY id DESC LIMIT 1',(chain_id,)).fetchone()
         if (head['sha256'] if head else None)!=expected:
             raise StageConflict('NBA totals stage ownership changed')
+        if kind=='context_changed':
+            boundary=con.execute("SELECT MAX(id) FROM nba_totals_stage_runs WHERE "
+                "COALESCE(json_extract(detail,'$.kind'),'retuning')!='diagnostics'").fetchone()[0] or 0
+            payload=dict(payload,context_change=dict(payload['context_change'],after_retuning_run_id=boundary))
+            value=dict(value,payload=payload); digest=store.sha(value)
         con.execute('INSERT INTO nba_totals_training_stages(chain_id,kind,created_at,payload,sha256,previous_sha256) VALUES(?,?,?,?,?,?)',
                     (chain_id,kind,stamp,store.encoded(payload),digest,expected))
     return current(chain_id)
 
 
-def _verify(event, *, full=False):
+def _verify(event, *, full=False, expected_code=None):
     if event['kind']=='invalidated':
         raise ValueError('NBA totals stage was explicitly invalidated')
     payload=event['payload']; bank.verify_bank(payload['bank'])
-    if payload['code_sha256']!=store.code_catalog():
+    if payload['code_sha256']!=(store.code_catalog() if expected_code is None else expected_code):
         raise ValueError('NBA totals stage code fingerprint changed')
     if set(payload['code_archive'])!=set(payload['code_sha256']):
         raise ValueError('NBA totals stage code archive catalog mismatch')
@@ -139,6 +144,52 @@ def _verify(event, *, full=False):
                    actual[r['game_id']]['actual_total']!=r['actual_total'] for r in rows):
                 raise ValueError('NBA totals completed inner phase result changed')
     return payload
+
+
+def transition_code_context(now=None):
+    """Close only an explicitly authorized old context; never fit or reseal it."""
+    from . import learning_code_context as releases
+    event=current()
+    if event and event['kind']=='context_changed':
+        change=event['payload']['context_change']
+        auth=releases.authorization('NBA_TOTAL',event['payload']['code_sha256'],store.code_catalog())
+        if not auth or auth['authorization_id']!=change['authorization_id'] or auth['authorization_sha256']!=change['authorization_sha256']:
+            raise ValueError('NBA totals approved release context changed after transition')
+        return event
+    if not event or event['kind'] in ('retained','invalidated','candidate'):
+        return event
+    before=event['payload'].get('code_sha256'); after=store.code_catalog()
+    if before==after:
+        return event
+    auth=releases.authorization('NBA_TOTAL',before,after)
+    if auth is None:
+        return event  # Existing strict capture/fit checks keep this mismatch visible.
+    if event['payload'].get('contract')!=bank.CONTRACT:
+        raise ValueError('NBA totals staged protocol changed before release transition')
+    old_candidates=_exists('nba_totals_candidates') and (legacy_store.pending() or (legacy_store.active_event() or {}).get('version'))
+    if store.pending() or (store.active_event() or {}).get('version') or old_candidates:
+        raise ValueError('NBA totals code transition requires no candidate or active learned model')
+    payload=_verify(event,expected_code=auth['components']['NBA_TOTAL']['before'])
+    for descriptor in payload['sources']:
+        verified,_,_=data._source(descriptor['id'],payload['bank']['cutoff'])
+        if verified['sha256']!=descriptor['sha256']:
+            raise ValueError('NBA totals context source bytes changed')
+    dates=list(payload['bank']['fit']['dates'])
+    for phase in ('development','calibration'):
+        dates.extend(row['date_et'] for row in payload.get(phase+'_examples',[]))
+        dates.extend((payload.get('selected') or {}).get(phase,{}).get('dates',[]))
+    for row in db.q('SELECT reservation_id FROM nba_totals_inner_reservations WHERE chain_id=?',(event['chain_id'],)):
+        reservation=validate_inner_reservation(row['reservation_id'])
+        dates.extend(reservation.get('date_ids',[]))
+    if store.code_catalog()!=after:
+        raise StageConflict('NBA totals code changed during release context verification')
+    stamp=_physical_now(now)
+    change=dict(authorization_id=auth['authorization_id'],authorization_sha256=auth['authorization_sha256'],
+                before_sha256=releases.sha(before),after_sha256=releases.sha(after),
+                base_commit=auth['base_commit'],target_commit=auth['target_commit'])
+    return append_event(event['chain_id'],'context_changed',dict(payload,stage='context_changed',
+        reason='approved_release_code_context_changed',context_change=change,context_after_day=max(dates),
+        next_due_at=stamp+WEEK),now=stamp,expected=event['sha256'])
 
 
 def _prepare(raw,cutoff):
@@ -327,12 +378,14 @@ def run_fitting(now=None):
         if pending:
             _recover_registered(pending,stamp)
             return outer.resume_publication(pending['version'],now=stamp)
-        event=current()
-        if event and event['kind'] in ('retained','invalidated','candidate'):
+        event=transition_code_context(now=stamp)
+        if event and event['kind'] in ('retained','invalidated','candidate','context_changed'):
             if stamp<event['created_at']+WEEK:
                 return store.record_run(stamp,'error' if event['kind']=='invalidated' else 'waiting',dict(stage=event['kind'],
                     reason=event['payload'].get('reason','predeclared_weekly_proposal_cadence'),next_due_at=event['created_at']+WEEK))
             dates=list(event['payload']['bank']['fit']['dates'])
+            if event['payload'].get('context_after_day'):
+                dates.append(event['payload']['context_after_day'])
             dates.extend((event['payload'].get('selected') or {}).get('development',{}).get('dates',[]))
             if event['payload'].get('candidate_version'):
                 reserved=store.reservation_for(event['payload']['candidate_version'])
@@ -404,13 +457,14 @@ def run_fitting(now=None):
 
 def run_diagnostics(now=None):
     stamp=_work_now(now); ensure_schema()
+    transition_code_context(now=stamp)
     pending=store.pending()
     if pending:
         _recover_registered(pending,stamp)
         return outer.resume_publication(pending['version'],now=stamp)
     try:
         state=serving_state(); event=current()
-        if event and event['kind'] not in ('retained','invalidated'):
+        if event and event['kind'] not in ('retained','invalidated','context_changed'):
             _verify(event)
         last=_last_retuning()
         detail=json.loads(last['detail']) if last else {}
@@ -467,7 +521,7 @@ def capture_forecast(saved,input_map,now=None):
         return None
     if input_map.get('sha256')!=store.sha({k:v for k,v in input_map.items() if k!='sha256'}):
         raise ValueError('NBA totals staged input-map seal mismatch')
-    event=current()
+    event=transition_code_context(now=stamp)
     captured=None
     if event and event['kind'] in ('fit','development'):
         payload=event['payload']
@@ -538,6 +592,20 @@ def _next_due(last,stamp):
 def refresh_inputs(now=None):
     from . import learning_worker
     stamp=store.stamp(now); ensure_schema()
+    event=transition_code_context(now=stamp)
+    if event and event['kind']=='context_changed':
+        detail=dict(kind='retuning',stage='context_changed',status='waiting',ok=True,
+            reason='approved_release_code_context_changed',context_change=event['payload']['context_change'],
+            next_due_at=event['payload']['next_due_at'],message='approved release code context changed')
+        # The boundary was sealed in the context append's writer transaction.
+        # IDs distinguish before/after attempts even on an equal physical clock.
+        boundary=event['payload']['context_change']['after_retuning_run_id']
+        if isinstance(boundary,bool) or not isinstance(boundary,int) or boundary<0:
+            raise ValueError('NBA totals context retuning boundary is invalid')
+        db.ex('INSERT INTO nba_totals_stage_runs(started_at,status,detail) SELECT ?,?,? '
+              'WHERE NOT EXISTS(SELECT 1 FROM nba_totals_stage_runs WHERE id>? '
+              "AND COALESCE(json_extract(detail,'$.kind'),'retuning')!='diagnostics')",
+              (stamp,'waiting',store.encoded(detail),boundary))
     jobs={}; due=_next_due(_last_retuning(),stamp)
     diagnostic=db.q1("SELECT * FROM nba_totals_stage_runs WHERE json_extract(detail,'$.kind')='diagnostics' ORDER BY id DESC LIMIT 1")
     today=datetime.fromtimestamp(stamp,store.ET).replace(hour=4,minute=0,second=0,microsecond=0).timestamp()

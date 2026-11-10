@@ -69,7 +69,7 @@ def ensure_schema():
 
 def code_catalog():
     names=('nba_spread_model.py','nba_spread_learning.py','nba_spread_data.py','nba_spread_market.py','nba_model.py',
-           'nba_sources.py','nba_identity.py','nba_game_context.py','nba_game_forecasts.py',
+           'nba_sources.py','nba_identity.py','nba_game_context.py','nba_game_forecasts.py','nba_game_lines.py',
            'pricing.py','analytics/nba.py','nba_model_manifest.py')
     return {f'edgeterminal/{name}':hashlib.sha256((ROOT/'edgeterminal'/name).read_bytes()).hexdigest()
             for name in names if (ROOT/'edgeterminal'/name).is_file()}

@@ -394,6 +394,9 @@ def _run_locked(now: float, *, record_tick: bool = True,
     if settings.nba_research_enabled and _due('nba_research', now, 300):
         from . import nba_ops
         attempt('nba_research', lambda: nba_ops.run(now))
+    if _due('historical_line_audit', now, 300):
+        from . import game_line_audit
+        attempt('historical_line_audit', lambda: game_line_audit.maintain(now))
     # Use quotes captured during this cycle, including a schedule change near
     # kickoff; the next tick may already be too late for a pregame revision.
     if (steps.get('schedule', {}).get('ok') or

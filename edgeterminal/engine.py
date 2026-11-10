@@ -1093,13 +1093,16 @@ def slate(sport: Optional[str] = None, limit_events: int = 40) -> List[Dict]:
 
 def weekly_board() -> List[Dict]:
     """Read saved pregame previews; only the background worker writes history."""
-    from . import nfl_game_forecasts
+    from . import nfl_game_forecasts, nfl_game_lines
     games = slate("NFL", limit_events=40)
     for game in games:
         saved = nfl_game_forecasts.selected(game)
         if saved:
             game.update(projection=saved['payload'].get('projection'),
                         projection_created_at=saved['created_at'], snapshot_id=saved['snapshot_id'])
+            if saved['payload'].get('line_retention') is not None:
+                game.update(saved_comparison_market=nfl_game_lines.effective_quotes(saved, game),
+                            saved_line_refs=nfl_game_lines.line_refs(saved, game))
     return games
 
 

@@ -109,7 +109,10 @@ def activate(now=None):
 
 
 def _legacy(game_id):
-    rows = nba_store.list_forecasts(game_id)
+    if not _exists('nba_forecasts'):
+        return None
+    rows = [nba_store._forecast(row) for row in db.q(
+        'SELECT * FROM nba_forecasts WHERE game_id=? ORDER BY created_at', (game_id,))]
     return next((r for r in rows if r['payload'].get('kind') == 'game'), None)
 
 
@@ -138,14 +141,15 @@ def enroll(game_id, now=None):
     return db.q1('SELECT * FROM nba_game_forecast_enrollments WHERE game_id=?', (game_id,))
 
 
-def _sources(source_ids, as_of):
+def _sources(source_ids, as_of, *, readonly=False):
     if not isinstance(source_ids, (list, tuple, set)) or not source_ids:
         raise ValueError('revision needs successful source artifacts')
     result = {}
     for ident in source_ids:
         if not isinstance(ident, int) or isinstance(ident, bool):
             raise ValueError('invalid source artifact ID')
-        row = nba_store.get_artifact(ident)
+        row = (db.q1('SELECT * FROM nba_source_artifacts WHERE id=?', (ident,))
+               if readonly else nba_store.get_artifact(ident))
         if not row or row['http_status'] != 200:
             raise ValueError('revision needs successful source artifacts')
         if not _finite(row['received_at']) or row['received_at'] > as_of:
@@ -368,7 +372,7 @@ def _validate_market(market, sources, game, as_of):
         raise ValueError('market line or price does not match one archived sportsbook offer')
 
 
-def save_revision(game_id, projection, market, input_manifest, sources, now=None, model_info=None):
+def save_revision(game_id, projection, market, input_manifest, sources, now=None, model_info=None, line_context=None):
     """Validate and append an immutable as-of snapshot; identical work is a no-op."""
     at = _stamp(db.now() if now is None else now)
     enrollment = enroll(game_id, at)
@@ -383,12 +387,17 @@ def save_revision(game_id, projection, market, input_manifest, sources, now=None
             or abs(projection['home_score'] + projection['away_score'] - projection['total']) > .011:
         raise ValueError('projection scores, margin, and total do not reconcile')
     projection = dict(projection, tipoff=game['tipoff_ts'])
-    source_rows = _sources(list(sources), at)
+    from . import nba_game_lines
+    line_context = line_context or nba_game_lines.resolve(game, market, at)
+    if line_context.get('policy_id') != nba_game_lines.POLICY_ID:
+        raise ValueError('NBA comparison context policy conflict')
+    source_rows = _sources(sorted(set(sources) | set(line_context['source_ids'])), at)
     _validate_manifest(input_manifest, source_rows, game, at)
-    _validate_market(market, source_rows, game, at)
+    _validate_market(nba_game_lines.fresh_validation_market(market), source_rows, game, at)
     model = model_info or {'version': projection.get('model_version') or nba_model.MODEL_VERSION}
     snapshot = {'kind': 'game-revision', 'policy_id': enrollment['policy_id'], 'projection': projection,
-                'market': market, 'input_manifest': input_manifest, 'model': model,
+                'market': market, 'line_context': nba_game_lines.sealed_context(line_context),
+                'input_manifest': input_manifest, 'model': model,
                 'source_artifacts': [{'id': sid, 'sha256': source_rows[sid]['sha256'],
                                       'received_at': source_rows[sid]['received_at']} for sid in sorted(source_rows)]}
     snapshot_sha = _sha(_json(snapshot))
@@ -403,6 +412,9 @@ def save_revision(game_id, projection, market, input_manifest, sources, now=None
     encoded = _json(payload)
     encoded_sources = _json(sorted(source_rows))
     payload_sha = _sha(encoded)
+    nba_game_lines.verify(dict(game_id=game_id, forecast_id=forecast_id, model_version=model['version'],
+                              payload=payload, payload_sha256=payload_sha,
+                              source_artifact_ids=sorted(source_rows), created_at=at), game)
     # Source parsing, model inference, serialization, hashing, and SQLite lock
     # acquisition may all take time. Check the physical write boundary after
     # that work, not only a worker timestamp sampled before inference.
@@ -414,6 +426,7 @@ def save_revision(game_id, projection, market, input_manifest, sources, now=None
         if not current or current['status'] != 'scheduled' or written_at >= current['tipoff_ts'] \
                 or current['tipoff_ts'] != game['tipoff_ts']:
             raise ValueError('revision cannot be written at or after tipoff or after a schedule change')
+        nba_game_lines.publication_check(game,line_context)
         duplicate = con.execute('SELECT payload FROM nba_forecasts WHERE forecast_id=?', (forecast_id,)).fetchone()
         if duplicate:
             if json.loads(duplicate['payload']).get('snapshot_sha256') != snapshot_sha:
@@ -432,14 +445,14 @@ def selected(game_id, legacy=None):
     if not active or not _exists('nba_game_forecast_enrollments'):
         return legacy
     enrollment = db.q1('SELECT * FROM nba_game_forecast_enrollments WHERE game_id=?', (game_id,))
-    game = nba_store.get_game(game_id)
+    game = db.q1('SELECT * FROM nba_games WHERE game_id=?', (game_id,))
     if not enrollment or not game or enrollment['policy_id'] != POLICY_ID \
             or enrollment['enrolled_at'] < active['activated_at']:
         return legacy
     candidates = db.q('SELECT forecast_id FROM nba_forecasts WHERE game_id=? '
                       'ORDER BY created_at DESC,forecast_id DESC', (game_id,))
     for candidate in candidates:
-        row = nba_store.get_forecast(candidate['forecast_id'])
+        row = nba_store._forecast(db.q1('SELECT * FROM nba_forecasts WHERE forecast_id=?', (candidate['forecast_id'],)))
         payload = row['payload']
         if payload.get('kind') != 'game-revision' or payload.get('policy_id') != enrollment['policy_id']:
             continue
@@ -453,6 +466,8 @@ def selected(game_id, legacy=None):
         snapshot = {k: v for k, v in payload.items() if k not in {'as_of', 'snapshot_sha256', 'input_manifest_sha256'}}
         if _sha(_json(snapshot)) != payload.get('snapshot_sha256'):
             continue
+        from . import nba_game_lines
+        nba_game_lines.verify(row, game)
         return row
     return legacy
 
@@ -517,7 +532,7 @@ def validation_snapshots(now=None, limit=60):
             continue
         if label.get('spread') not in ('won', 'lost', 'push'):
             continue
-        source = _sources([grade['source_artifact_id']], grade['graded_at'])[grade['source_artifact_id']]
+        source = _sources([grade['source_artifact_id']], grade['graded_at'], readonly=True)[grade['source_artifact_id']]
         parsed = nba_data.parse_summary(source['data'])
         final = parsed['game']
         if not parsed['box_complete'] or final['status'] != 'final' \
@@ -528,14 +543,16 @@ def validation_snapshots(now=None, limit=60):
                 or (label.get('home_score'), label.get('away_score')) != (final['home_score'], final['away_score']):
             raise ValueError('NBA game validation label does not match its verified final source')
         payload = saved['payload']
-        input_sources = _sources(saved['source_artifact_ids'], payload['as_of'])
+        input_sources = _sources(saved['source_artifact_ids'], payload['as_of'], readonly=True)
         descriptors = [{'id': ident, 'sha256': input_sources[ident]['sha256'],
                         'received_at': input_sources[ident]['received_at']} for ident in sorted(input_sources)]
         if descriptors != payload.get('source_artifacts'):
             raise ValueError('NBA validation input source descriptors changed since the forecast')
         _validate_manifest(payload['input_manifest'], input_sources, game, payload['as_of'])
-        _validate_market(payload.get('market') or {}, input_sources, game, payload['as_of'])
-        market = payload.get('market') or {}
+        from . import nba_game_lines
+        raw_market = payload.get('market') or {}
+        _validate_market(nba_game_lines.fresh_validation_market(raw_market) if payload.get('line_context') else raw_market, input_sources, game, payload['as_of'])
+        market = nba_game_lines.effective_market(saved, market='spread')
         if not _finite(market.get('home_spread')):
             continue
         actual_margin = final['home_score'] - final['away_score']

@@ -73,8 +73,12 @@ def _game(game: dict) -> dict:
     # A forecast and its probability always retain the line it actually saw.
     # New observations are available separately until the worker saves a pair.
     from .nfl_game_forecasts import POLICY_ID
-    markets = (board_rows(snapshot.get('market', []), game)
+    from . import nfl_game_lines
+    paired = (nfl_game_lines.effective_quotes(snapshot, game)
+              if snapshot.get('line_retention') is not None else snapshot.get('market', []))
+    markets = (board_rows(paired, game)
                if snapshot.get('forecast_policy_id') == POLICY_ID else latest_markets)
+    line_refs = nfl_game_lines.line_refs(snapshot, game) if snapshot.get('line_retention') is not None else {}
     latest_game = {**game, 'markets': latest_markets}
     game = {**game, "markets": markets}
     home_prob = projection.get("home_win_prob") if projection else None
@@ -102,6 +106,7 @@ def _game(game: dict) -> dict:
                            "away_win_probability": 1 - home_prob if home_prob is not None else None,
                            "preferred_team": preferred} if projection else None,
             "projection_at": projection_at,
+            "saved_line_refs": line_refs,
             "explanation": product_insights.game(projection),
             "market": {"moneyline": {"home": home_ml, "away": away_ml},
                        "spread": {"home": home_spread, "away": away_spread,
@@ -275,12 +280,14 @@ def matchup(game_id: str) -> dict:
 
 
 def performance() -> dict:
+    from . import game_line_audit
     prop_path = ROOT / "data/research/nfl_prop_forward_report.json"
     prop = json.loads(prop_path.read_text()) if prop_path.exists() else {}
     prospective = prop.get("prospective_2026", {})
     paper = paper_research.dashboard()
     return {"readiness": "RESEARCH_ONLY", "designation": "PASS",
             "top_five": nfl_top_five.view(), "season_record": nfl_season_record.view(),
+            "historical_line_audit": game_line_audit.public_view('NFL'),
             "prospective_2026": {"games": shadow.performance(),
                                  "player_props": {key: prospective.get(key) for key in
                                                   ("distinct_player_markets_graded",

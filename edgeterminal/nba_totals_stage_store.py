@@ -32,7 +32,8 @@ CODE_NAMES = tuple('edgeterminal/' + name for name in (
     'nba_spread_model.py', 'nba_spread_data.py', 'nba_spread_market.py', 'nba_store.py',
     'learning_publication.py', 'learning_worker.py', 'db.py', 'config.py', 'pricing.py',
     'analytics/nba.py', 'nba_model_manifest.py', 'nba_totals_fit_bank.py',
-    'nba_totals_stages.py', 'nba_totals_stage_store.py', 'nba_totals_stage_outer.py', 'nba_totals_stage_data.py'))
+    'nba_totals_stages.py', 'nba_totals_stage_store.py', 'nba_totals_stage_outer.py', 'nba_totals_stage_data.py',
+    'nba_game_lines.py', 'learning_code_context.py'))
 TABLES = ('nba_totals_stage_candidates', 'nba_totals_stage_forecast_freezes', 'nba_totals_stage_reservations',
           'nba_totals_stage_reserved_games', 'nba_totals_stage_reserved_dates', 'nba_totals_stage_evaluations',
           'nba_totals_stage_publication_proofs', 'nba_totals_stage_model_events', 'nba_totals_stage_runs')

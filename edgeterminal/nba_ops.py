@@ -296,7 +296,8 @@ def _forecast(game_id,kind):
 def comparison_market(game_id,saved):
     market=dict(saved['payload'].get('market') or {})
     if saved['payload'].get('kind')=='game-revision':
-        return market
+        from . import nba_game_lines
+        return nba_game_lines.effective_market(saved)
     for kind,keys in [('spread-line',('home_spread','away_spread','home_price','away_price')),
                       ('total-line',('total','over_price','under_price'))]:
         if market.get(keys[0]) is not None:continue
@@ -390,6 +391,24 @@ def matchup(game_id):
     return {'sport':'NBA','game':_public_game(game),'designation':'PASS','readiness':'RESEARCH_ONLY'}
 
 
+def _game_outcome(game_id, saved):
+    """New comparison contracts require the exact selected forecast/hash pair."""
+    if not saved['payload'].get('line_context'):
+        grade = db.q1('SELECT payload FROM nba_game_grade_revisions WHERE game_id=? ORDER BY id DESC LIMIT 1', (game_id,))
+        return json.loads(grade['payload']) if grade else {}
+    previous = 0
+    label = {}
+    for grade in db.q('SELECT * FROM nba_game_grade_revisions WHERE game_id=? ORDER BY id', (game_id,)):
+        if hashlib.sha256((grade['payload'] + ':' + str(previous)).encode()).hexdigest() != grade['sha256']:
+            raise ValueError('NBA game comparison grade hash-chain mismatch')
+        previous = grade['id']
+        label = json.loads(grade['payload'])
+    if (label.get('forecast_id'), label.get('forecast_sha256'), label.get('forecast_policy_id')) != (
+            saved['forecast_id'], saved['payload_sha256'], saved['payload']['policy_id']):
+        return {}
+    return label
+
+
 def performance():
     ensure_schema();result={'props':_record(),'winners':_record(),'spread':_record(),'total':_record()};days={}
     prop_versions=[];game_versions=[];total_versions=[];forecasts={}
@@ -410,12 +429,11 @@ def performance():
         row=_forecast(item['game_id'],'game')
         if not row:continue
         payload=row['payload']
-        grade=db.q1('SELECT payload FROM nba_game_grade_revisions WHERE game_id=? ORDER BY id DESC LIMIT 1',(row['game_id'],))
-        outcome=json.loads(grade['payload']) if grade else {}
+        outcome=_game_outcome(row['game_id'],row)
         decisions={}
         for key in ('winners','spread','total'):
             # Lines absent at save time are excluded, never graded against later prices.
-            if key=='winners' or comparison_market(row['game_id'],{'payload':payload}).get('home_spread' if key=='spread' else 'total') is not None:
+            if key=='winners' or comparison_market(row['game_id'],row).get('home_spread' if key=='spread' else 'total') is not None:
                 _inc(result[key],outcome.get(key,'pending'))
                 decisions['winner' if key=='winners' else key]=outcome.get(key,'pending')
         game_versions.append({'game_id':row['game_id'],'model_version':row['model_version'],
@@ -502,6 +520,8 @@ def _refresh_game_projection(game,history,now):
     schedule=nba_game_context.schedules(game,history,stamp)
     availability=nba_game_context.availability(game,stamp)
     market=db.kv_get('nba_market_'+game['game_id']) or {}
+    from . import nba_game_lines
+    line_context=nba_game_lines.resolve(game,market,stamp)
     projection=nba_spread_model.project_game(game['home_team'],game['away_team'],history,
         game['tipoff_utc'],as_of=stamp,schedule=schedule,availability=availability,market=market)
     if projection['status']!='ok':return False
@@ -530,7 +550,7 @@ def _refresh_game_projection(game,history,now):
     stamp=max(stamp,time.time())
     if stamp>=game['tipoff_ts']:return False
     saved=nba_game_forecasts.save_revision(game['game_id'],projection,market,manifest,
-        sorted(sources),now=stamp,model_info={'version':projection['model_version'],
+        sorted(sources),now=stamp,line_context=line_context,model_info={'version':projection['model_version'],
             'fingerprint':projection['parameter_fingerprint'],'cutoff':projection['training_cutoff']})
     if totals_map:
         from . import nba_totals_stages as nba_totals_learning
@@ -763,6 +783,9 @@ def grade_due(now):
                     payload.update(forecast_id=forecast['forecast_id'],
                         forecast_sha256=forecast['payload_sha256'],
                         forecast_policy_id=forecast['payload']['policy_id'])
+                    if forecast['payload'].get('line_context'):
+                        payload.update(comparison_policy_id=forecast['payload']['line_context']['policy_id'],
+                            comparison_sha256=hashlib.sha256(json.dumps(forecast['payload']['line_context'],sort_keys=True,separators=(',',':')).encode()).hexdigest())
                 encoded=json.dumps(payload,sort_keys=True)
                 sha=hashlib.sha256((encoded+':'+str(prior['id'] if prior else 0)).encode()).hexdigest()
                 if not prior or prior['payload']!=encoded:

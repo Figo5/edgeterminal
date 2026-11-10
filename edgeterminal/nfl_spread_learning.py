@@ -35,6 +35,49 @@ def _record(stamp,status,detail):
     return result
 
 
+def transition_code_context(now=None):
+    """Append a terminal stage only for an operator-authorized code release."""
+    from . import learning_code_context as releases
+    previous=store.latest_stage()
+    if previous and previous['state'].get('stage')=='context_changed':
+        verified=store.verify_stage_chain()
+        if verified['id']!=previous['id'] or verified['sha256']!=previous['sha256']:
+            raise ValueError('NFL spread stage head changed during context verification')
+        change=previous['state']['context_change']
+        auth=releases.authorization('NFL_SPREAD',previous['state']['code_sha256'],store.code_catalog())
+        if not auth or auth['authorization_id']!=change['authorization_id'] or auth['authorization_sha256']!=change['authorization_sha256']:
+            raise ValueError('NFL spread approved release context changed after transition')
+        return previous
+    if not previous or previous['state'].get('stage') in ('retained','rejected','invalidated','complete'):
+        return previous
+    state=previous['state']; before=state.get('code_sha256'); after=store.code_catalog()
+    if before==after:
+        return previous
+    auth=releases.authorization('NFL_SPREAD',before,after)
+    if auth is None:
+        return previous
+    verified=store.verify_stage_chain()
+    if verified['id']!=previous['id'] or verified['sha256']!=previous['sha256']:
+        raise ValueError('NFL spread stage head changed during context verification')
+    if state.get('protocol_sha256')!=model.sha(model.protocol()):
+        raise ValueError('NFL spread staged protocol changed before release transition')
+    if _pending() or (store.active_event() or {}).get('version'):
+        raise ValueError('NFL spread code transition requires no candidate or active learned model')
+    _verify_stage_sources(state)
+    weeks=[tuple(state.get('last_week',[0,0]))]
+    weeks.extend((r['season'],r['week']) for phase in ('fit','development','calibration')
+                 for r in state.get(phase+'_rows',[]))
+    if store.code_catalog()!=after:
+        raise ValueError('NFL spread code changed during release context verification')
+    stamp=_now(now)
+    change=dict(authorization_id=auth['authorization_id'],authorization_sha256=auth['authorization_sha256'],
+                before_sha256=releases.sha(before),after_sha256=releases.sha(after),
+                base_commit=auth['base_commit'],target_commit=auth['target_commit'])
+    return store.append_stage(previous['id'],dict(state,stage='context_changed',
+        reason='approved_release_code_context_changed',context_change=change,
+        context_after_week=list(max(weeks)),next_at=stamp+WEEK),now=stamp)
+
+
 def active():
     event=store.active_event()
     if not event or not event['version']: return None
@@ -115,6 +158,10 @@ def project_component(raw_projection,event,market,input_map,as_of):
 def capture(snapshot_id,now=None):
     """Cheap pregame enrollment/freeze; never fit or fetch a provider."""
     stamp=_now(now); store.ensure_schema()
+    stage=transition_code_context(now=stamp)
+    if (stage and stage['state'].get('stage') not in ('retained','rejected','invalidated','complete','context_changed')
+            and stage['state'].get('code_sha256')!=store.code_catalog()):
+        raise ValueError('NFL spread staged capture code fingerprint changed')
     raw=db.q1('SELECT payload FROM nfl_game_snapshots WHERE id=?',(snapshot_id,))
     if not raw: raise ValueError('NFL spread capture snapshot missing')
     body=data.decode(raw['payload']); game=body.get('game') or {}
@@ -322,8 +369,9 @@ def run_fitting(now=None):
             _terminal_stage(row['version'],'invalidated',dict(reason=str(exc)[:250]),stamp)
         return _record(stamp,'error',dict(stage='invalidated',reason=str(exc)[:250],next_at=stamp+WEEK))
     if pending:return resume_publication(pending['version'],now=stamp)
-    previous=store.latest_stage(); state=previous['state'] if previous else None
-    if state and state.get('stage') in {'retained','rejected','invalidated','complete'}:
+    previous=transition_code_context(now=stamp); state=previous['state'] if previous else None
+    after_week=tuple(state.get('context_after_week',[0,0])) if state else (0,0)
+    if state and state.get('stage') in {'retained','rejected','invalidated','complete','context_changed'}:
         if stamp<state.get('next_at',previous['created_at']+WEEK):
             return _record(stamp,'retained' if state['stage']=='retained' else 'waiting',state)
         state=None
@@ -341,6 +389,7 @@ def run_fitting(now=None):
             store.append_stage(previous['id'],invalid,now=stamp)
             return _record(stamp,'error',invalid)
     rows,unknown=data.observations(now=stamp,deep=True)
+    rows=[r for r in rows if (r['season'],r['week'])>after_week]
     current_event=store.active_event()
     incumbent=(current_event or {}).get('version') or model.FORMULA_VERSION
     incompatible=sum(r.get('incumbent_version',model.FORMULA_VERSION)!=incumbent for r in rows)
@@ -349,6 +398,8 @@ def run_fitting(now=None):
     if state is None:
         state=dict(schema=1,stage='fit',protocol_sha256=model.sha(model.protocol()),code_sha256=store.code_catalog(),
                    fit_rows=[],development_rows=[],calibration_rows=[],unverifiable_legacy_snapshots=unknown)
+        if after_week>(0,0):
+            state.update(context_after_week=list(after_week),last_week=list(after_week))
     state=dict(state,unverifiable_legacy_snapshots=unknown,incompatible_incumbent_snapshots=incompatible)
     for phase in ('fit','development','calibration'):
         if state['stage']!=phase:continue
@@ -657,6 +708,18 @@ def resume_publication(version,now=None):
 def refresh_checks(now=None):
     """Idempotent automatic dispatch only; network and fitting are forbidden here."""
     stamp=_now(now); store.ensure_schema()
+    stage=transition_code_context(now=stamp)
+    if stage and stage['state'].get('stage')=='context_changed':
+        detail=dict(stage='context_changed',reason='approved_release_code_context_changed',
+                    context_change=stage['state']['context_change'],next_at=stage['state']['next_at'])
+        # Preserve retries from a normal post-transition attempt, even if it
+        # stopped on pending integrity before it could create a successor stage.
+        boundary=stage['state']['context_change']['after_retuning_run_id']
+        if isinstance(boundary,bool) or not isinstance(boundary,int) or boundary<0:
+            raise ValueError('NFL spread context retuning boundary is invalid')
+        db.ex('INSERT INTO nfl_spread_runs(created_at,status,detail) SELECT ?,?,? '
+              'WHERE NOT EXISTS(SELECT 1 FROM nfl_spread_runs WHERE id>?)',
+              (stamp,'waiting',model.encoded(detail),boundary))
     last=db.q1('SELECT * FROM nfl_spread_runs ORDER BY id DESC LIMIT 1')
     detail=data.decode(last['detail']) if last else {}
     due=detail.get('next_at',(last['created_at']+DAY) if last else 0.)

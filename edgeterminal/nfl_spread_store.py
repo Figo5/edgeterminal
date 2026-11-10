@@ -18,7 +18,8 @@ ROOT = Path(__file__).resolve().parents[1]
 CODE_NAMES = tuple('edgeterminal/' + n for n in ('nfl_spread_model.py','nfl_spread_store.py',
     'nfl_spread_data.py','nfl_spread_learning.py','nfl_game_sources.py','analytics/football.py',
     'analytics/ratings.py','nfl_market.py','pricing.py','nfl_identity.py','nfl_game_forecasts.py',
-    'learning_worker.py','learning_publication.py','db.py','config.py','integrity.py','providers/nflverse.py','providers/normalize.py','nfl_weekly_preparation.py'))
+    'learning_worker.py','learning_publication.py','db.py','config.py','integrity.py','providers/nflverse.py','providers/normalize.py','nfl_weekly_preparation.py',
+    'nfl_game_lines.py','learning_code_context.py'))
 TABLES = ('nfl_spread_stages','nfl_spread_observations','nfl_spread_candidates',
     'nfl_spread_freezes','nfl_spread_reservations','nfl_spread_consumed_games',
     'nfl_spread_consumed_weeks','nfl_spread_evaluations','nfl_spread_proofs','nfl_spread_integrity','nfl_spread_events','nfl_spread_runs')
@@ -73,6 +74,19 @@ def latest_stage():
     return row
 
 
+def verify_stage_chain():
+    """Verify the entire append-only parent chain before a release transition."""
+    if not _table_exists('nfl_spread_stages'):
+        return None
+    parent=None; latest=None
+    for row in db.q('SELECT * FROM nfl_spread_stages ORDER BY id'):
+        state=json.loads(row['state'])
+        if row['parent_id']!=parent or sha(state)!=row['sha256']:
+            raise ValueError('NFL spread stage parent chain seal mismatch')
+        parent=row['id']; latest=dict(row,state=state)
+    return latest
+
+
 def append_stage(parent_id, state, *, now=None):
     ensure_schema(); stamp = number(time.time() if now is None else now)
     with db.tx() as con:
@@ -80,6 +94,9 @@ def append_stage(parent_id, state, *, now=None):
         old = con.execute('SELECT id FROM nfl_spread_stages ORDER BY id DESC LIMIT 1').fetchone()
         if (old['id'] if old else None) != parent_id:
             raise ValueError('NFL spread stage head ownership changed')
+        if state.get('stage')=='context_changed':
+            boundary=con.execute('SELECT MAX(id) FROM nfl_spread_runs').fetchone()[0] or 0
+            state=dict(state,context_change=dict(state['context_change'],after_retuning_run_id=boundary))
         cur = con.execute('INSERT INTO nfl_spread_stages(parent_id,created_at,state,sha256) VALUES(?,?,?,?)',
             (parent_id, stamp, encoded(state), sha(state)))
         ident = cur.lastrowid

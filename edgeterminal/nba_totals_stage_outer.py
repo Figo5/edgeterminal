@@ -188,7 +188,11 @@ def evaluate(rows, *, training_cutoff, sealed_protocol=None):
 def _capture_record(saved, input_map):
     payload = saved.get('payload') or saved
     projection = payload.get('projection') or saved.get('projection') or {}
-    market = payload.get('market') or saved.get('market') or input_map.get('market') or {}
+    if payload.get('line_context'):
+        from . import nba_game_lines
+        market = nba_game_lines.effective_market(saved, market='total')
+    else:
+        market = payload.get('market') or saved.get('market') or input_map.get('market') or {}
     tipoff = input_map.get('tipoff', input_map.get('tipoff_ts'))
     as_of = input_map.get('as_of', payload.get('as_of', saved.get('created_at')))
     return dict(game_id=saved.get('game_id', input_map.get('game_id')),
