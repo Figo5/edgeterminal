@@ -210,3 +210,18 @@ def test_nonfinite_diagnostics_are_recorded_as_retryable_error(isolated,monkeypa
     result=model_learning.run(1793188800.)
     assert not result['ok']
     assert model_learning._last('NBA','diagnostics')['status']=='error'
+
+
+def test_waiting_result_keeps_bounded_lane_progress_without_raw_evidence(isolated,monkeypatch):
+    waiting={'status':'waiting','reason':'no_market_calibration_improvement_on_inner_games',
+        'market_selection':{'changed_markets':[],'quote_ids':['secret-quote'],'markets':{'rebounds':{
+            'rows':29,'games':12,'reasons':['brier_regression'],'selected':False,'baseline':{'brier':.25}}}},
+        'role_proposal':{'status':'waiting','reason':'full_same_selector_policy_contexts_required',
+            'available_contexts':89,'required_contexts':100,'incomplete_pretip_contexts':2,'contexts':['/raw/path']},
+        'sources':['/raw/source'],'artifact':{'secret':1}}
+    setup(monkeypatch,waiting)
+    result=model_learning._train('NBA',1793188800.)
+    assert result=={'status':'waiting','reason':'no_market_calibration_improvement_on_inner_games',
+        'markets':{'rebounds':{'rows':29,'games':12,'reasons':['brier_regression'],'selected':False}},
+        'role_proposal':{'reason':'full_same_selector_policy_contexts_required',
+            'available_contexts':89,'required_contexts':100,'incomplete_pretip_contexts':2}}

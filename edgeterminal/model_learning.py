@@ -122,13 +122,31 @@ def _diagnostics(sport, now):
             'note': 'Descriptive saved NFL selections; no parameters fitted.'}
 
 
+_WAIT_COUNTS = ('validation_games', 'validation_rows', 'coverage',
+                'available_contexts', 'required_contexts', 'incomplete_pretip_contexts')
+
+
+def _wait_detail(result):
+    """Whitelisted progress for a waiting lane: counts and reasons only, never rows, sources or paths."""
+    out = {key: result[key] for key in _WAIT_COUNTS if key in result}
+    markets = (result.get('market_selection') or {}).get('markets')
+    if isinstance(markets, dict):
+        out['markets'] = {str(name)[:40]: {key: item[key] for key in ('rows', 'games', 'reasons', 'selected') if key in item}
+                          for name, item in list(markets.items())[:20] if isinstance(item, dict)}
+    return out
+
+
 def _train(sport, now):
     adapter = _adapter(sport)
     builder = getattr(adapter, 'build_quality_candidate', adapter.build_candidate)
     result = builder(now)
     if result.get('status') != 'ready':
-        return {'status': 'waiting', 'reason': result.get('reason', result.get('message', 'More verified data is needed.')),
-                **{key: result[key] for key in ('validation_games', 'validation_rows', 'coverage') if key in result}}
+        detail = {'status': 'waiting', 'reason': result.get('reason', result.get('message', 'More verified data is needed.')),
+                  **_wait_detail(result)}
+        role = result.get('role_proposal')
+        if isinstance(role, dict):
+            detail['role_proposal'] = {'reason': str(role.get('reason', ''))[:250], **_wait_detail(role)}
+        return detail
     if _protocol(sport) != 'legacy-v1' and (
             not result['artifact'].get('evaluation_family') or
             not isinstance(result['artifact'].get('ranking_changed'), bool) or
