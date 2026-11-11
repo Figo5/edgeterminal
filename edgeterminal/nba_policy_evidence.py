@@ -58,6 +58,39 @@ def _sources(ids, as_of):
     return rows
 
 
+_LEAGUE_ROWS = {}  # parsed rows of immutable gamelog bytes, by sha256
+
+
+def _opponent_context(game, roster, observed_at):
+    """What each side's opponent allows, from every gamelog already received at the quote time."""
+    from . import nba_learning_data as evidence, nba_prop_opponent as opponent
+    heads = db.q("SELECT id,sha256 FROM nba_source_artifacts WHERE id IN (SELECT MAX(id) FROM nba_source_artifacts "
+                 "WHERE kind='player-history' AND received_at<=? GROUP BY url) ORDER BY id", (observed_at,))
+    history = []
+    for head in heads:
+        if head['sha256'] not in _LEAGUE_ROWS:
+            _LEAGUE_ROWS[head['sha256']] = evidence.history_from_sources([head['id']], {}, observed_at)[0]
+        history.extend(_LEAGUE_ROWS[head['sha256']])
+    return opponent.context(opponent.build(history), game['home_team'], game['away_team'],
+                            {r['player_id']: r['team'] for r in roster}, game['tipoff_ts'])
+
+
+def _uses_opponent(artifact):
+    from .nba_prop_role import RATE_KIND
+    return bool(artifact) and (artifact.get('kind') == RATE_KIND or any(
+        _uses_opponent(artifact.get(key)) for key in ('base_artifact', 'retained_artifact')))
+
+
+def _with_opponent(history, game, roster, observed_at, selector_artifact):
+    """Append the opponent row. Only a selector that reads it may fail a capture or replay over it."""
+    try:
+        return history + [_opponent_context(game, roster, observed_at)]
+    except Exception as exc:
+        if _uses_opponent(selector_artifact):
+            raise ValueError('NBA opponent context is unavailable to the selector that requires it') from exc
+        return history
+
+
 def capture_context(game, quotes, roster, history, quote_source_id, now):
     """Archive a full replay context without another provider request."""
     ensure_schema()
@@ -104,6 +137,7 @@ def capture_context(game, quotes, roster, history, quote_source_id, now):
     info = nba_learning.model_info()
     selector = dict(artifact=active['artifact'] if active else None, version=info['version'],
                     fingerprint=info['fingerprint'], training_cutoff=parse_time(info['cutoff']))
+    history = _with_opponent(history, actual, players, quote_observed, selector['artifact'])
     selection = nba_learning.select_props(prepared, history, actual['tipoff_utc'], at,
         injuries=[dict(player_id=p['player_id'], status=p.get('availability', 'unknown')) for p in players])
     selected = _selection_rows(selection, prepared, history, actual['tipoff_utc'])
@@ -188,6 +222,7 @@ def _load_context(ident):
     history, used = evidence.history_from_sources([s['id'] for s in sources], cache, row['as_of'])
     eligible = set(payload['eligible_player_ids'])
     roster = _roster(sources, game, row['as_of'], eligible)
+    history = _with_opponent(history, game, roster, payload['observed_at'], payload['selector']['artifact'])
     quote_source = next((s for s in sources if s['id'] == payload['quote_source_id']), None)
     if not quote_source or quote_source['kind'] != 'player-quotes' or quote_source['received_at'] != payload['observed_at'] \
             or not 0 <= row['as_of'] - payload['observed_at'] <= 3600:

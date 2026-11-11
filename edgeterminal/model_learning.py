@@ -143,9 +143,10 @@ def _train(sport, now):
     if result.get('status') != 'ready':
         detail = {'status': 'waiting', 'reason': result.get('reason', result.get('message', 'More verified data is needed.')),
                   **_wait_detail(result)}
-        role = result.get('role_proposal')
-        if isinstance(role, dict):
-            detail['role_proposal'] = {'reason': str(role.get('reason', ''))[:250], **_wait_detail(role)}
+        for name in ('role_proposal', 'rate_proposal'):
+            lane = result.get(name)
+            if isinstance(lane, dict):
+                detail[name] = {'reason': str(lane.get('reason', ''))[:250], **_wait_detail(lane)}
         return detail
     if _protocol(sport) != 'legacy-v1' and (
             not result['artifact'].get('evaluation_family') or

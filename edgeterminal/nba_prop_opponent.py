@@ -22,6 +22,7 @@ from . import nba_model as baseline
 WINDOW = 15
 MIN_GAMES = 5
 STRENGTHS = (0., .25, .5, .75, 1.)
+CONTEXT_KIND = 'nba-opponent-context'
 _FIELDS = ('points', 'rebounds', 'assists', 'threes')
 
 
@@ -94,3 +95,10 @@ def adjust(mean, opponent_ratio, strength):
     if opponent_ratio is None:
         return mean
     return mean * (1. + strength * (opponent_ratio - 1.))
+
+
+def context(table, home, away, teams, tipoff):
+    """One non-player history row telling a projection what each side's opponent allows."""
+    ratios = {mine: {market: ratio(table, other, market, tipoff) for market in baseline.MARKETS}
+              for mine, other in ((home, away), (away, home))}
+    return dict(player_id=None, kind=CONTEXT_KIND, teams={str(k): v for k, v in teams.items()}, ratios=ratios)

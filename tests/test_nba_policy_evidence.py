@@ -224,3 +224,37 @@ def test_frozen_schedule_replays_original_quote_after_official_delayed_tip(isola
     assert len(policy.replay_incumbent(contexts[0])) == 5
     assert nba_store.get_game(case['game']['game_id'])['tipoff_ts'] == case['tip'] + 1200
     assert db.q1('SELECT payload FROM nba_forecasts WHERE forecast_id=?', ('props-' + case['game']['game_id'],))['payload'] == before_bytes
+
+
+def opponent_row(context):
+    return next(r for r in context['history'] if r.get('kind') == 'nba-opponent-context')
+
+
+def test_context_carries_opponent_allowance_from_gamelogs_received_by_the_quote(isolated, monkeypatch):
+    case = capture_case(monkeypatch)
+    assert nba_ops._capture_props(case['now'])['new_locks'] == 1
+    ident = db.q1('SELECT context_id FROM nba_prop_policy_contexts')['context_id']
+    context = policy._context(ident)
+    row = opponent_row(context)
+    assert set(row['teams'].values()) == {'MIN', 'OKC'} and set(row['ratios']) == {'MIN', 'OKC'}
+    assert row['ratios']['MIN']['points'] is not None
+    assert len(policy.replay_incumbent(context)) == 5
+    # A gamelog received after the quote, even one for an archived game, cannot change the replay.
+    old = db.q1("SELECT * FROM nba_source_artifacts WHERE kind='player-history' ORDER BY id LIMIT 1")
+    body = json.loads(old['body'])
+    for entry in body['seasonTypes'][0]['categories'][0]['events']:
+        entry['stats'][1] = '90'
+    artifact('player-history', old['url'], body, context['payload']['observed_at'] + 1)
+    policy._LEAGUE_ROWS.clear()
+    assert opponent_row(policy._load_context(ident)) == row
+
+
+def test_only_a_selector_that_reads_opponent_context_fails_without_it(monkeypatch):
+    from edgeterminal import nba_prop_role as role
+    monkeypatch.setattr(policy, '_opponent_context', lambda *a: 1 / 0)
+    history = [dict(player_id='1')]
+    assert policy._with_opponent(history, {}, [], 0, None) == history
+    assert policy._with_opponent(history, {}, [], 0, dict(kind=role.KIND)) == history
+    for selector in (dict(kind=role.RATE_KIND), dict(kind='quality', base_artifact=dict(kind=role.RATE_KIND))):
+        with pytest.raises(ValueError, match='opponent context'):
+            policy._with_opponent(history, {}, [], 0, selector)

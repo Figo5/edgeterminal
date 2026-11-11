@@ -5,15 +5,25 @@ import statistics
 from collections import defaultdict
 
 from . import nba_model as baseline, nba_prop_features as workload, nba_prop_model, prop_calibration
-from . import nba_prop_quality as quality
+from . import nba_prop_quality as quality, nba_prop_opponent as opponent
 
 KIND = 'nba-role-policy-v2'
 FAMILY = 'nba-props-role-policy-v2'
+# Rate variant: same full-offer policy gates, but the production rate chooses a
+# longer history window and an opponent-allowance strength instead of recent form.
+RATE_KIND = 'nba-rate-policy-v1'
+RATE_FAMILY = 'nba-props-rate-policy-v1'
+KINDS = (KIND, RATE_KIND)
+FAMILIES = {KIND: FAMILY, RATE_KIND: RATE_FAMILY}
+RATE_WINDOWS = (15, 25, 40)
+# The Nov 4-10 2026 selections were inspected before this variant was declared,
+# so its untouched validation games must tip off on or after Nov 12 (Eastern).
+RATE_DECLARED_AT = baseline.parse_time('2026-11-12T05:00:00Z')
 
 
 def validate(artifact):
     from . import nba_learning
-    if artifact.get('schema') != 2 or artifact.get('kind') != KIND or artifact.get('ranking_changed') is not True:
+    if artifact.get('schema') != 2 or artifact.get('kind') not in KINDS or artifact.get('ranking_changed') is not True:
         raise ValueError('invalid NBA role-policy artifact')
     nba_learning._number(artifact['training_cutoff'])
     if quality.selector_hash(artifact.get('retained_artifact')) != artifact.get('selector_sha256'):
@@ -42,6 +52,10 @@ def validate(artifact):
         config = fitted['markets'][market]
         if config['recent_weight'] not in nba_learning.RECENT_WEIGHTS or len(config['standardized_residuals']) < 30:
             raise ValueError('invalid NBA role production parameters')
+        rate = (config.get('window'), config.get('opponent_strength'))
+        if rate != (None, None) if artifact['kind'] == KIND else (
+                rate[0] not in RATE_WINDOWS or rate[1] not in opponent.STRENGTHS or config['recent_weight'] != 0.):
+            raise ValueError('invalid NBA rate window or opponent strength')
         for v in config['standardized_residuals']:
             nba_learning._number(v)
         if config['standardized_residuals'] != sorted(config['standardized_residuals']):
@@ -50,16 +64,40 @@ def validate(artifact):
     return artifact
 
 
-def _prediction(rows, tipoff, market, fitted, uncertainty=True):
+def _rows(history, player_id, market, tip, window):
+    """Up to `window` eligible rows, by repeating the frozen 15-row reader further back."""
+    rows, conflicts = baseline._player_rows(history, str(player_id), market, tip)
+    while rows and len(rows) < window:
+        earlier, more = baseline._player_rows(history, str(player_id), market,
+                                              rows[0]['ts'] - .001 + baseline.FEATURE_LAG_S)
+        earlier = [r for r in earlier if r['ts'] < rows[0]['ts']]
+        if not earlier:
+            break
+        rows, conflicts = earlier + rows, max(conflicts, more)
+    return rows[-window:], conflicts
+
+
+def _factor(history, player_id, market, config):
+    """Opponent multiplier from the game's archived context row; unknown context changes nothing."""
+    marker = next((r for r in history or [] if isinstance(r, dict) and r.get('kind') == opponent.CONTEXT_KIND), None)
+    team = marker['teams'].get(str(player_id)) if marker else None
+    ratio = marker['ratios'].get(team, {}).get(market) if team else None
+    return opponent.adjust(1., ratio, config.get('opponent_strength', 0.))
+
+
+def _prediction(rows, tipoff, market, fitted, uncertainty=True, factor=1.):
+    """Workload and volatility use the latest 15 rows; a rate variant may pool a longer window."""
     from . import nba_learning
-    dist = (workload.minute_distribution(rows, tipoff, fitted['minutes']) if uncertainty else
-            [(workload.predict_minutes(rows, tipoff, fitted['minutes']['minutes_model']), 1.)])
+    recent = rows[-baseline.PROP_WINDOW:]
+    dist = (workload.minute_distribution(recent, tipoff, fitted['minutes']) if uncertainty else
+            [(workload.predict_minutes(recent, tipoff, fitted['minutes']['minutes_model']), 1.)])
     config = fitted['markets'][market]
     events, exposure, _ = nba_learning._production(rows, tipoff, config['recent_weight'])
+    exposure /= factor
     shape = events + .5 if market in baseline.COUNT_MARKETS else events
     minutes = sum(m * w for m, w in dist)
     mean = shape * minutes / exposure
-    sd = max(statistics.stdev(r['stat'] for r in rows), baseline.PROP_SD_FLOOR[market])
+    sd = max(statistics.stdev(r['stat'] for r in recent), baseline.PROP_SD_FLOOR[market])
     return mean, minutes, sd, shape, exposure, dist
 
 
@@ -70,14 +108,17 @@ def _point(player_id, market, history, tipoff, line, artifact, info, calibrate=T
         return (nba_learning._project(player_id, market, history, tipoff, line, retained, info)
                 if retained is not None else baseline.project_prop(player_id, market, history, tipoff, line))
     tip = baseline.parse_time(tipoff)
-    rows, conflicts = baseline._player_rows(history, str(player_id), market, tip)
+    config = artifact['role_model']['markets'][market]
+    rows, conflicts = _rows(history, player_id, market, tip, config.get('window', baseline.PROP_WINDOW))
     if len(rows) < baseline.MIN_PROP_GAMES:
         return dict(status='unavailable', reason='insufficient_games')
-    mean, minutes, sd, shape, exposure, dist = _prediction(rows, tip, market, artifact['role_model'])
+    mean, minutes, sd, shape, exposure, dist = _prediction(rows, tip, market, artifact['role_model'],
+                                                           factor=_factor(history, player_id, market, config))
+    minutes_sd = statistics.stdev(r['minutes'] for r in rows[-baseline.PROP_WINDOW:])
     out = dict(status='ok', player_id=str(player_id), market=market, tipoff=tip, n=len(rows),
         raw_projection=mean, projection=round(mean, 2), raw_sd=sd, sd=round(sd, 2),
-        projected_minutes=round(minutes, 1), minutes_sd=round(statistics.stdev(r['minutes'] for r in rows), 2),
-        minutes_flag='volatile' if statistics.stdev(r['minutes'] for r in rows) / minutes > baseline.MINUTES_CV_FLAG else 'stable',
+        projected_minutes=round(minutes, 1), minutes_sd=round(minutes_sd, 2),
+        minutes_flag='volatile' if minutes_sd / minutes > baseline.MINUTES_CV_FLAG else 'stable',
         point_method='role_uncertain_opportunity', probability_method='role_minutes_predictive_mixture',
         calibration_n=artifact['role_model']['markets'][market]['calibration_n'], input_conflicts=conflicts,
         model_version=info['version'], parameter_fingerprint=info['fingerprint'],
@@ -183,12 +224,51 @@ def fit_role(datasets, cutoff):
                            _prediction(r['rows'], r['ts'], market, fitted)[2] for r in cal[market])
         fitted['markets'][market].update(standardized_residuals=residuals, probability_method='empirical',
             calibration_n=len(residuals), development=[dict(mae=e, weight=w) for e, w in scores])
-    return fitted, dict(fit_game_ids=sorted({r['game_id'] for r in fit['points']}),
+    return fitted, _training(fit, dev, cal)
+
+
+def _training(fit, dev, cal):
+    return dict(fit_game_ids=sorted({r['game_id'] for r in fit['points']}),
         development_game_ids=sorted({r['game_id'] for r in dev['points']}),
         calibration_game_ids=sorted({r['game_id'] for r in cal['points']}),
         fit_label_max_at=max(r['ts'] + 14400 for r in fit['points'] + dev['points']),
         development_label_max_at=max(r['ts'] + 14400 for r in dev['points']),
         calibration_label_max_at=max(r['ts'] + 14400 for r in cal['points']))
+
+
+def fit_rate(history, cutoff, excluded_games=()):
+    """Choose each market's rate window and opponent strength by development MAE only."""
+    from . import nba_learning
+    datasets = nba_learning.examples(history, cutoff, excluded_games=excluded_games, window=max(RATE_WINDOWS))
+    table = opponent.build(history)
+    fit, dev, cal = nba_learning.split_windows(datasets)
+    latest = lambda rows: [dict(r, rows=r['rows'][-baseline.PROP_WINDOW:]) for r in rows]
+    fitted = dict(minutes=workload.fit_minutes(latest(fit['points']), latest(cal['points'])), markets={})
+
+    def predict(row, market, uncertainty=True):
+        config = fitted['markets'][market]
+        other = (opponent.opposing(table, row['game_id'], row['team'])
+                 or opponent.opposing(table, row['game_id'].rsplit('-', 1)[-1], row['team']))
+        ratio = opponent.ratio(table, other, market, row['ts']) if other else None
+        return _prediction(row['rows'][-config['window']:], row['ts'], market, fitted, uncertainty,
+                           opponent.adjust(1., ratio, config['opponent_strength']))
+
+    for market in baseline.MARKETS:
+        if min(len(dev[market]), len(cal[market])) < 30:
+            raise ValueError('insufficient NBA rate development/calibration rows')
+        scores = []
+        for window in RATE_WINDOWS:
+            for strength in opponent.STRENGTHS:
+                fitted['markets'][market] = dict(recent_weight=0., window=window, opponent_strength=strength)
+                error = statistics.mean(abs(r['target'] - predict(r, market, False)[0]) for r in dev[market])
+                scores.append((error, window, strength))
+        _, window, strength = min(scores)  # ties keep the shorter window and weaker adjustment
+        fitted['markets'][market] = dict(recent_weight=0., window=window, opponent_strength=strength)
+        residuals = sorted((r['target'] - p[0]) / p[2] for r, p in ((r, predict(r, market)) for r in cal[market]))
+        fitted['markets'][market].update(standardized_residuals=residuals, probability_method='empirical',
+            calibration_n=len(residuals),
+            development=[dict(mae=e, window=w, opponent_strength=o) for e, w, o in scores])
+    return fitted, _training(fit, dev, cal)
 
 
 def _actual(context, quote):
@@ -212,9 +292,9 @@ def _record(context, quote, before, after):
         candidate_probability=quality.conditional_probability(after, quote['side']))
 
 
-def build(now):
+def build(now, kind=KIND, contexts=None):
     from . import nba_learning, nba_policy_evidence as evidence, model_learning_store
-    contexts = evidence.ready_contexts(now, 160)
+    contexts = evidence.ready_contexts(now, 160) if contexts is None else contexts
     current = nba_learning._active()
     info = nba_learning.model_info()
     contexts = [c for c in contexts if c['payload']['selector']['version'] == info['version']
@@ -232,7 +312,10 @@ def build(now):
     if min(len(inner_a), len(inner_b)) < 30:
         return dict(status='waiting', sport='NBA', reason='separate_thirty_game_role_choice_and_calibration_blocks_required')
     choice_contexts, calibration_contexts, outer = ([r['context'] for r in group] for group in (inner_a, inner_b, outer_rows))
-    if not model_learning_store.holdout_available('NBA', FAMILY, [c['game']['game_id'] for c in outer]):
+    if kind == RATE_KIND and min(c['game']['tipoff_ts'] for c in outer) < RATE_DECLARED_AT:
+        return dict(status='waiting', sport='NBA', reason='rate_policy_validation_must_follow_its_declaration',
+                    validation_games=sum(c['game']['tipoff_ts'] >= RATE_DECLARED_AT for c in contexts))
+    if not model_learning_store.holdout_available('NBA', FAMILIES[kind], [c['game']['game_id'] for c in outer]):
         return dict(status='waiting', sport='NBA', reason='fresh_untouched_role_policy_holdout_required')
     cutoff = min(c['payload']['observed_at'] for c in choice_contexts) - 1
     choice_cutoff = min(c['payload']['observed_at'] for c in calibration_contexts) - 1
@@ -241,14 +324,15 @@ def build(now):
             or max(c['final_source']['received_at'] for c in calibration_contexts) >= calibration_cutoff:
         return dict(status='waiting', sport='NBA', reason='role_policy_label_blocks_overlap')
     history, training_sources = nba_learning.training_history(cutoff)
-    datasets = nba_learning.examples(history, cutoff, excluded_games={c['game']['game_id'] for c in contexts})
+    excluded = {c['game']['game_id'] for c in contexts}
     try:
-        fitted, training = fit_role(datasets, cutoff)
+        fitted, training = (fit_role(nba_learning.examples(history, cutoff, excluded_games=excluded), cutoff)
+                            if kind == KIND else fit_rate(history, cutoff, excluded))
     except ValueError as exc:
         return dict(status='waiting', sport='NBA', reason=str(exc))
     retained = copy.deepcopy(current['artifact']) if current else None
     identity = prop_calibration.fit_calibrator([], cutoff=calibration_cutoff)
-    artifact = dict(schema=2, kind=KIND, evaluation_family=FAMILY, quality_protocol=quality.QUALITY_PROTOCOL,
+    artifact = dict(schema=2, kind=kind, evaluation_family=FAMILIES[kind], quality_protocol=quality.QUALITY_PROTOCOL,
         training_cutoff=cutoff, retained_artifact=retained, selector_sha256=quality.selector_hash(retained),
         ranking_changed=True, probability_contract='conditional_side_given_no_push',
         role_model=fitted, role_markets=list(baseline.MARKETS), changed_markets=list(baseline.MARKETS),
@@ -331,7 +415,8 @@ def build(now):
         policy_groups.append(group)
     names = ('nba_learning.py','nba_learning_data.py','nba_prop_quality.py','nba_prop_role.py','nba_prop_features.py','nba_model_fit.py',
              'nba_policy_evidence.py','nba_store.py','nba_game_context.py','prop_calibration.py','nba_model.py','nba_prop_model.py','pricing.py',
-             'nba_sources.py','nba_data.py','nba_quotes.py','nba_identity.py','analytics/nba.py','nba_model_manifest.py')
+             'nba_sources.py','nba_data.py','nba_quotes.py','nba_identity.py','analytics/nba.py','nba_model_manifest.py',
+             'nba_prop_opponent.py')
     artifact['code_sha256'] = {'edgeterminal/' + n: hashlib.sha256((nba_learning.ROOT / 'edgeterminal' / n).read_bytes()).hexdigest() for n in names}
     evaluation = dict(kind='actual_main_lines', validation_start=min(c['payload']['observed_at'] for c in outer),
         validation_end=max(c['final_source']['received_at'] for c in outer), calibration_cutoff=calibration_cutoff,
@@ -339,7 +424,7 @@ def build(now):
         selection_policy=dict(kind='common_full_offer_universe', games=policy_groups),
         design='Thirty earlier whole games choose role markets; thirty later calibrate selected-policy probabilities; untouched later dates score both complete policies.')
     artifact['actual_main_line_validation'] = nba_learning._summary(paired)
-    version = 'nba-props-role-' + hashlib.sha256(quality._json(dict(artifact=artifact,evaluation=evaluation,sources=list(sources.values()))).encode()).hexdigest()[:20]
+    version = ('nba-props-role-' if kind == KIND else 'nba-props-rate-') + hashlib.sha256(quality._json(dict(artifact=artifact,evaluation=evaluation,sources=list(sources.values()))).encode()).hexdigest()[:20]
     artifact['version'] = version
     return dict(status='ready', sport='NBA', version=version, training_cutoff=cutoff, artifact=artifact,
         evaluation=evaluation, sources=list(sources.values()), summary=artifact['actual_main_line_validation'])

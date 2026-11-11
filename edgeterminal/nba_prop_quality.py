@@ -250,7 +250,8 @@ def build(now=None):
                                                 key=lambda s: (s['role'], s['id']))
     names = ('nba_learning.py', 'nba_learning_data.py', 'nba_prop_quality.py', 'nba_prop_role.py', 'nba_prop_features.py', 'nba_model_fit.py',
              'nba_policy_evidence.py', 'nba_store.py', 'nba_game_context.py', 'prop_calibration.py', 'nba_model.py', 'nba_prop_model.py', 'pricing.py',
-             'nba_sources.py', 'nba_data.py', 'nba_quotes.py', 'nba_identity.py', 'analytics/nba.py', 'nba_model_manifest.py')
+             'nba_sources.py', 'nba_data.py', 'nba_quotes.py', 'nba_identity.py', 'analytics/nba.py', 'nba_model_manifest.py',
+             'nba_prop_opponent.py')
     proposed['code_sha256'] = {'edgeterminal/' + name: hashlib.sha256((learning.ROOT / 'edgeterminal' / name).read_bytes()).hexdigest()
                                for name in names}
     paired = [_paired(r, before(r), project(r['player_id'], r['market'], r['history'], r['kickoff_at'],

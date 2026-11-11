@@ -318,7 +318,7 @@ def _game_id(game_id, when):
     return value if value.startswith('nba-') else f'nba-{_season(when)}-{value}'
 
 
-def examples(history, cutoff, excluded_games=()):
+def examples(history, cutoff, excluded_games=(), window=baseline.PROP_WINDOW):
     """Dynamic training labels with the same identity and four-hour lag rules."""
     excluded, by_player = set(excluded_games), defaultdict(list)
     for raw in history:
@@ -344,14 +344,14 @@ def examples(history, cutoff, excluded_games=()):
             for r in group}) == 1]
         rows.sort(key=lambda r: (r['ts'], r['game_id']))
         for target in rows:
-            prior = [r for r in rows if r['ts'] <= target['ts'] - baseline.FEATURE_LAG_S][-15:]
+            prior = [r for r in rows if r['ts'] <= target['ts'] - baseline.FEATURE_LAG_S][-window:]
             if len(prior) < baseline.MIN_PROP_GAMES:
                 continue
             for market in MARKETS:
                 stat = lambda r: sum(float(r[k]) for k in ('points', 'rebounds', 'assists')) if market == 'pra' else float(r[market])
                 output[market].append(dict(rows=[dict(ts=r['ts'], minutes=float(r['minutes']), stat=stat(r)) for r in prior],
                                            target=stat(target), minutes=float(target['minutes']), ts=target['ts'],
-                                           player_id=pid, game_id=target['game_id']))
+                                           player_id=pid, game_id=target['game_id'], team=target.get('team')))
     return output
 
 
@@ -535,14 +535,14 @@ def nightly_diagnostics(now=None):
 
 def _validate_quality_artifact(artifact):
     from . import nba_prop_quality, nba_prop_role
-    return nba_prop_role.validate(artifact) if artifact.get('kind') == nba_prop_role.KIND else nba_prop_quality.validate(artifact)
+    return nba_prop_role.validate(artifact) if artifact.get('kind') in nba_prop_role.KINDS else nba_prop_quality.validate(artifact)
 
 
 def _quality_project(player_id, market, history, tipoff, line, artifact, info):
     from . import nba_prop_quality, nba_prop_role
     if baseline.parse_time(tipoff) <= artifact['training_cutoff']:
         return baseline.project_prop(player_id, market, history, tipoff, line)
-    module = nba_prop_role if artifact.get('kind') == nba_prop_role.KIND else nba_prop_quality
+    module = nba_prop_role if artifact.get('kind') in nba_prop_role.KINDS else nba_prop_quality
     return module.project(player_id, market, history, tipoff, line, artifact, info)
 
 
@@ -553,7 +553,7 @@ def _quality_select(current, quotes, history, tipoff, now, injuries, count):
         raise ValueError('select_props requires valid now before tipoff')
     if stamp < current['artifact']['training_cutoff'] or tip <= current['artifact']['training_cutoff']:
         return baseline.select_props(quotes, history, tipoff, now, injuries, count)
-    module = nba_prop_role if current['artifact'].get('kind') == nba_prop_role.KIND else nba_prop_quality
+    module = nba_prop_role if current['artifact'].get('kind') in nba_prop_role.KINDS else nba_prop_quality
     return module.select(current, quotes, history, tipoff, now, injuries, count)
 
 
@@ -561,9 +561,15 @@ def build_quality_candidate(now=None):
     """Predeclared actual-line calibration lane, separate from raw role proposals."""
     from . import nba_prop_quality, nba_prop_role
     stamp = time.time() if now is None else _number(now)
-    role = nba_prop_role.build(stamp)
+    from . import nba_policy_evidence
+    contexts = nba_policy_evidence.ready_contexts(stamp, 160)  # proven once, shared by both policy lanes
+    role = nba_prop_role.build(stamp, contexts=contexts)
     if role['status'] == 'ready':
         return role
+    rate = nba_prop_role.build(stamp, nba_prop_role.RATE_KIND, contexts=contexts)
+    if rate['status'] == 'ready':
+        return rate
     calibrated = nba_prop_quality.build(stamp)
-    calibrated['role_proposal'] = {k:v for k,v in role.items() if k not in {'artifact','sources','evaluation'}}
+    for name, lane in (('role_proposal', role), ('rate_proposal', rate)):
+        calibrated[name] = {k:v for k,v in lane.items() if k not in {'artifact','sources','evaluation'}}
     return calibrated

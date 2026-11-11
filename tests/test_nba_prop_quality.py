@@ -302,3 +302,152 @@ def test_calibration_builder_uses_three_disjoint_blocks_and_never_refits_retaine
         second = quality.build(TIP + 100 * 86400)
     for key in ('calibration_layers', 'base_artifact', 'changed_markets', 'market_selection'):
         assert first['artifact'][key] == second['artifact'][key]
+
+
+# ---- rate variant: longer production window and opponent allowance, same policy gates
+
+def long_history(games=45, pid='1'):
+    return [dict(player_id=pid, game_id=f'l{i}', team='BOS', minutes=30., points=10. + i, rebounds=4., assists=3., threes=1.,
+                 played_at=learning._iso(TIP - (games - i) * 86400)) for i in range(games)]
+
+
+def rate_model(window=40, strength=1.):
+    fitted = role_model()
+    for config in fitted['markets'].values():
+        config.update(recent_weight=0., window=window, opponent_strength=strength)
+    return fitted
+
+
+def rate_artifact(**kwargs):
+    identity = prop_calibration.fit_calibrator([], cutoff=TIP - 1000)
+    return dict(schema=2, kind=role.RATE_KIND, evaluation_family=role.RATE_FAMILY, training_cutoff=TIP - 1000,
+        retained_artifact=None, selector_sha256=quality.selector_hash(None), ranking_changed=True,
+        role_model=rate_model(**kwargs), role_markets=list(baseline.MARKETS), changed_markets=list(baseline.MARKETS),
+        calibrators={m: identity for m in baseline.MARKETS})
+
+
+def opponent_row(ratio, pid='1'):
+    return dict(player_id=None, kind=role.opponent.CONTEXT_KIND, teams={pid: 'BOS'},
+                ratios={'BOS': {m: ratio for m in baseline.MARKETS}})
+
+
+def test_rate_rows_extend_the_frozen_reader_without_gaps_duplicates_or_future_games():
+    history = long_history()
+    rows, _ = role._rows(history, '1', 'points', TIP, 40)
+    assert [r['stat'] for r in rows] == [10. + i for i in range(5, 45)]
+    assert role._rows(history, '1', 'points', TIP, 15)[0] == baseline._player_rows(history, '1', 'points', TIP)[0]
+    assert len(role._rows(history[:20], '1', 'points', TIP, 40)[0]) == 20
+    late = dict(history[-1], game_id='late', played_at=learning._iso(TIP - 3600), points=999.)
+    assert role._rows(history + [late], '1', 'points', TIP, 40)[0] == rows
+
+
+def test_rate_projection_pools_the_longer_window_and_scales_by_the_opponent():
+    info = dict(version='rate-test', fingerprint='f' * 64)
+    history = long_history()
+    plain = role.project('1', 'points', history, TIP, 30.5, rate_artifact(strength=0.), info)
+    short = role.project('1', 'points', history, TIP, 30.5, rate_artifact(window=15, strength=0.), info)
+    assert plain['n'] == 40 and short['n'] == 15 and plain['raw_projection'] < short['raw_projection']
+    soft = role.project('1', 'points', history + [opponent_row(1.2)], TIP, 30.5, rate_artifact(), info)
+    half = role.project('1', 'points', history + [opponent_row(1.2)], TIP, 30.5, rate_artifact(strength=.5), info)
+    assert soft['raw_projection'] == pytest.approx(plain['raw_projection'] * 1.2)
+    assert half['raw_projection'] == pytest.approx(plain['raw_projection'] * 1.1)
+    assert soft['probability_over'] > plain['probability_over']
+    # Unknown opponent, or a player the context does not place on a team, changes nothing.
+    for unknown in (opponent_row(None), opponent_row(1.2, pid='other')):
+        assert role.project('1', 'points', history + [unknown], TIP, 30.5, rate_artifact(), info) == plain
+    counts = [role.project('1', 'rebounds', history + extra, TIP, 4.5, rate_artifact(), info)['probability_over']
+              for extra in ([], [opponent_row(1.2)])]
+    assert counts[1] > counts[0]
+
+
+def test_opponent_row_never_changes_the_frozen_baseline_or_the_existing_role_variant():
+    info = dict(version='role-test', fingerprint='f' * 64)
+    history, row = long_history(), opponent_row(1.5)
+    assert baseline.project_prop('1', 'points', history + [row], TIP, 30.5) == baseline.project_prop('1', 'points', history, TIP, 30.5)
+    existing = dict(rate_artifact(), kind=role.KIND, evaluation_family=role.FAMILY, role_model=role_model())
+    assert role.project('1', 'points', history + [row], TIP, 30.5, existing, info) == \
+        role.project('1', 'points', history, TIP, 30.5, existing, info)
+
+
+def test_rate_parameters_are_only_valid_inside_their_declared_grid_and_variant():
+    assert role.validate(rate_artifact())
+    with pytest.raises(ValueError, match='rate window'):
+        role.validate(rate_artifact(window=30))
+    with pytest.raises(ValueError, match='rate window'):
+        role.validate(rate_artifact(strength=.3))
+    with pytest.raises(ValueError, match='rate window'):
+        role.validate(dict(rate_artifact(), kind=role.KIND))
+    weighted = rate_artifact()
+    weighted['role_model']['markets']['points']['recent_weight'] = .75
+    with pytest.raises(ValueError, match='rate window'):
+        role.validate(weighted)
+
+
+def league_history(days=170):
+    """Four teams; DEF allows half again as much scoring as everyone else."""
+    pairings = [(('ATK', 'DEF'), ('MID', 'LOW')), (('ATK', 'MID'), ('DEF', 'LOW')), (('ATK', 'LOW'), ('DEF', 'MID'))]
+    rows = []
+    for day in range(days):
+        for index, (a, b) in enumerate(pairings[day % 3]):
+            for team, other in ((a, b), (b, a)):
+                for slot in range(2):
+                    minutes = 28. + (day * 7 + slot * 3 + len(team)) % 5
+                    boost = 1.5 if other == 'DEF' else 1.
+                    rows.append(dict(player_id=f'{team}{slot}', team=team, game_id=str(500000 + day * 2 + index),
+                        played_at=learning._iso(TIP - (days - day) * 86400), minutes=minutes,
+                        points=round(minutes * .5 * boost), rebounds=round(minutes * .2 * boost),
+                        assists=round(minutes * .1 * boost), threes=round(minutes * .05 * boost)))
+    return rows
+
+
+def test_rate_fit_chooses_opponent_strength_on_development_games_only():
+    history = league_history()
+    fitted, training = role.fit_rate(history, TIP)
+    assert fitted['markets']['points']['opponent_strength'] > 0
+    assert all(c['window'] in role.RATE_WINDOWS and c['recent_weight'] == 0. for c in fitted['markets'].values())
+    assert len(fitted['markets']['points']['development']) == len(role.RATE_WINDOWS) * len(role.opponent.STRENGTHS)
+    calibration = set(training['calibration_game_ids'])
+    changed = [dict(r, points=r['points'] * 3) if learning._game_id(r['game_id'], baseline.parse_time(r['played_at'])) in calibration
+               else r for r in history]
+    again, _ = role.fit_rate(changed, TIP)
+    assert [(c['window'], c['opponent_strength']) for c in again['markets'].values()] == \
+        [(c['window'], c['opponent_strength']) for c in fitted['markets'].values()]
+
+
+def test_rate_lane_validates_only_on_games_after_its_declaration(monkeypatch):
+    contexts = policy_contexts()
+    install_role_build(monkeypatch, contexts)
+    monkeypatch.setattr(role, 'fit_rate', lambda *a: (rate_model(), dict(
+        fit_game_ids=['f'], development_game_ids=['d'], calibration_game_ids=['c'], fit_label_max_at=TIP - 100000,
+        development_label_max_at=TIP - 90000, calibration_label_max_at=TIP - 80000)))
+    monkeypatch.setattr(role, 'fit_role', lambda *a: pytest.fail('rate lane used the role fit'))
+    families = []
+    from edgeterminal import model_learning_store
+    monkeypatch.setattr(model_learning_store, 'holdout_available', lambda sport, family, games: families.append(family) or True)
+    outer_start = min(c['game']['tipoff_ts'] for c in contexts[-40:])
+    monkeypatch.setattr(role, 'RATE_DECLARED_AT', outer_start + 1)
+    with serving(None):
+        waiting = role.build(TIP + 100 * 86400, role.RATE_KIND)
+    assert waiting['status'] == 'waiting' and waiting['reason'] == 'rate_policy_validation_must_follow_its_declaration'
+    assert 0 < waiting['validation_games'] < 40 and not families
+    monkeypatch.setattr(role, 'RATE_DECLARED_AT', outer_start)
+    with serving(None):
+        ready = role.build(TIP + 100 * 86400, role.RATE_KIND)
+    assert ready['status'] == 'ready' and families == [role.RATE_FAMILY]
+    assert ready['artifact']['kind'] == role.RATE_KIND and ready['version'].startswith('nba-props-rate-')
+    assert 'edgeterminal/nba_prop_opponent.py' in ready['artifact']['code_sha256']
+    assert learning._validate_artifact(ready['artifact'])
+
+
+def test_retuning_tries_role_then_rate_then_calibration_and_reports_both_waiting_lanes(monkeypatch):
+    from edgeterminal import nba_policy_evidence
+    calls, loads = [], []
+    monkeypatch.setattr(nba_policy_evidence, 'ready_contexts', lambda *a: loads.append(a) or ['shared'])
+    monkeypatch.setattr(role, 'build', lambda now, kind=role.KIND, contexts=None: calls.append(kind) or dict(
+        status='waiting', reason=kind + '-waiting', artifact='never-reported', seen=contexts))
+    monkeypatch.setattr(quality, 'build', lambda now: dict(status='waiting', reason='calibration-waiting'))
+    result = learning.build_quality_candidate(TIP)
+    assert calls == [role.KIND, role.RATE_KIND]
+    assert len(loads) == 1
+    assert result['role_proposal'] == dict(status='waiting', reason=role.KIND + '-waiting', seen=['shared'])
+    assert result['rate_proposal'] == dict(status='waiting', reason=role.RATE_KIND + '-waiting', seen=['shared'])
