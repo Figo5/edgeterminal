@@ -4,7 +4,7 @@ The Week 3 prop freeze remains immutable. This command only ingests result sourc
 
 ## Commands
 
-From `/Users/giofiore/edgeterminal`:
+From `~/edgeterminal`:
 
 ```sh
 .venv/bin/python -m edgeterminal.nfl_prop_result_ingest status
