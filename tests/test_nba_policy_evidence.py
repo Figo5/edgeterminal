@@ -244,6 +244,27 @@ def test_shared_sources_are_verified_once_per_review_and_receipts_are_rechecked(
         policy._sources([ident], source['received_at'])
 
 
+def test_identity_catalog_reuse_keeps_its_sources_and_receipt_cutoff(isolated, monkeypatch):
+    case, context = complete_context(monkeypatch)
+    source = nba_store.get_artifact(context['payload']['quote_source_id'])
+    original = nba_quotes.player_identity_catalog
+    calls = []
+    def counted(sources, observed_at):
+        calls.append(observed_at)
+        return original(sources, observed_at)
+    monkeypatch.setattr(nba_quotes, 'player_identity_catalog', counted)
+    at = source['received_at']
+    expected = original([source], at)
+    with policy.validation_scope():
+        assert policy._identities([source], at) == expected
+        assert policy._identities([source], at) == expected
+        assert policy._identities([source], at - 1) == {}
+    assert calls == [at, at - 1]
+    with policy.validation_scope():
+        assert policy._identities([source], at) == expected
+    assert calls == [at, at - 1, at]
+
+
 def test_one_context_failure_does_not_prevent_other_captured_games_from_locking(isolated, monkeypatch):
     case = capture_case(monkeypatch)
     second = dict(case['game'], game_id='nba-2026-401810832', espn_event_id='401810832',

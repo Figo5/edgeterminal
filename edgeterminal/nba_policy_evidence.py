@@ -23,7 +23,7 @@ def validation_scope():
     if _VALIDATION_CACHE.get() is not None:
         yield
         return
-    token = _VALIDATION_CACHE.set(dict(contexts={}, finals={}, sources={}))
+    token = _VALIDATION_CACHE.set(dict(contexts={}, finals={}, sources={}, identities={}))
     try:
         yield
     finally:
@@ -68,6 +68,20 @@ def _sources(ids, as_of, cache=None):
             raise ValueError('NBA policy source was received after its capture')
         rows.append(row)
     return rows
+
+
+def _identities(sources, observed_at):
+    """Reuse the same verified provider-name catalog across one capture batch."""
+    scope = _VALIDATION_CACHE.get()
+    if scope is None:
+        return nba_quotes.player_identity_catalog(sources, observed_at)
+    # Rosters and player histories are not inputs to this provider-name map.
+    # Include the receipt cutoff: an earlier capture cannot reuse later names.
+    quotes = [s for s in sources if s['kind'] == 'player-quotes']
+    key = (observed_at, tuple(sorted((s['id'], s['sha256'], s['received_at']) for s in quotes)))
+    if key not in scope['identities']:
+        scope['identities'][key] = nba_quotes.player_identity_catalog(quotes, observed_at)
+    return scope['identities'][key]
 
 
 _LEAGUE_ROWS = {}  # parsed rows of immutable gamelog bytes, by sha256
@@ -140,7 +154,7 @@ def _capture_context(game, quotes, roster, history, quote_source_id, now):
     body = evidence.verify_source(quote_source, quote_observed)
     normalized, _ = nba_quotes.normalize(body.get('data', []),
         [dict(actual, id=actual['game_id'], tipoff=actual['tipoff_utc'])], players, quote_observed,
-        identity_catalog=nba_quotes.player_identity_catalog(sources, quote_observed))
+        identity_catalog=_identities(sources, quote_observed))
     keys = ('game_id','player_id','player','team','market','side','line','price','sportsbook',
             'observed_at','provider_player_id','identity_source_artifact_id','identity_verified','is_main','line_type')
     if len(normalized) != len(quotes) or any(
@@ -245,7 +259,7 @@ def _load_context(ident):
             or not 0 <= row['as_of'] - payload['observed_at'] <= 3600:
         raise ValueError('NBA policy quote receipt or freshness changed')
     body = evidence.verify_source(quote_source, payload['observed_at'])
-    identities = nba_quotes.player_identity_catalog(sources, payload['observed_at'])
+    identities = _identities(sources, payload['observed_at'])
     normalized, _ = nba_quotes.normalize(body.get('data', []),
         [dict(game, id=game['game_id'], tipoff=game['tipoff_utc'])], roster, payload['observed_at'],
         identity_catalog=identities)
