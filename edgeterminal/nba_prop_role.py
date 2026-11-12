@@ -331,6 +331,9 @@ def build(now, kind=KIND, contexts=None):
     except ValueError as exc:
         return dict(status='waiting', sport='NBA', reason=str(exc))
     retained = copy.deepcopy(current['artifact']) if current else None
+    if retained is not None and retained.get('kind') == 'nba-price-anchor-policy-v1':
+        # ponytail: this lane's baseline replay is price-free; add a price-aware replay before stacking on an anchor.
+        return dict(status='waiting', sport='NBA', reason='price_anchor_incumbent_requires_price_aware_baseline')
     identity = prop_calibration.fit_calibrator([], cutoff=calibration_cutoff)
     artifact = dict(schema=2, kind=kind, evaluation_family=FAMILIES[kind], quality_protocol=quality.QUALITY_PROTOCOL,
         training_cutoff=cutoff, retained_artifact=retained, selector_sha256=quality.selector_hash(retained),

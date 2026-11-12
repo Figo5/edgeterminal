@@ -533,36 +533,41 @@ def nightly_diagnostics(now=None):
                 note='Correlated selections are descriptive diagnostics; only the scheduled whole-game gate may change the model.')
 
 
+def _quality_module(artifact):
+    from . import nba_prop_anchor, nba_prop_quality, nba_prop_role
+    kind = artifact.get('kind')
+    return nba_prop_role if kind in nba_prop_role.KINDS else nba_prop_anchor if kind == nba_prop_anchor.KIND else nba_prop_quality
+
+
 def _validate_quality_artifact(artifact):
-    from . import nba_prop_quality, nba_prop_role
-    return nba_prop_role.validate(artifact) if artifact.get('kind') in nba_prop_role.KINDS else nba_prop_quality.validate(artifact)
+    return _quality_module(artifact).validate(artifact)
 
 
 def _quality_project(player_id, market, history, tipoff, line, artifact, info):
-    from . import nba_prop_quality, nba_prop_role
     if baseline.parse_time(tipoff) <= artifact['training_cutoff']:
         return baseline.project_prop(player_id, market, history, tipoff, line)
-    module = nba_prop_role if artifact.get('kind') in nba_prop_role.KINDS else nba_prop_quality
-    return module.project(player_id, market, history, tipoff, line, artifact, info)
+    return _quality_module(artifact).project(player_id, market, history, tipoff, line, artifact, info)
 
 
 def _quality_select(current, quotes, history, tipoff, now, injuries, count):
-    from . import nba_prop_quality, nba_prop_role
     tip, stamp = baseline.parse_time(tipoff), baseline.parse_time(now)
     if tip is None or stamp is None or stamp >= tip:
         raise ValueError('select_props requires valid now before tipoff')
     if stamp < current['artifact']['training_cutoff'] or tip <= current['artifact']['training_cutoff']:
         return baseline.select_props(quotes, history, tipoff, now, injuries, count)
-    module = nba_prop_role if current['artifact'].get('kind') in nba_prop_role.KINDS else nba_prop_quality
-    return module.select(current, quotes, history, tipoff, now, injuries, count)
+    return _quality_module(current['artifact']).select(current, quotes, history, tipoff, now, injuries, count)
 
 
 def build_quality_candidate(now=None):
     """Predeclared actual-line calibration lane, separate from raw role proposals."""
-    from . import nba_prop_quality, nba_prop_role
+    from . import nba_prop_anchor, nba_prop_quality, nba_prop_role
     stamp = time.time() if now is None else _number(now)
     from . import nba_policy_evidence
-    contexts = nba_policy_evidence.ready_contexts(stamp, 160)  # proven once, shared by both policy lanes
+    contexts = nba_policy_evidence.ready_contexts(stamp, 160)  # proven once, shared by every policy lane
+    # Evaluated outer games are spent for every lane, so the price anchor is tried first.
+    anchor = nba_prop_anchor.build(stamp, contexts=contexts)
+    if anchor['status'] == 'ready':
+        return anchor
     role = nba_prop_role.build(stamp, contexts=contexts)
     if role['status'] == 'ready':
         return role
@@ -570,6 +575,6 @@ def build_quality_candidate(now=None):
     if rate['status'] == 'ready':
         return rate
     calibrated = nba_prop_quality.build(stamp)
-    for name, lane in (('role_proposal', role), ('rate_proposal', rate)):
+    for name, lane in (('role_proposal', role), ('rate_proposal', rate), ('anchor_proposal', anchor)):
         calibrated[name] = {k:v for k,v in lane.items() if k not in {'artifact','sources','evaluation'}}
     return calibrated

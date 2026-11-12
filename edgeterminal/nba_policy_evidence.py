@@ -387,7 +387,10 @@ def _selection_rows(selection, quotes, history, tipoff):
         result.append(dict(quote_id=matching[0]['quote_id'], player_id=row['player_id'], market=row['market'],
             side=row['side'], line=row['line'], prediction=projected['raw_projection'], probability=row['probability'],
             probability_push=projected['probability_push'],
-            conditional_probability=conditional_probability(projected, row['side'])))
+            # A price-anchored selector's probability depends on the offer's price,
+            # which the price-free projection cannot reproduce.
+            conditional_probability=row['policy_conditional_probability'] if 'policy_conditional_probability' in row
+            else conditional_probability(projected, row['side'])))
     return result
 
 

@@ -446,8 +446,12 @@ def test_retuning_tries_role_then_rate_then_calibration_and_reports_both_waiting
     monkeypatch.setattr(role, 'build', lambda now, kind=role.KIND, contexts=None: calls.append(kind) or dict(
         status='waiting', reason=kind + '-waiting', artifact='never-reported', seen=contexts))
     monkeypatch.setattr(quality, 'build', lambda now: dict(status='waiting', reason='calibration-waiting'))
+    from edgeterminal import nba_prop_anchor
+    monkeypatch.setattr(nba_prop_anchor, 'build', lambda now, contexts=None: calls.append(nba_prop_anchor.KIND) or dict(
+        status='waiting', reason='anchor-waiting', artifact='never-reported', seen=contexts))
     result = learning.build_quality_candidate(TIP)
-    assert calls == [role.KIND, role.RATE_KIND]
+    assert calls == [nba_prop_anchor.KIND, role.KIND, role.RATE_KIND]
+    assert result['anchor_proposal'] == dict(status='waiting', reason='anchor-waiting', seen=['shared'])
     assert len(loads) == 1
     assert result['role_proposal'] == dict(status='waiting', reason=role.KIND + '-waiting', seen=['shared'])
     assert result['rate_proposal'] == dict(status='waiting', reason=role.RATE_KIND + '-waiting', seen=['shared'])

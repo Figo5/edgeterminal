@@ -143,7 +143,7 @@ def _train(sport, now):
     if result.get('status') != 'ready':
         detail = {'status': 'waiting', 'reason': result.get('reason', result.get('message', 'More verified data is needed.')),
                   **_wait_detail(result)}
-        for name in ('role_proposal', 'rate_proposal'):
+        for name in ('role_proposal', 'rate_proposal', 'anchor_proposal'):
             lane = result.get(name)
             if isinstance(lane, dict):
                 detail[name] = {'reason': str(lane.get('reason', ''))[:250], **_wait_detail(lane)}
