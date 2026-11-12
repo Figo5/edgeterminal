@@ -314,6 +314,47 @@ def test_candidate_checkpoint_is_owned_and_survives_retry(monkeypatch):
     assert json.loads(db.q1('SELECT detail FROM learning_jobs WHERE id=?',(job['id'],))['detail'])['candidate_id']==candidate
 
 
+def test_cli_environment_matches_the_worker_bootstrap_policy():
+    from edgeterminal import learning_cli
+    environ = dict(PATH='/usr/bin', DATABASE_URL='fixture', OPENAI_API_KEY='secret',
+                   password='secret', ACCESS_TOKEN='secret', OMP_NUM_THREADS='9')
+    assert learning_cli.offline_environment(environ) == worker().offline_environment(environ)
+
+
+def test_real_cli_checkpoint_survives_deferred_publication_and_resumes_without_refitting(monkeypatch):
+    w = worker()
+    first = w.enqueue('NBA', 'retuning')
+    candidate = 'a' * 64
+    script = '''
+import sys
+from edgeterminal import model_learning
+def deferred(sport, kind):
+    from edgeterminal import db, learning_worker
+    with db.tx() as connection:
+        learning_worker.checkpoint_candidate(connection, 'a' * 64)
+    return {'status': 'deferred'}
+model_learning.run_kind = deferred
+sys.argv = ['fixture', 'run']
+import runpy
+runpy.run_module('edgeterminal.learning_cli', run_name='__main__', alter_sys=True)
+'''
+    env = w.offline_environment(dict(os.environ, DATABASE_URL=settings.database_url))
+    result = subprocess.run([sys.executable, '-c', script], env=env, capture_output=True,
+                            text=True, check=True, timeout=5)
+    assert json.loads(result.stdout)['status'] == 'deferred'
+    stored = db.q1('SELECT state,detail FROM learning_jobs WHERE id=?', (first['id'],))
+    assert stored['state'] == 'deferred'
+    assert json.loads(stored['detail'])['candidate_id'] == candidate
+    retry = w.enqueue('NBA', 'retuning')
+    assert json.loads(retry['detail'])['candidate_id'] == candidate
+    calls = []
+    monkeypatch.setattr(model_learning, 'run_kind', lambda *a, **k: pytest.fail('refitted registered candidate'))
+    monkeypatch.setattr(model_learning, 'resume_candidate',
+                        lambda sport, ident: calls.append((sport, ident)) or {'status': 'rejected'})
+    assert w.run_once()['success']
+    assert calls == [('NBA', candidate)]
+
+
 @pytest.mark.parametrize('initial_state', ['failed', 'deferred'])
 def test_a_later_completed_retry_prevents_old_checkpoint_resurrection(monkeypatch, initial_state):
     w=worker();w.enqueue('NBA','retuning',now=100.)
@@ -368,7 +409,7 @@ def test_run_kind_executes_only_one_due_kind_with_actual_start(monkeypatch):
 def test_dedicated_scheduler_never_uses_the_refresh_command():
     scheduler=importlib.import_module('edgeterminal.learning_scheduler')
     spec=scheduler.specification()
-    assert 'edgeterminal.learning_worker' in spec['ProgramArguments']
+    assert 'edgeterminal.learning_cli' in spec['ProgramArguments']
     assert spec['StartInterval']==300 and spec['RunAtLoad']
     assert spec['EnvironmentVariables']['EDGETERMINAL_OFFLINE_LEARNER']=='1'
     assert not any('API_KEY' in name for name in spec['EnvironmentVariables'])

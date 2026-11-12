@@ -137,7 +137,7 @@ def learner_health(root, *, now=None, max_age=1500):
 
 def run_cycle(root, stopping, *, command=None, timeout=None, learning=False):
     timeout = (MAX_LEARNING_SECONDS if learning else MAX_CYCLE_SECONDS) if timeout is None else timeout
-    command = command or [sys.executable, '-m', 'edgeterminal.learning_worker' if learning else 'edgeterminal.research_refresh', 'run']
+    command = command or [sys.executable, '-m', 'edgeterminal.learning_cli' if learning else 'edgeterminal.research_refresh', 'run']
     environment = dict(os.environ, PYTHONDONTWRITEBYTECODE='1')
     if learning:
         environment = {key: value for key, value in environment.items()

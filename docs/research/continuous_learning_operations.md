@@ -62,6 +62,15 @@ These ceilings do not change the normal worker's 900-second hosted timeout,
 model parameters, cutoffs, source quotas or validation rules. Stop both source
 and learning writers for any future final state archive or host cutover.
 
+Scheduled and hosted learning starts with `python -m edgeterminal.learning_cli run`.
+The small launcher strips credentials before importing configuration, then imports
+the worker under its canonical package name. Starting the worker module directly
+as `__main__` creates a separate job-owner context from the module that model
+stores import to save checkpoints. That loses registration checkpoints after a
+busy publication or interruption. The launcher keeps one owner context, so
+registered candidates resume without refitting or reusing their outer holdout.
+The frozen worker implementation and model-code seals remain unchanged.
+
 ## First evaluation, October 28, 2026
 
 The NBA proposal was checked on 197 actual selected lines across 40 completed

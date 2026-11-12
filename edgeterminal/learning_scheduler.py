@@ -17,7 +17,7 @@ LOG_DIR = Path.home() / 'Library/Logs/EdgeTerminal'
 
 
 def specification():
-    return {'Label': LABEL, 'ProgramArguments': [str(PYTHON), '-m', 'edgeterminal.learning_worker', 'run'],
+    return {'Label': LABEL, 'ProgramArguments': [str(PYTHON), '-m', 'edgeterminal.learning_cli', 'run'],
             'WorkingDirectory': str(ROOT), 'StartInterval': 300, 'RunAtLoad': True,
             'ProcessType': 'Background', 'Nice': 10,
             'EnvironmentVariables': {'EDGETERMINAL_OFFLINE_LEARNER': '1', 'PYTHONDONTWRITEBYTECODE': '1',

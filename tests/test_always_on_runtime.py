@@ -118,6 +118,16 @@ def test_learning_child_has_independent_budget_and_no_credentials(tmp_path, monk
     assert runtime.MAX_LEARNING_SECONDS > runtime.MAX_CYCLE_SECONDS
 
 
+def test_default_learning_launcher_runs_offline_from_the_hosted_working_directory(tmp_path, monkeypatch):
+    monkeypatch.setenv('PYTHONPATH', str(Path(__file__).resolve().parents[1]))
+    database = tmp_path / 'learning.db'
+    monkeypatch.setenv('DATABASE_URL', 'sqlite:///' + str(database))
+    monkeypatch.setenv('SPORTSGAMEODDS_API_KEY', 'must-not-inherit')
+    assert runtime.run_cycle(tmp_path, threading.Event(), learning=True)['success']
+    with sqlite3.connect(database) as connection:
+        assert connection.execute('SELECT COUNT(*) FROM learning_jobs').fetchone()[0] == 0
+
+
 def test_preflight_rejects_provider_key_in_learner(tmp_path):
     with pytest.raises(ValueError, match='learner'):
         runtime.preflight(tmp_path, mode='learner', environ={

@@ -32,3 +32,14 @@ opponent/rate and calibration proposals to reach their validation checks sooner.
 Regression coverage includes future receipts, wrong final identities, corrupted
 archives, repeated verification, earlier receipt limits, fixed top-five replay,
 pregame clock crossings, transaction rollback and registry promotion protections.
+
+## Durable automatic retries
+
+The scheduled worker previously executed as `__main__`, while registry calls
+imported a second `edgeterminal.learning_worker` module. Their job ContextVars
+were different, so a registered candidate could lose its checkpoint when
+publication was busy. The new offline `learning_cli` launcher imports one
+canonical worker module. Both macOS scheduling and the hosted controller use
+this entrypoint. A separate-process regression verifies checkpoint persistence,
+deferred publication, and retry without refitting. The sealed worker file and
+all existing statistical model implementations remain unchanged.
