@@ -1,0 +1,20 @@
+{
+  "files_sha256": {
+    "README.md": "9ff43d70f90770bf51d0327d52eff1a96129b470b42a077ae1b2c81d16f92f6d",
+    "experiment_findings.md": "e4f045a75161c5f8e6be26bd02af9929af9a177ad9ce92dae034da4ae4ff62ce",
+    "experiment_protocol.md": "c34502a0f4ca0d8d585763404ff613183f06667bcd289fde883da5c86650e6c1",
+    "experiment_results.json": "6ec94a326aeb8172bae0f567c7cd9d0c6a246ac910da6936f53a89cbb481a311",
+    "experiment_strength.py": "d51c314196c4a1c7ffe8cb5458259db2edc23af5a07455df74b12f7889abf5c2",
+    "grading_audit.json": "6ca564226a679221e9c2585d6d2ff1ebc0d3b8e02a297a45cc800289ea6613b8",
+    "grading_audit.md": "d2193a9f437a233f20ed341ec4a3eaddd38a58cb6e0c5a6d3bb2e07a93cc3328",
+    "grading_audit.py": "0d32bd54f7d9d6a3582bf95d86139aa13934fca26aa6459a1b164741eceabdc0",
+    "inputs_audit.py": "85cecdad06b203f92953aa1c72d2b7914a2deea3f7ecfa7e07b1cc3ad8998d7d",
+    "inputs_findings.md": "2cbca30569e2ad07f7c97e232370bb6bd050658a83fc7e9ac0b18acc57096a6f",
+    "inputs_replay.json": "293615470306ec818ea4126e77b9f087dfde3e5e1f88c0770852279e1e496ab1",
+    "market_diagnostics.json": "8f3a14d407e23aa8c73244f3ff6dc84f2a963f7da2e35452b70993ee9d1b1e3a",
+    "market_diagnostics.py": "ed488db89064efbe03c7287b5b65b9d077235ed7dea0ca4fd4dfb955420f8180"
+  },
+  "reproduction": "All four scripts exit 0; all report Python sources parse.",
+  "review": "Independent review reconciled 68 saved comparisons, replay and experiment. Causal wording corrected; no remaining required corrections.",
+  "scope": "Read-only investigation. No production code or database mutations."
+}

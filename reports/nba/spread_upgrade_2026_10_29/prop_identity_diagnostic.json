@@ -1,0 +1,1510 @@
+{
+  "games": [
+    {
+      "away": "CLE",
+      "candidate_selection_count": 5,
+      "counterfactual_at_original_receipt_selection_status": "ok",
+      "eligible_candidates": 45,
+      "excluded_reasons": {},
+      "game_id": "nba-2026-401909893",
+      "home": "ATL",
+      "normalization_markets": {
+        "assists": 17,
+        "points": 10,
+        "pra": 15,
+        "rebounds": 19,
+        "threes": 19
+      },
+      "supported_available_offers": 80,
+      "unique_player_markets": 45
+    },
+    {
+      "away": "SAC",
+      "candidate_selection_count": 5,
+      "counterfactual_at_original_receipt_selection_status": "ok",
+      "eligible_candidates": 27,
+      "excluded_reasons": {},
+      "game_id": "nba-2026-401909894",
+      "home": "NOP",
+      "normalization_markets": {
+        "assists": 10,
+        "points": 8,
+        "pra": 4,
+        "rebounds": 15,
+        "threes": 10
+      },
+      "supported_available_offers": 47,
+      "unique_player_markets": 27
+    },
+    {
+      "away": "MEM",
+      "candidate_selection_count": 5,
+      "counterfactual_at_original_receipt_selection_status": "ok",
+      "eligible_candidates": 41,
+      "excluded_reasons": {
+        "projection_unavailable": 9
+      },
+      "game_id": "nba-2026-401909895",
+      "home": "POR",
+      "normalization_markets": {
+        "assists": 17,
+        "points": 15,
+        "pra": 7,
+        "rebounds": 21,
+        "threes": 22
+      },
+      "supported_available_offers": 82,
+      "unique_player_markets": 50
+    }
+  ],
+  "historical_named_provider_ids": 273,
+  "named_source_artifacts_used": [
+    2336,
+    3459,
+    4341,
+    6477,
+    6958,
+    7784,
+    9216,
+    10914
+  ],
+  "nonplayer_identity_warnings": 18,
+  "normalization_warnings": {
+    "player_identity": 28
+  },
+  "note": "Read-only historical-identity feasibility analysis. Quotes retain original12:07receipt; no newcapture, selection, lock or grade written. Histories are current caches; eligibility is diagnostic, not proof of original feature availability.",
+  "observed_at": 1793290041.4036129,
+  "players": [
+    {
+      "espn_player_id": "2490149",
+      "name": "CJ McCollum",
+      "named_source_proofs": [
+        {
+          "explicit_name": "CJ McCollum",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        },
+        {
+          "explicit_name": "CJ McCollum",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "CJ McCollum",
+          "received_at": 1792853302.569799,
+          "sha256": "fae87b9b1a4bd0b6ab17d4d8d4c1ec423686909e5355828de1cab0c351e24b49",
+          "source_artifact_id": 6477
+        },
+        {
+          "explicit_name": "CJ McCollum",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "CJ McCollum",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 5,
+      "provider_player_id": "CJ_MCCOLLUM_1_NBA",
+      "provider_team_id": "ATLANTA_HAWKS_NBA",
+      "same_team_named_rows": 5,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4397020",
+      "name": "Luguentz Dort",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Luguentz Dort",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        },
+        {
+          "explicit_name": "Luguentz Dort",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "Luguentz Dort",
+          "received_at": 1792853302.569799,
+          "sha256": "fae87b9b1a4bd0b6ab17d4d8d4c1ec423686909e5355828de1cab0c351e24b49",
+          "source_artifact_id": 6477
+        },
+        {
+          "explicit_name": "Luguentz Dort",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Luguentz Dort",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 5,
+      "provider_player_id": "LUGUENTZ_DORT_1_NBA",
+      "provider_team_id": "ATLANTA_HAWKS_NBA",
+      "same_team_named_rows": 5,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4397183",
+      "name": "Aaron Wiggins",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Aaron Wiggins",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        },
+        {
+          "explicit_name": "Aaron Wiggins",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "Aaron Wiggins",
+          "received_at": 1792853302.569799,
+          "sha256": "fae87b9b1a4bd0b6ab17d4d8d4c1ec423686909e5355828de1cab0c351e24b49",
+          "source_artifact_id": 6477
+        },
+        {
+          "explicit_name": "Aaron Wiggins",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Aaron Wiggins",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 5,
+      "provider_player_id": "AARON_WIGGINS_1_NBA",
+      "provider_team_id": "ATLANTA_HAWKS_NBA",
+      "same_team_named_rows": 5,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "3908809",
+      "name": "Donovan Mitchell",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Donovan Mitchell",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        },
+        {
+          "explicit_name": "Donovan Mitchell",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "Donovan Mitchell",
+          "received_at": 1792853302.569799,
+          "sha256": "fae87b9b1a4bd0b6ab17d4d8d4c1ec423686909e5355828de1cab0c351e24b49",
+          "source_artifact_id": 6477
+        },
+        {
+          "explicit_name": "Donovan Mitchell",
+          "received_at": 1792681824.753334,
+          "sha256": "58fe1f47f1b7691ab1a2f131efb97e68f756d22df953e70233bd6a3a12f37f38",
+          "source_artifact_id": 3459
+        }
+      ],
+      "past_named_rows": 4,
+      "provider_player_id": "DONOVAN_MITCHELL_1_NBA",
+      "provider_team_id": "CLEVELAND_CAVALIERS_NBA",
+      "same_team_named_rows": 4,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4869342",
+      "name": "Dyson Daniels",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Dyson Daniels",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        },
+        {
+          "explicit_name": "Dyson Daniels",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "Dyson Daniels",
+          "received_at": 1792853302.569799,
+          "sha256": "fae87b9b1a4bd0b6ab17d4d8d4c1ec423686909e5355828de1cab0c351e24b49",
+          "source_artifact_id": 6477
+        },
+        {
+          "explicit_name": "Dyson Daniels",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Dyson Daniels",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 5,
+      "provider_player_id": "DYSON_DANIELS_1_NBA",
+      "provider_team_id": "ATLANTA_HAWKS_NBA",
+      "same_team_named_rows": 5,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4432158",
+      "name": "Evan Mobley",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Evan Mobley",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        },
+        {
+          "explicit_name": "Evan Mobley",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "Evan Mobley",
+          "received_at": 1792853302.569799,
+          "sha256": "fae87b9b1a4bd0b6ab17d4d8d4c1ec423686909e5355828de1cab0c351e24b49",
+          "source_artifact_id": 6477
+        },
+        {
+          "explicit_name": "Evan Mobley",
+          "received_at": 1792681824.753334,
+          "sha256": "58fe1f47f1b7691ab1a2f131efb97e68f756d22df953e70233bd6a3a12f37f38",
+          "source_artifact_id": 3459
+        }
+      ],
+      "past_named_rows": 4,
+      "provider_player_id": "EVAN_MOBLEY_1_NBA",
+      "provider_team_id": "CLEVELAND_CAVALIERS_NBA",
+      "same_team_named_rows": 4,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4701230",
+      "name": "Jalen Johnson",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Jalen Johnson",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        },
+        {
+          "explicit_name": "Jalen Johnson",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "Jalen Johnson",
+          "received_at": 1792853302.569799,
+          "sha256": "fae87b9b1a4bd0b6ab17d4d8d4c1ec423686909e5355828de1cab0c351e24b49",
+          "source_artifact_id": 6477
+        },
+        {
+          "explicit_name": "Jalen Johnson",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Jalen Johnson",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 5,
+      "provider_player_id": "JALEN_JOHNSON_1_NBA",
+      "provider_team_id": "ATLANTA_HAWKS_NBA",
+      "same_team_named_rows": 5,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "3992",
+      "name": "James Harden",
+      "named_source_proofs": [
+        {
+          "explicit_name": "James Harden",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        },
+        {
+          "explicit_name": "James Harden",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "James Harden",
+          "received_at": 1792853302.569799,
+          "sha256": "fae87b9b1a4bd0b6ab17d4d8d4c1ec423686909e5355828de1cab0c351e24b49",
+          "source_artifact_id": 6477
+        },
+        {
+          "explicit_name": "James Harden",
+          "received_at": 1792681824.753334,
+          "sha256": "58fe1f47f1b7691ab1a2f131efb97e68f756d22df953e70233bd6a3a12f37f38",
+          "source_artifact_id": 3459
+        }
+      ],
+      "past_named_rows": 4,
+      "provider_player_id": "JAMES_HARDEN_1_NBA",
+      "provider_team_id": "CLEVELAND_CAVALIERS_NBA",
+      "same_team_named_rows": 4,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4066328",
+      "name": "Jarrett Allen",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Jarrett Allen",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        },
+        {
+          "explicit_name": "Jarrett Allen",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "Jarrett Allen",
+          "received_at": 1792853302.569799,
+          "sha256": "fae87b9b1a4bd0b6ab17d4d8d4c1ec423686909e5355828de1cab0c351e24b49",
+          "source_artifact_id": 6477
+        },
+        {
+          "explicit_name": "Jarrett Allen",
+          "received_at": 1792681824.753334,
+          "sha256": "58fe1f47f1b7691ab1a2f131efb97e68f756d22df953e70233bd6a3a12f37f38",
+          "source_artifact_id": 3459
+        }
+      ],
+      "past_named_rows": 4,
+      "provider_player_id": "JARRETT_ALLEN_1_NBA",
+      "provider_team_id": "CLEVELAND_CAVALIERS_NBA",
+      "same_team_named_rows": 4,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4683747",
+      "name": "Jaylon Tyson",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Jaylon Tyson",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        },
+        {
+          "explicit_name": "Jaylon Tyson",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "Jaylon Tyson",
+          "received_at": 1792853302.569799,
+          "sha256": "fae87b9b1a4bd0b6ab17d4d8d4c1ec423686909e5355828de1cab0c351e24b49",
+          "source_artifact_id": 6477
+        },
+        {
+          "explicit_name": "Jaylon Tyson",
+          "received_at": 1792681824.753334,
+          "sha256": "58fe1f47f1b7691ab1a2f131efb97e68f756d22df953e70233bd6a3a12f37f38",
+          "source_artifact_id": 3459
+        }
+      ],
+      "past_named_rows": 4,
+      "provider_player_id": "JAYLON_TYSON_1_NBA",
+      "provider_team_id": "CLEVELAND_CAVALIERS_NBA",
+      "same_team_named_rows": 4,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "3146557",
+      "name": "Jock Landale",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Jock Landale",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        },
+        {
+          "explicit_name": "Jock Landale",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "Jock Landale",
+          "received_at": 1792853302.569799,
+          "sha256": "fae87b9b1a4bd0b6ab17d4d8d4c1ec423686909e5355828de1cab0c351e24b49",
+          "source_artifact_id": 6477
+        },
+        {
+          "explicit_name": "Jock Landale",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Jock Landale",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 5,
+      "provider_player_id": "JOCK_LANDALE_1_NBA",
+      "provider_team_id": "ATLANTA_HAWKS_NBA",
+      "same_team_named_rows": 5,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "2995706",
+      "name": "Mario Hezonja",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Mario Hezonja",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        },
+        {
+          "explicit_name": "Mario Hezonja",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        }
+      ],
+      "past_named_rows": 2,
+      "provider_player_id": "MARIO_HEZONJA_1_NBA",
+      "provider_team_id": "CLEVELAND_CAVALIERS_NBA",
+      "same_team_named_rows": 2,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4278039",
+      "name": "Nickeil Alexander-Walker",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Nickeil Alexander-Walker",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        },
+        {
+          "explicit_name": "Nickeil Alexander-Walker",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "Nickeil Alexander-Walker",
+          "received_at": 1792853302.569799,
+          "sha256": "fae87b9b1a4bd0b6ab17d4d8d4c1ec423686909e5355828de1cab0c351e24b49",
+          "source_artifact_id": 6477
+        },
+        {
+          "explicit_name": "Nickeil Alexander-Walker",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Nickeil Alexander-Walker",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 5,
+      "provider_player_id": "NICKEIL_ALEXANDERWALKER_1_NBA",
+      "provider_team_id": "ATLANTA_HAWKS_NBA",
+      "same_team_named_rows": 5,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4431680",
+      "name": "Onyeka Okongwu",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Onyeka Okongwu",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        },
+        {
+          "explicit_name": "Onyeka Okongwu",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "Onyeka Okongwu",
+          "received_at": 1792853302.569799,
+          "sha256": "fae87b9b1a4bd0b6ab17d4d8d4c1ec423686909e5355828de1cab0c351e24b49",
+          "source_artifact_id": 6477
+        },
+        {
+          "explicit_name": "Onyeka Okongwu",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Onyeka Okongwu",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 5,
+      "provider_player_id": "ONYEKA_OKONGWU_1_NBA",
+      "provider_team_id": "ATLANTA_HAWKS_NBA",
+      "same_team_named_rows": 5,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4576087",
+      "name": "Peyton Watson",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Peyton Watson",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        },
+        {
+          "explicit_name": "Peyton Watson",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "Peyton Watson",
+          "received_at": 1792853302.569799,
+          "sha256": "fae87b9b1a4bd0b6ab17d4d8d4c1ec423686909e5355828de1cab0c351e24b49",
+          "source_artifact_id": 6477
+        },
+        {
+          "explicit_name": "Peyton Watson",
+          "received_at": 1792681824.753334,
+          "sha256": "58fe1f47f1b7691ab1a2f131efb97e68f756d22df953e70233bd6a3a12f37f38",
+          "source_artifact_id": 3459
+        }
+      ],
+      "past_named_rows": 4,
+      "provider_player_id": "PEYTON_WATSON_1_NBA",
+      "provider_team_id": "CLEVELAND_CAVALIERS_NBA",
+      "same_team_named_rows": 4,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4066757",
+      "name": "Sam Merrill",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Sam Merrill",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        },
+        {
+          "explicit_name": "Sam Merrill",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "Sam Merrill",
+          "received_at": 1792853302.569799,
+          "sha256": "fae87b9b1a4bd0b6ab17d4d8d4c1ec423686909e5355828de1cab0c351e24b49",
+          "source_artifact_id": 6477
+        },
+        {
+          "explicit_name": "Sam Merrill",
+          "received_at": 1792681824.753334,
+          "sha256": "58fe1f47f1b7691ab1a2f131efb97e68f756d22df953e70233bd6a3a12f37f38",
+          "source_artifact_id": 3459
+        }
+      ],
+      "past_named_rows": 4,
+      "provider_player_id": "SAM_MERRILL_1_NBA",
+      "provider_team_id": "CLEVELAND_CAVALIERS_NBA",
+      "same_team_named_rows": 4,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4065732",
+      "name": "De'Andre Hunter",
+      "named_source_proofs": [
+        {
+          "explicit_name": "De'Andre Hunter",
+          "received_at": 1793115068.6304672,
+          "sha256": "58d05269832c744283b49e035210bf48df3d54a198a77a15be49ec7e2c045429",
+          "source_artifact_id": 9216
+        },
+        {
+          "explicit_name": "De'Andre Hunter",
+          "received_at": 1792952858.962133,
+          "sha256": "4dc1613ea8494ceb2fd7195222e308a9470c0d03cd68994a15dbd67d69f5df74",
+          "source_artifact_id": 6958
+        },
+        {
+          "explicit_name": "De'Andre Hunter",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "De'Andre Hunter",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 4,
+      "provider_player_id": "DEANDRE_HUNTER_1_NBA",
+      "provider_team_id": "SACRAMENTO_KINGS_NBA",
+      "same_team_named_rows": 4,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "3442",
+      "name": "DeAndre Jordan",
+      "named_source_proofs": [
+        {
+          "explicit_name": "DeAndre Jordan",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        }
+      ],
+      "past_named_rows": 1,
+      "provider_player_id": "DEANDRE_JORDAN_1_NBA",
+      "provider_team_id": "NEW_ORLEANS_PELICANS_NBA",
+      "same_team_named_rows": 1,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "3907497",
+      "name": "Dejounte Murray",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Dejounte Murray",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        },
+        {
+          "explicit_name": "Dejounte Murray",
+          "received_at": 1792853302.569799,
+          "sha256": "fae87b9b1a4bd0b6ab17d4d8d4c1ec423686909e5355828de1cab0c351e24b49",
+          "source_artifact_id": 6477
+        },
+        {
+          "explicit_name": "Dejounte Murray",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Dejounte Murray",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 4,
+      "provider_player_id": "DEJOUNTE_MURRAY_1_NBA",
+      "provider_team_id": "NEW_ORLEANS_PELICANS_NBA",
+      "same_team_named_rows": 4,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "3155942",
+      "name": "Domantas Sabonis",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Domantas Sabonis",
+          "received_at": 1793115068.6304672,
+          "sha256": "58d05269832c744283b49e035210bf48df3d54a198a77a15be49ec7e2c045429",
+          "source_artifact_id": 9216
+        },
+        {
+          "explicit_name": "Domantas Sabonis",
+          "received_at": 1792952858.962133,
+          "sha256": "4dc1613ea8494ceb2fd7195222e308a9470c0d03cd68994a15dbd67d69f5df74",
+          "source_artifact_id": 6958
+        },
+        {
+          "explicit_name": "Domantas Sabonis",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Domantas Sabonis",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 4,
+      "provider_player_id": "DOMANTAS_SABONIS_1_NBA",
+      "provider_team_id": "SACRAMENTO_KINGS_NBA",
+      "same_team_named_rows": 4,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "5144091",
+      "name": "Jeremiah Fears",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Jeremiah Fears",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        },
+        {
+          "explicit_name": "Jeremiah Fears",
+          "received_at": 1792853302.569799,
+          "sha256": "fae87b9b1a4bd0b6ab17d4d8d4c1ec423686909e5355828de1cab0c351e24b49",
+          "source_artifact_id": 6477
+        },
+        {
+          "explicit_name": "Jeremiah Fears",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Jeremiah Fears",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 4,
+      "provider_player_id": "JEREMIAH_FEARS_1_NBA",
+      "provider_team_id": "NEW_ORLEANS_PELICANS_NBA",
+      "same_team_named_rows": 4,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4431679",
+      "name": "Precious Achiuwa",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Precious Achiuwa",
+          "received_at": 1793115068.6304672,
+          "sha256": "58d05269832c744283b49e035210bf48df3d54a198a77a15be49ec7e2c045429",
+          "source_artifact_id": 9216
+        },
+        {
+          "explicit_name": "Precious Achiuwa",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Precious Achiuwa",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 3,
+      "provider_player_id": "PRECIOUS_ACHIUWA_1_NBA",
+      "provider_team_id": "SACRAMENTO_KINGS_NBA",
+      "same_team_named_rows": 3,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4397688",
+      "name": "Trey Murphy III",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Trey Murphy III",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        },
+        {
+          "explicit_name": "Trey Murphy III",
+          "received_at": 1792853302.569799,
+          "sha256": "fae87b9b1a4bd0b6ab17d4d8d4c1ec423686909e5355828de1cab0c351e24b49",
+          "source_artifact_id": 6477
+        },
+        {
+          "explicit_name": "Trey Murphy III",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Trey Murphy III",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 4,
+      "provider_player_id": "TREY_MURPHY_III_1_NBA",
+      "provider_team_id": "NEW_ORLEANS_PELICANS_NBA",
+      "same_team_named_rows": 4,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "3064440",
+      "name": "Zach LaVine",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Zach LaVine",
+          "received_at": 1793115068.6304672,
+          "sha256": "58d05269832c744283b49e035210bf48df3d54a198a77a15be49ec7e2c045429",
+          "source_artifact_id": 9216
+        },
+        {
+          "explicit_name": "Zach LaVine",
+          "received_at": 1792952858.962133,
+          "sha256": "4dc1613ea8494ceb2fd7195222e308a9470c0d03cd68994a15dbd67d69f5df74",
+          "source_artifact_id": 6958
+        },
+        {
+          "explicit_name": "Zach LaVine",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Zach LaVine",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 4,
+      "provider_player_id": "ZACH_LAVINE_1_NBA",
+      "provider_team_id": "SACRAMENTO_KINGS_NBA",
+      "same_team_named_rows": 4,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4395628",
+      "name": "Zion Williamson",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Zion Williamson",
+          "received_at": 1793199918.950295,
+          "sha256": "399d5f6a6244b27f8094a9f3eca3bba3d484c561e89e9f723e6bf7680fa9f267",
+          "source_artifact_id": 10914
+        },
+        {
+          "explicit_name": "Zion Williamson",
+          "received_at": 1792853302.569799,
+          "sha256": "fae87b9b1a4bd0b6ab17d4d8d4c1ec423686909e5355828de1cab0c351e24b49",
+          "source_artifact_id": 6477
+        },
+        {
+          "explicit_name": "Zion Williamson",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Zion Williamson",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 4,
+      "provider_player_id": "ZION_WILLIAMSON_1_NBA",
+      "provider_team_id": "NEW_ORLEANS_PELICANS_NBA",
+      "same_team_named_rows": 4,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "5041935",
+      "name": "Cameron Boozer",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Cameron Boozer",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "Cameron Boozer",
+          "received_at": 1792952858.962133,
+          "sha256": "4dc1613ea8494ceb2fd7195222e308a9470c0d03cd68994a15dbd67d69f5df74",
+          "source_artifact_id": 6958
+        },
+        {
+          "explicit_name": "Cameron Boozer",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Cameron Boozer",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 4,
+      "provider_player_id": "CAMERON_BOOZER_1_NBA",
+      "provider_team_id": "MEMPHIS_GRIZZLIES_NBA",
+      "same_team_named_rows": 4,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4903027",
+      "name": "Cedric Coward",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Cedric Coward",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "Cedric Coward",
+          "received_at": 1792952858.962133,
+          "sha256": "4dc1613ea8494ceb2fd7195222e308a9470c0d03cd68994a15dbd67d69f5df74",
+          "source_artifact_id": 6958
+        },
+        {
+          "explicit_name": "Cedric Coward",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Cedric Coward",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 4,
+      "provider_player_id": "CEDRIC_COWARD_1_NBA",
+      "provider_team_id": "MEMPHIS_GRIZZLIES_NBA",
+      "same_team_named_rows": 4,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "6606",
+      "name": "Damian Lillard",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Damian Lillard",
+          "received_at": 1793115068.6304672,
+          "sha256": "58d05269832c744283b49e035210bf48df3d54a198a77a15be49ec7e2c045429",
+          "source_artifact_id": 9216
+        },
+        {
+          "explicit_name": "Damian Lillard",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Damian Lillard",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 3,
+      "provider_player_id": "DAMIAN_LILLARD_1_NBA",
+      "provider_team_id": "PORTLAND_TRAIL_BLAZERS_NBA",
+      "same_team_named_rows": 3,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4683021",
+      "name": "Deni Avdija",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Deni Avdija",
+          "received_at": 1793115068.6304672,
+          "sha256": "58d05269832c744283b49e035210bf48df3d54a198a77a15be49ec7e2c045429",
+          "source_artifact_id": 9216
+        },
+        {
+          "explicit_name": "Deni Avdija",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Deni Avdija",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 3,
+      "provider_player_id": "DENI_AVDIJA_1_NBA",
+      "provider_team_id": "PORTLAND_TRAIL_BLAZERS_NBA",
+      "same_team_named_rows": 3,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "5105565",
+      "name": "Donovan Clingan",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Donovan Clingan",
+          "received_at": 1793115068.6304672,
+          "sha256": "58d05269832c744283b49e035210bf48df3d54a198a77a15be49ec7e2c045429",
+          "source_artifact_id": 9216
+        },
+        {
+          "explicit_name": "Donovan Clingan",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Donovan Clingan",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 3,
+      "provider_player_id": "DONOVAN_CLINGAN_1_NBA",
+      "provider_team_id": "PORTLAND_TRAIL_BLAZERS_NBA",
+      "same_team_named_rows": 3,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4432810",
+      "name": "Isaiah Stewart",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Isaiah Stewart",
+          "received_at": 1792952858.962133,
+          "sha256": "4dc1613ea8494ceb2fd7195222e308a9470c0d03cd68994a15dbd67d69f5df74",
+          "source_artifact_id": 6958
+        }
+      ],
+      "past_named_rows": 1,
+      "provider_player_id": "ISAIAH_STEWART_1_NBA",
+      "provider_team_id": "MEMPHIS_GRIZZLIES_NBA",
+      "same_team_named_rows": 1,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "5112087",
+      "name": "Jaylen Wells",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Jaylen Wells",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "Jaylen Wells",
+          "received_at": 1792952858.962133,
+          "sha256": "4dc1613ea8494ceb2fd7195222e308a9470c0d03cd68994a15dbd67d69f5df74",
+          "source_artifact_id": 6958
+        },
+        {
+          "explicit_name": "Jaylen Wells",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Jaylen Wells",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 4,
+      "provider_player_id": "JAYLEN_WELLS_1_NBA",
+      "provider_team_id": "MEMPHIS_GRIZZLIES_NBA",
+      "same_team_named_rows": 4,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4279888",
+      "name": "Ja Morant",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Ja Morant",
+          "received_at": 1793115068.6304672,
+          "sha256": "58d05269832c744283b49e035210bf48df3d54a198a77a15be49ec7e2c045429",
+          "source_artifact_id": 9216
+        },
+        {
+          "explicit_name": "Ja Morant",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Ja Morant",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 3,
+      "provider_player_id": "JA_MORANT_1_NBA",
+      "provider_team_id": "PORTLAND_TRAIL_BLAZERS_NBA",
+      "same_team_named_rows": 3,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "2991070",
+      "name": "Jerami Grant",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Jerami Grant",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "Jerami Grant",
+          "received_at": 1792952858.962133,
+          "sha256": "4dc1613ea8494ceb2fd7195222e308a9470c0d03cd68994a15dbd67d69f5df74",
+          "source_artifact_id": 6958
+        },
+        {
+          "explicit_name": "Jerami Grant",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Jerami Grant",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 4,
+      "provider_player_id": "JERAMI_GRANT_1_NBA",
+      "provider_team_id": "MEMPHIS_GRIZZLIES_NBA",
+      "same_team_named_rows": 4,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "3995",
+      "name": "Jrue Holiday",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Jrue Holiday",
+          "received_at": 1793115068.6304672,
+          "sha256": "58d05269832c744283b49e035210bf48df3d54a198a77a15be49ec7e2c045429",
+          "source_artifact_id": 9216
+        },
+        {
+          "explicit_name": "Jrue Holiday",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Jrue Holiday",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 3,
+      "provider_player_id": "JRUE_HOLIDAY_1_NBA",
+      "provider_team_id": "PORTLAND_TRAIL_BLAZERS_NBA",
+      "same_team_named_rows": 3,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4066211",
+      "name": "Robert Williams III",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Robert Williams III",
+          "received_at": 1793115068.6304672,
+          "sha256": "58d05269832c744283b49e035210bf48df3d54a198a77a15be49ec7e2c045429",
+          "source_artifact_id": 9216
+        },
+        {
+          "explicit_name": "Robert Williams III",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Robert Williams III",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 3,
+      "provider_player_id": "ROBERT_WILLIAMS_III_1_NBA",
+      "provider_team_id": "PORTLAND_TRAIL_BLAZERS_NBA",
+      "same_team_named_rows": 3,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4683678",
+      "name": "Scoot Henderson",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Scoot Henderson",
+          "received_at": 1793115068.6304672,
+          "sha256": "58d05269832c744283b49e035210bf48df3d54a198a77a15be49ec7e2c045429",
+          "source_artifact_id": 9216
+        },
+        {
+          "explicit_name": "Scoot Henderson",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Scoot Henderson",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 3,
+      "provider_player_id": "SCOOT_HENDERSON_1_NBA",
+      "provider_team_id": "PORTLAND_TRAIL_BLAZERS_NBA",
+      "same_team_named_rows": 3,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": null,
+      "name": null,
+      "named_source_proofs": [],
+      "past_named_rows": 0,
+      "provider_player_id": "SIDY_CISSOKO_1_NBA",
+      "provider_team_id": "PORTLAND_TRAIL_BLAZERS_NBA",
+      "same_team_named_rows": 0,
+      "unique_names": 0,
+      "unique_roster_matches": 0
+    },
+    {
+      "espn_player_id": "4431736",
+      "name": "Toumani Camara",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Toumani Camara",
+          "received_at": 1793115068.6304672,
+          "sha256": "58d05269832c744283b49e035210bf48df3d54a198a77a15be49ec7e2c045429",
+          "source_artifact_id": 9216
+        },
+        {
+          "explicit_name": "Toumani Camara",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Toumani Camara",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 3,
+      "provider_player_id": "TOUMANI_CAMARA_1_NBA",
+      "provider_team_id": "PORTLAND_TRAIL_BLAZERS_NBA",
+      "same_team_named_rows": 3,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4065733",
+      "name": "Ty Jerome",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Ty Jerome",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "Ty Jerome",
+          "received_at": 1792952858.962133,
+          "sha256": "4dc1613ea8494ceb2fd7195222e308a9470c0d03cd68994a15dbd67d69f5df74",
+          "source_artifact_id": 6958
+        },
+        {
+          "explicit_name": "Ty Jerome",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Ty Jerome",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 4,
+      "provider_player_id": "TY_JEROME_1_NBA",
+      "provider_team_id": "MEMPHIS_GRIZZLIES_NBA",
+      "same_team_named_rows": 4,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    },
+    {
+      "espn_player_id": "4600663",
+      "name": "Zach Edey",
+      "named_source_proofs": [
+        {
+          "explicit_name": "Zach Edey",
+          "received_at": 1793027055.92558,
+          "sha256": "051962277a201cfc006c0b0e7b44511b8bab8f7467ebc1438d5b5069f0ba8662",
+          "source_artifact_id": 7784
+        },
+        {
+          "explicit_name": "Zach Edey",
+          "received_at": 1792757900.748359,
+          "sha256": "2d80b1cca3bc8c52161e639238e54ecea6a0dad1c863a359d3a7de85b8b28db2",
+          "source_artifact_id": 4341
+        },
+        {
+          "explicit_name": "Zach Edey",
+          "received_at": 1792599814.5252879,
+          "sha256": "40a06103fba1153225dcf42d2a40e7bd37248bc3c2b8df61b93966cf68b3feb2",
+          "source_artifact_id": 2336
+        }
+      ],
+      "past_named_rows": 3,
+      "provider_player_id": "ZACH_EDEY_1_NBA",
+      "provider_team_id": "MEMPHIS_GRIZZLIES_NBA",
+      "same_team_named_rows": 3,
+      "unique_names": 1,
+      "unique_roster_matches": 1
+    }
+  ],
+  "raw_sha256": "6cc7a0fc2c713e36a74e0addd32252881d822b73483998cd46386555f5ec7be3",
+  "roster_proof": [
+    {
+      "received_at": 1793286815.6827571,
+      "source_artifact_id": 12247,
+      "team": "ATL"
+    },
+    {
+      "received_at": 1793286815.8871932,
+      "source_artifact_id": 12248,
+      "team": "CLE"
+    },
+    {
+      "received_at": 1793286816.860412,
+      "source_artifact_id": 12252,
+      "team": "MEM"
+    },
+    {
+      "received_at": 1793286816.056368,
+      "source_artifact_id": 12249,
+      "team": "NOP"
+    },
+    {
+      "received_at": 1793286816.661514,
+      "source_artifact_id": 12251,
+      "team": "POR"
+    },
+    {
+      "received_at": 1793286816.22985,
+      "source_artifact_id": 12250,
+      "team": "SAC"
+    }
+  ],
+  "today_players": 41,
+  "today_proven_name_ids": 40,
+  "today_quotes_after_diagnostic_binding": 209,
+  "today_same_team_named_bindings": 40,
+  "today_unique_roster_bindings": 40,
+  "unbound_player_has_available_offers": false,
+  "unbound_player_identity_warnings": 10
+}

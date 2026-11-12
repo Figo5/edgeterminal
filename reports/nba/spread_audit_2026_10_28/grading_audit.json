@@ -1,0 +1,1953 @@
+{
+  "all_original_comparison_grades_match": true,
+  "checks": {
+    "archived_status_final": 12,
+    "final_source_after_tipoff": 12,
+    "forecast_has_sources": 24,
+    "forecast_payload_sha256": 24,
+    "forecast_pretipoff": 24,
+    "game_row_source_score_match": 12,
+    "grade_revision_hash_chain": 12,
+    "has_saved_grade": 12,
+    "line_source_game_pregame": 12,
+    "market_source_sha256": 12,
+    "opposite_spread_signs": 12,
+    "period_scores_reconcile": 24,
+    "player_points_and_box_totals_reconcile": 24,
+    "projection_team_identity": 12,
+    "projection_tipoff": 12,
+    "quote_observed_saved_pretipoff": 12,
+    "recomputed_result_equals_saved_grade": 12,
+    "research_designation": 12,
+    "rounded_projection_margin": 12,
+    "selected_line_matches_side": 12,
+    "single_game_forecast": 12,
+    "single_immutable_spread_comparison": 12,
+    "source_body_sha256": 108,
+    "source_event_id": 36,
+    "source_grade_game_score_match": 24,
+    "source_http_200": 108,
+    "source_received_by_record": 108,
+    "source_team_id_abbreviation_and_side": 72,
+    "source_tipoff": 36,
+    "team_scoring_formula_reconciles": 24,
+    "twelve_games": 1,
+    "unique_exact_raw_spread_and_prices": 12,
+    "valid_non_tied_final": 12
+  },
+  "database": "/Users/giofiore/edgeterminal/data/edgeterminal.db",
+  "date": "2026-10-28",
+  "designation": "PASS",
+  "failures": [],
+  "games": [
+    {
+      "actual_home_margin": -12,
+      "away_team": "MIA",
+      "comparison_at_utc": "2026-10-27T23:37:01.545212+00:00",
+      "comparison_forecast_id": "spread-line-nba-2026-401909881",
+      "comparison_payload_sha256": "f16936bf4b077bd3cf27f3e6ef90158df26ef43f5bbaf53870557120f73c1de1",
+      "counterfactual_original_pick_latest_line_result": "lost",
+      "counterfactual_reselect_with_latest_line_result": "lost",
+      "cover_cushion": -15.5,
+      "event_id": "401909881",
+      "failures": [],
+      "final_away_score": 129,
+      "final_home_score": 117,
+      "forecast_age_at_tipoff_hours": 47.8082,
+      "forecast_at_utc": "2026-10-26T23:11:30.553561+00:00",
+      "forecast_id": "game-nba-2026-401909881",
+      "forecast_payload_sha256": "5860e788a39ffd01b653ec952d9a7f9afdfdeb70c9d947ee95af5c7c67c34427",
+      "forecast_source_ids": [
+        31,
+        40,
+        7900,
+        7914,
+        7949
+      ],
+      "game_id": "nba-2026-401909881",
+      "game_row_source_artifact_id": 11498,
+      "grade_revision_count": 1,
+      "grade_revision_id": 60,
+      "grade_revision_sha256": "235d2497a567ae827f837a9aaee41fa493bf825ae789190c144e15d809fc2f96",
+      "grade_source_artifact_id": 11558,
+      "grade_source_sha256": "1b2dcb88b7622061bf038b2ef69a647aae30304a4d357b8a2b42ee27be0dad02",
+      "home_margin_error_actual_minus_projection": -21.6,
+      "home_team": "ATL",
+      "latest_home_spread_for_reference_only": -2.5,
+      "latest_source_artifact_id_for_reference_only": 11436,
+      "line_age_at_tipoff_hours": 23.4118,
+      "line_observed_at_utc": "2026-10-27T23:35:17.514349+00:00",
+      "line_source_artifact_id": 9917,
+      "line_source_sha256": "8e838f339269ef8446df63d1e5ce69d6de743e3208a1fc8dc10015f4761ddb89",
+      "matchup": "MIA@ATL",
+      "model_fingerprint": "79026f8a1c09b06e247bd5e2c0335d86f8930c92c416679299dadfc479cf4da4",
+      "model_version": "nba-research-1.1.0",
+      "original_away_spread": 3.5,
+      "original_game_forecast_home_spread": null,
+      "original_home_spread": -3.5,
+      "pick_line": -3.5,
+      "pick_price": -115,
+      "pick_side": "home",
+      "pick_team": "ATL",
+      "projected_cover_cushion": 6.1,
+      "projection_away_score": 115.25,
+      "projection_home_margin": 9.6,
+      "projection_home_score": 124.85,
+      "raw_provider": {
+        "displayName": "DraftKings",
+        "id": "100",
+        "logos": [
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Light.svg",
+            "rel": [
+              "light"
+            ]
+          },
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Dark.svg",
+            "rel": [
+              "dark"
+            ]
+          }
+        ],
+        "name": "DraftKings",
+        "priority": 1
+      },
+      "recomputed_result": "lost",
+      "saved_result": "lost",
+      "saved_sportsbook": "DraftKings",
+      "score_reconciliation": {
+        "ATL": {
+          "header": 117,
+          "periods": 117,
+          "player_points": 117,
+          "scoring_formula": 117
+        },
+        "MIA": {
+          "header": 129,
+          "periods": 129,
+          "player_points": 129,
+          "scoring_formula": 129
+        }
+      },
+      "tipoff_utc": "2026-10-28T23:00:00Z",
+      "warnings": [
+        "spread_comparison_saved_after_game_projection",
+        "latest_market_differs_from_original_comparison"
+      ]
+    },
+    {
+      "actual_home_margin": 10,
+      "away_team": "WAS",
+      "comparison_at_utc": "2026-10-27T23:37:01.548266+00:00",
+      "comparison_forecast_id": "spread-line-nba-2026-401909882",
+      "comparison_payload_sha256": "13822daac2d67b423ce0beb99a5c9e5ec379ed8e37e196abbad66b281017c1de",
+      "counterfactual_original_pick_latest_line_result": "won",
+      "counterfactual_reselect_with_latest_line_result": "won",
+      "cover_cushion": -0.5,
+      "event_id": "401909882",
+      "failures": [],
+      "final_away_score": 111,
+      "final_home_score": 121,
+      "forecast_age_at_tipoff_hours": 47.8082,
+      "forecast_at_utc": "2026-10-26T23:11:30.562147+00:00",
+      "forecast_id": "game-nba-2026-401909882",
+      "forecast_payload_sha256": "1e2e7dd247a33c6500b43a0e71607909ca7a0ba4c452e14bb838a47fbc98057e",
+      "forecast_source_ids": [
+        34,
+        1554,
+        7890,
+        7892,
+        7949
+      ],
+      "game_id": "nba-2026-401909882",
+      "game_row_source_artifact_id": 11498,
+      "grade_revision_count": 1,
+      "grade_revision_id": 61,
+      "grade_revision_sha256": "1b04b6b28f1cc29c0f39b2feeb76188e68c9f6ad348dd535a521c96e4febafff",
+      "grade_source_artifact_id": 11559,
+      "grade_source_sha256": "f5dcb8ed54208e763ca123a1530f8fc7cbbc487756b85d6aef62c4f4c61ece88",
+      "home_margin_error_actual_minus_projection": -0.6,
+      "home_team": "CLE",
+      "latest_home_spread_for_reference_only": -9.5,
+      "latest_source_artifact_id_for_reference_only": 11436,
+      "line_age_at_tipoff_hours": 23.4118,
+      "line_observed_at_utc": "2026-10-27T23:35:17.514349+00:00",
+      "line_source_artifact_id": 9917,
+      "line_source_sha256": "8e838f339269ef8446df63d1e5ce69d6de743e3208a1fc8dc10015f4761ddb89",
+      "matchup": "WAS@CLE",
+      "model_fingerprint": "79026f8a1c09b06e247bd5e2c0335d86f8930c92c416679299dadfc479cf4da4",
+      "model_version": "nba-research-1.1.0",
+      "original_away_spread": 10.5,
+      "original_game_forecast_home_spread": null,
+      "original_home_spread": -10.5,
+      "pick_line": -10.5,
+      "pick_price": -105,
+      "pick_side": "home",
+      "pick_team": "CLE",
+      "projected_cover_cushion": 0.1,
+      "projection_away_score": 114.62,
+      "projection_home_margin": 10.6,
+      "projection_home_score": 125.22,
+      "raw_provider": {
+        "id": "100",
+        "logos": [
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Light.svg",
+            "rel": [
+              "light"
+            ]
+          },
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Dark.svg",
+            "rel": [
+              "dark"
+            ]
+          }
+        ],
+        "name": "DraftKings",
+        "priority": 1
+      },
+      "recomputed_result": "lost",
+      "saved_result": "lost",
+      "saved_sportsbook": "Unknown",
+      "score_reconciliation": {
+        "CLE": {
+          "header": 121,
+          "periods": 121,
+          "player_points": 121,
+          "scoring_formula": 121
+        },
+        "WAS": {
+          "header": 111,
+          "periods": 111,
+          "player_points": 111,
+          "scoring_formula": 111
+        }
+      },
+      "tipoff_utc": "2026-10-28T23:00:00Z",
+      "warnings": [
+        "spread_comparison_saved_after_game_projection",
+        "saved_sportsbook_unknown_raw_provider_name_is_DraftKings",
+        "latest_market_differs_from_original_comparison"
+      ]
+    },
+    {
+      "actual_home_margin": 8,
+      "away_team": "CHA",
+      "comparison_at_utc": "2026-10-27T23:37:01.549986+00:00",
+      "comparison_forecast_id": "spread-line-nba-2026-401909883",
+      "comparison_payload_sha256": "7be7fc899d186fadf8545ae9c4433407c40e432c2267089a114766a68939db70",
+      "counterfactual_original_pick_latest_line_result": "lost",
+      "counterfactual_reselect_with_latest_line_result": "lost",
+      "cover_cushion": -0.5,
+      "event_id": "401909883",
+      "failures": [],
+      "final_away_score": 89,
+      "final_home_score": 97,
+      "forecast_age_at_tipoff_hours": 47.8082,
+      "forecast_at_utc": "2026-10-26T23:11:30.571597+00:00",
+      "forecast_id": "game-nba-2026-401909883",
+      "forecast_payload_sha256": "175985bb6c704fe324cad3924573a6211ff1dc4b344dd5b20736c6628ac83f19",
+      "forecast_source_ids": [
+        10,
+        49,
+        7888,
+        7928,
+        7949
+      ],
+      "game_id": "nba-2026-401909883",
+      "game_row_source_artifact_id": 11498,
+      "grade_revision_count": 1,
+      "grade_revision_id": 62,
+      "grade_revision_sha256": "84cbd61b08083cd046e4d058adbb13c4545eeadea11009d6af48f6b94c8972b1",
+      "grade_source_artifact_id": 11560,
+      "grade_source_sha256": "5a62deb2e9d85e14cad168d5f31ba775e27add8e2f9f8b1f002afa7f54133829",
+      "home_margin_error_actual_minus_projection": 4.03,
+      "home_team": "DET",
+      "latest_home_spread_for_reference_only": -7.5,
+      "latest_source_artifact_id_for_reference_only": 11436,
+      "line_age_at_tipoff_hours": 23.4118,
+      "line_observed_at_utc": "2026-10-27T23:35:17.514349+00:00",
+      "line_source_artifact_id": 9917,
+      "line_source_sha256": "8e838f339269ef8446df63d1e5ce69d6de743e3208a1fc8dc10015f4761ddb89",
+      "matchup": "CHA@DET",
+      "model_fingerprint": "79026f8a1c09b06e247bd5e2c0335d86f8930c92c416679299dadfc479cf4da4",
+      "model_version": "nba-research-1.1.0",
+      "original_away_spread": 7.5,
+      "original_game_forecast_home_spread": null,
+      "original_home_spread": -7.5,
+      "pick_line": 7.5,
+      "pick_price": -110,
+      "pick_side": "away",
+      "pick_team": "CHA",
+      "projected_cover_cushion": 3.53,
+      "projection_away_score": 110.55,
+      "projection_home_margin": 3.97,
+      "projection_home_score": 114.52,
+      "raw_provider": {
+        "id": "100",
+        "logos": [
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Light.svg",
+            "rel": [
+              "light"
+            ]
+          },
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Dark.svg",
+            "rel": [
+              "dark"
+            ]
+          }
+        ],
+        "name": "DraftKings",
+        "priority": 1
+      },
+      "recomputed_result": "lost",
+      "saved_result": "lost",
+      "saved_sportsbook": "Unknown",
+      "score_reconciliation": {
+        "CHA": {
+          "header": 89,
+          "periods": 89,
+          "player_points": 89,
+          "scoring_formula": 89
+        },
+        "DET": {
+          "header": 97,
+          "periods": 97,
+          "player_points": 97,
+          "scoring_formula": 97
+        }
+      },
+      "tipoff_utc": "2026-10-28T23:00:00Z",
+      "warnings": [
+        "spread_comparison_saved_after_game_projection",
+        "saved_sportsbook_unknown_raw_provider_name_is_DraftKings"
+      ]
+    },
+    {
+      "actual_home_margin": -5,
+      "away_team": "PHI",
+      "comparison_at_utc": "2026-10-27T02:27:18.168733+00:00",
+      "comparison_forecast_id": "spread-line-nba-2026-401909884",
+      "comparison_payload_sha256": "532e295e971d3afabebf4250d9b62198d0c9c1202c32fe69d851244a7cc75f83",
+      "counterfactual_original_pick_latest_line_result": "won",
+      "counterfactual_reselect_with_latest_line_result": "won",
+      "cover_cushion": -3.5,
+      "event_id": "401909884",
+      "failures": [],
+      "final_away_score": 114,
+      "final_home_score": 109,
+      "forecast_age_at_tipoff_hours": 47.8082,
+      "forecast_at_utc": "2026-10-26T23:11:30.580798+00:00",
+      "forecast_id": "game-nba-2026-401909884",
+      "forecast_payload_sha256": "53422d794ddf7d3ece58e304d6775ccaf5559344677a5cd80e539a9a0f839e0f",
+      "forecast_source_ids": [
+        19,
+        67,
+        7906,
+        7949,
+        8382
+      ],
+      "game_id": "nba-2026-401909884",
+      "game_row_source_artifact_id": 11498,
+      "grade_revision_count": 1,
+      "grade_revision_id": 63,
+      "grade_revision_sha256": "e3e7c39817f3b09cef7028f07943957b33d340395a39d628d004d087911c9cc3",
+      "grade_source_artifact_id": 11561,
+      "grade_source_sha256": "e4989bbabd85eb69279ddb9f4532208829b54cddc24b64abe15dec0a47ebec98",
+      "home_margin_error_actual_minus_projection": -4.1,
+      "home_team": "IND",
+      "latest_home_spread_for_reference_only": 7.5,
+      "latest_source_artifact_id_for_reference_only": 11436,
+      "line_age_at_tipoff_hours": 44.5492,
+      "line_observed_at_utc": "2026-10-27T02:27:03.011869+00:00",
+      "line_source_artifact_id": 8439,
+      "line_source_sha256": "cf1cc5276575ddb99a55e76caf7bfff36cdcd8ffe2b464d53dd829fa293f3857",
+      "matchup": "PHI@IND",
+      "model_fingerprint": "79026f8a1c09b06e247bd5e2c0335d86f8930c92c416679299dadfc479cf4da4",
+      "model_version": "nba-research-1.1.0",
+      "original_away_spread": -1.5,
+      "original_game_forecast_home_spread": null,
+      "original_home_spread": 1.5,
+      "pick_line": 1.5,
+      "pick_price": -105,
+      "pick_side": "home",
+      "pick_team": "IND",
+      "projected_cover_cushion": 0.6,
+      "projection_away_score": 117.03,
+      "projection_home_margin": -0.9,
+      "projection_home_score": 116.12,
+      "raw_provider": {
+        "displayName": "DraftKings",
+        "id": "100",
+        "logos": [
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Light.svg",
+            "rel": [
+              "light"
+            ]
+          },
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Dark.svg",
+            "rel": [
+              "dark"
+            ]
+          }
+        ],
+        "name": "DraftKings",
+        "priority": 1
+      },
+      "recomputed_result": "lost",
+      "saved_result": "lost",
+      "saved_sportsbook": "DraftKings",
+      "score_reconciliation": {
+        "IND": {
+          "header": 109,
+          "periods": 109,
+          "player_points": 109,
+          "scoring_formula": 109
+        },
+        "PHI": {
+          "header": 114,
+          "periods": 114,
+          "player_points": 114,
+          "scoring_formula": 114
+        }
+      },
+      "tipoff_utc": "2026-10-28T23:00:00Z",
+      "warnings": [
+        "spread_comparison_saved_after_game_projection",
+        "latest_market_differs_from_original_comparison"
+      ]
+    },
+    {
+      "actual_home_margin": 30,
+      "away_team": "ORL",
+      "comparison_at_utc": "2026-10-27T23:37:01.552532+00:00",
+      "comparison_forecast_id": "spread-line-nba-2026-401909885",
+      "comparison_payload_sha256": "9b11b57e8745416ef8d0dc5c425d04c2df053601c6e5878c0cadd52d50d20c9f",
+      "counterfactual_original_pick_latest_line_result": "won",
+      "counterfactual_reselect_with_latest_line_result": "won",
+      "cover_cushion": 25.5,
+      "event_id": "401909885",
+      "failures": [],
+      "final_away_score": 99,
+      "final_home_score": 129,
+      "forecast_age_at_tipoff_hours": 45.7104,
+      "forecast_at_utc": "2026-10-27T01:47:22.715622+00:00",
+      "forecast_id": "game-nba-2026-401909885",
+      "forecast_payload_sha256": "c6772747a611dc7023748e1574d92684216b0eb8b148567a584fd4217753a311",
+      "forecast_source_ids": [
+        28,
+        52,
+        7029,
+        7949,
+        8407
+      ],
+      "game_id": "nba-2026-401909885",
+      "game_row_source_artifact_id": 11498,
+      "grade_revision_count": 1,
+      "grade_revision_id": 59,
+      "grade_revision_sha256": "20c2155c771736ee0d717c80775e2513caa03a5e12b3f696badb63debea4db13",
+      "grade_source_artifact_id": 11557,
+      "grade_source_sha256": "7e975f3bf7d007eb4a8d27ba643961b9633ae8d4f7d380a3e69df11979b0499e",
+      "home_margin_error_actual_minus_projection": 21.65,
+      "home_team": "TOR",
+      "latest_home_spread_for_reference_only": -4.5,
+      "latest_source_artifact_id_for_reference_only": 11436,
+      "line_age_at_tipoff_hours": 23.9118,
+      "line_observed_at_utc": "2026-10-27T23:35:17.514349+00:00",
+      "line_source_artifact_id": 9917,
+      "line_source_sha256": "8e838f339269ef8446df63d1e5ce69d6de743e3208a1fc8dc10015f4761ddb89",
+      "matchup": "ORL@TOR",
+      "model_fingerprint": "79026f8a1c09b06e247bd5e2c0335d86f8930c92c416679299dadfc479cf4da4",
+      "model_version": "nba-research-1.1.0",
+      "original_away_spread": 4.5,
+      "original_game_forecast_home_spread": null,
+      "original_home_spread": -4.5,
+      "pick_line": -4.5,
+      "pick_price": -110,
+      "pick_side": "home",
+      "pick_team": "TOR",
+      "projected_cover_cushion": 3.85,
+      "projection_away_score": 111.83,
+      "projection_home_margin": 8.35,
+      "projection_home_score": 120.17,
+      "raw_provider": {
+        "id": "100",
+        "logos": [
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Light.svg",
+            "rel": [
+              "light"
+            ]
+          },
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Dark.svg",
+            "rel": [
+              "dark"
+            ]
+          }
+        ],
+        "name": "DraftKings",
+        "priority": 1
+      },
+      "recomputed_result": "won",
+      "saved_result": "won",
+      "saved_sportsbook": "Unknown",
+      "score_reconciliation": {
+        "ORL": {
+          "header": 99,
+          "periods": 99,
+          "player_points": 99,
+          "scoring_formula": 99
+        },
+        "TOR": {
+          "header": 129,
+          "periods": 129,
+          "player_points": 129,
+          "scoring_formula": 129
+        }
+      },
+      "tipoff_utc": "2026-10-28T23:30:00Z",
+      "warnings": [
+        "spread_comparison_saved_after_game_projection",
+        "saved_sportsbook_unknown_raw_provider_name_is_DraftKings"
+      ]
+    },
+    {
+      "actual_home_margin": -6,
+      "away_team": "NYK",
+      "comparison_at_utc": "2026-10-27T23:37:01.554149+00:00",
+      "comparison_forecast_id": "spread-line-nba-2026-401909886",
+      "comparison_payload_sha256": "3f5fbb05ec2e75bc20f5402ee04bf9ed01bba823023917db6272554bee5b13d2",
+      "counterfactual_original_pick_latest_line_result": "won",
+      "counterfactual_reselect_with_latest_line_result": "won",
+      "cover_cushion": 1.5,
+      "event_id": "401909886",
+      "failures": [],
+      "final_away_score": 133,
+      "final_home_score": 127,
+      "forecast_age_at_tipoff_hours": 45.545,
+      "forecast_at_utc": "2026-10-27T02:27:18.178661+00:00",
+      "forecast_id": "game-nba-2026-401909886",
+      "forecast_payload_sha256": "a7ea88c996bec101a6abfb3af1d5779d9d8764d0bf9baf135639f686967da22c",
+      "forecast_source_ids": [
+        16,
+        55,
+        8439,
+        8449,
+        8476
+      ],
+      "game_id": "nba-2026-401909886",
+      "game_row_source_artifact_id": 11688,
+      "grade_revision_count": 1,
+      "grade_revision_id": 67,
+      "grade_revision_sha256": "440dcb6a31f5231b7d075d1ea3e4b7198aae70bf1a636b4316f70e4233719e01",
+      "grade_source_artifact_id": 11688,
+      "grade_source_sha256": "ba30e2cf444a75357aaeb88c4e2061b1bb00df7fb8428f62af7e975ca5885313",
+      "home_margin_error_actual_minus_projection": -0.6,
+      "home_team": "CHI",
+      "latest_home_spread_for_reference_only": 6.5,
+      "latest_source_artifact_id_for_reference_only": 11475,
+      "line_age_at_tipoff_hours": 24.4118,
+      "line_observed_at_utc": "2026-10-27T23:35:17.514349+00:00",
+      "line_source_artifact_id": 9917,
+      "line_source_sha256": "8e838f339269ef8446df63d1e5ce69d6de743e3208a1fc8dc10015f4761ddb89",
+      "matchup": "NYK@CHI",
+      "model_fingerprint": "79026f8a1c09b06e247bd5e2c0335d86f8930c92c416679299dadfc479cf4da4",
+      "model_version": "nba-research-1.1.0",
+      "original_away_spread": -7.5,
+      "original_game_forecast_home_spread": null,
+      "original_home_spread": 7.5,
+      "pick_line": 7.5,
+      "pick_price": -115,
+      "pick_side": "home",
+      "pick_team": "CHI",
+      "projected_cover_cushion": 2.1,
+      "projection_away_score": 118.93,
+      "projection_home_margin": -5.4,
+      "projection_home_score": 113.53,
+      "raw_provider": {
+        "id": "100",
+        "logos": [
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Light.svg",
+            "rel": [
+              "light"
+            ]
+          },
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Dark.svg",
+            "rel": [
+              "dark"
+            ]
+          }
+        ],
+        "name": "DraftKings",
+        "priority": 1
+      },
+      "recomputed_result": "won",
+      "saved_result": "won",
+      "saved_sportsbook": "Unknown",
+      "score_reconciliation": {
+        "CHI": {
+          "header": 127,
+          "periods": 127,
+          "player_points": 127,
+          "scoring_formula": 127
+        },
+        "NYK": {
+          "header": 133,
+          "periods": 133,
+          "player_points": 133,
+          "scoring_formula": 133
+        }
+      },
+      "tipoff_utc": "2026-10-29T00:00:00Z",
+      "warnings": [
+        "spread_comparison_saved_after_game_projection",
+        "saved_sportsbook_unknown_raw_provider_name_is_DraftKings",
+        "latest_market_differs_from_original_comparison"
+      ]
+    },
+    {
+      "actual_home_margin": -32,
+      "away_team": "HOU",
+      "comparison_at_utc": "2026-10-27T23:37:01.555757+00:00",
+      "comparison_forecast_id": "spread-line-nba-2026-401909887",
+      "comparison_payload_sha256": "1ec062655d420b1da6db379013bc7a598b14e8a791ff07c6d4d9594a196270c0",
+      "counterfactual_original_pick_latest_line_result": "lost",
+      "counterfactual_reselect_with_latest_line_result": "lost",
+      "cover_cushion": -23.5,
+      "event_id": "401909887",
+      "failures": [],
+      "final_away_score": 132,
+      "final_home_score": 100,
+      "forecast_age_at_tipoff_hours": 45.5449,
+      "forecast_at_utc": "2026-10-27T02:27:18.188558+00:00",
+      "forecast_id": "game-nba-2026-401909887",
+      "forecast_payload_sha256": "d3f7e68bf57ccfffceeffc6d61dfc2e4bb209c5e44347257355d90fd3ee645e6",
+      "forecast_source_ids": [
+        37,
+        70,
+        8439,
+        8478,
+        8480
+      ],
+      "game_id": "nba-2026-401909887",
+      "game_row_source_artifact_id": 11498,
+      "grade_revision_count": 1,
+      "grade_revision_id": 57,
+      "grade_revision_sha256": "56e3c37869120c40078ae1faefaffd103944b3564008ace9f3042543c205d49c",
+      "grade_source_artifact_id": 11555,
+      "grade_source_sha256": "e9d50f717b3e11c2756c73604e6ad3852970419c21d2080eb915f80b208770fa",
+      "home_margin_error_actual_minus_projection": -24.17,
+      "home_team": "MIL",
+      "latest_home_spread_for_reference_only": 8.5,
+      "latest_source_artifact_id_for_reference_only": 11475,
+      "line_age_at_tipoff_hours": 24.4118,
+      "line_observed_at_utc": "2026-10-27T23:35:17.514349+00:00",
+      "line_source_artifact_id": 9917,
+      "line_source_sha256": "8e838f339269ef8446df63d1e5ce69d6de743e3208a1fc8dc10015f4761ddb89",
+      "matchup": "HOU@MIL",
+      "model_fingerprint": "79026f8a1c09b06e247bd5e2c0335d86f8930c92c416679299dadfc479cf4da4",
+      "model_version": "nba-research-1.1.0",
+      "original_away_spread": -8.5,
+      "original_game_forecast_home_spread": null,
+      "original_home_spread": 8.5,
+      "pick_line": 8.5,
+      "pick_price": -110,
+      "pick_side": "home",
+      "pick_team": "MIL",
+      "projected_cover_cushion": 0.67,
+      "projection_away_score": 119.4,
+      "projection_home_margin": -7.83,
+      "projection_home_score": 111.57,
+      "raw_provider": {
+        "id": "100",
+        "logos": [
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Light.svg",
+            "rel": [
+              "light"
+            ]
+          },
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Dark.svg",
+            "rel": [
+              "dark"
+            ]
+          }
+        ],
+        "name": "DraftKings",
+        "priority": 1
+      },
+      "recomputed_result": "lost",
+      "saved_result": "lost",
+      "saved_sportsbook": "Unknown",
+      "score_reconciliation": {
+        "HOU": {
+          "header": 132,
+          "periods": 132,
+          "player_points": 132,
+          "scoring_formula": 132
+        },
+        "MIL": {
+          "header": 100,
+          "periods": 100,
+          "player_points": 100,
+          "scoring_formula": 100
+        }
+      },
+      "tipoff_utc": "2026-10-29T00:00:00Z",
+      "warnings": [
+        "spread_comparison_saved_after_game_projection",
+        "saved_sportsbook_unknown_raw_provider_name_is_DraftKings"
+      ]
+    },
+    {
+      "actual_home_margin": -5,
+      "away_team": "GSW",
+      "comparison_at_utc": "2026-10-27T23:37:01.557477+00:00",
+      "comparison_forecast_id": "spread-line-nba-2026-401909888",
+      "comparison_payload_sha256": "f7ad377e38469ad4d5637a6793ce91a4919defc2cdef5503aaba68658465a5d4",
+      "counterfactual_original_pick_latest_line_result": "lost",
+      "counterfactual_reselect_with_latest_line_result": "lost",
+      "cover_cushion": -8.5,
+      "event_id": "401909888",
+      "failures": [],
+      "final_away_score": 119,
+      "final_home_score": 114,
+      "forecast_age_at_tipoff_hours": 45.5449,
+      "forecast_at_utc": "2026-10-27T02:27:18.197601+00:00",
+      "forecast_id": "game-nba-2026-401909888",
+      "forecast_payload_sha256": "25b8a00eaa21d33a7b3d4a769abebdfafa757803ed9c166924cc2ce78b166738",
+      "forecast_source_ids": [
+        43,
+        79,
+        8439,
+        8482,
+        8484
+      ],
+      "game_id": "nba-2026-401909888",
+      "game_row_source_artifact_id": 11689,
+      "grade_revision_count": 1,
+      "grade_revision_id": 68,
+      "grade_revision_sha256": "0772ef346cc14ce551cbd0640c5033246b3b7fa9949160075b1df120e790e0a3",
+      "grade_source_artifact_id": 11689,
+      "grade_source_sha256": "478c0be0f3361d1682b2cd79c3a75f6c7c815e1639b013904464fb813773897a",
+      "home_margin_error_actual_minus_projection": -13.67,
+      "home_team": "MIN",
+      "latest_home_spread_for_reference_only": -4.5,
+      "latest_source_artifact_id_for_reference_only": 11475,
+      "line_age_at_tipoff_hours": 24.4118,
+      "line_observed_at_utc": "2026-10-27T23:35:17.514349+00:00",
+      "line_source_artifact_id": 9917,
+      "line_source_sha256": "8e838f339269ef8446df63d1e5ce69d6de743e3208a1fc8dc10015f4761ddb89",
+      "matchup": "GSW@MIN",
+      "model_fingerprint": "79026f8a1c09b06e247bd5e2c0335d86f8930c92c416679299dadfc479cf4da4",
+      "model_version": "nba-research-1.1.0",
+      "original_away_spread": 3.5,
+      "original_game_forecast_home_spread": null,
+      "original_home_spread": -3.5,
+      "pick_line": -3.5,
+      "pick_price": -115,
+      "pick_side": "home",
+      "pick_team": "MIN",
+      "projected_cover_cushion": 5.17,
+      "projection_away_score": 110.6,
+      "projection_home_margin": 8.67,
+      "projection_home_score": 119.28,
+      "raw_provider": {
+        "id": "100",
+        "logos": [
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Light.svg",
+            "rel": [
+              "light"
+            ]
+          },
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Dark.svg",
+            "rel": [
+              "dark"
+            ]
+          }
+        ],
+        "name": "DraftKings",
+        "priority": 1
+      },
+      "recomputed_result": "lost",
+      "saved_result": "lost",
+      "saved_sportsbook": "Unknown",
+      "score_reconciliation": {
+        "GSW": {
+          "header": 119,
+          "periods": 119,
+          "player_points": 119,
+          "scoring_formula": 119
+        },
+        "MIN": {
+          "header": 114,
+          "periods": 114,
+          "player_points": 114,
+          "scoring_formula": 114
+        }
+      },
+      "tipoff_utc": "2026-10-29T00:00:00Z",
+      "warnings": [
+        "spread_comparison_saved_after_game_projection",
+        "saved_sportsbook_unknown_raw_provider_name_is_DraftKings",
+        "latest_market_differs_from_original_comparison"
+      ]
+    },
+    {
+      "actual_home_margin": -13,
+      "away_team": "DEN",
+      "comparison_at_utc": "2026-10-27T23:37:01.559180+00:00",
+      "comparison_forecast_id": "spread-line-nba-2026-401909889",
+      "comparison_payload_sha256": "643d590eb74ea3fc5e6f4178d9baee81b29947f9ce3d63973d8f4612b8cd28d5",
+      "counterfactual_original_pick_latest_line_result": "lost",
+      "counterfactual_reselect_with_latest_line_result": "lost",
+      "cover_cushion": -8.5,
+      "event_id": "401909889",
+      "failures": [],
+      "final_away_score": 104,
+      "final_home_score": 91,
+      "forecast_age_at_tipoff_hours": 45.5449,
+      "forecast_at_utc": "2026-10-27T02:27:18.205811+00:00",
+      "forecast_id": "game-nba-2026-401909889",
+      "forecast_payload_sha256": "f62b68442e167a711a6a30865488ed79da52cd8a77355714c65cd98b5f4d6a7c",
+      "forecast_source_ids": [
+        64,
+        1637,
+        8439,
+        8486,
+        8488
+      ],
+      "game_id": "nba-2026-401909889",
+      "game_row_source_artifact_id": 11498,
+      "grade_revision_count": 1,
+      "grade_revision_id": 58,
+      "grade_revision_sha256": "129fe7a3b93e8a7c1594a944efdce0065a111d9878042008737f29e3bd275a61",
+      "grade_source_artifact_id": 11556,
+      "grade_source_sha256": "60bc7436e932f1dd1203bc86c07b1d12c1535010dff0e2908228e02202ea9b2f",
+      "home_margin_error_actual_minus_projection": -9.47,
+      "home_team": "NOP",
+      "latest_home_spread_for_reference_only": 4.5,
+      "latest_source_artifact_id_for_reference_only": 11475,
+      "line_age_at_tipoff_hours": 24.4118,
+      "line_observed_at_utc": "2026-10-27T23:35:17.514349+00:00",
+      "line_source_artifact_id": 9917,
+      "line_source_sha256": "8e838f339269ef8446df63d1e5ce69d6de743e3208a1fc8dc10015f4761ddb89",
+      "matchup": "DEN@NOP",
+      "model_fingerprint": "79026f8a1c09b06e247bd5e2c0335d86f8930c92c416679299dadfc479cf4da4",
+      "model_version": "nba-research-1.1.0",
+      "original_away_spread": -4.5,
+      "original_game_forecast_home_spread": null,
+      "original_home_spread": 4.5,
+      "pick_line": 4.5,
+      "pick_price": -105,
+      "pick_side": "home",
+      "pick_team": "NOP",
+      "projected_cover_cushion": 0.97,
+      "projection_away_score": 122.83,
+      "projection_home_margin": -3.53,
+      "projection_home_score": 119.3,
+      "raw_provider": {
+        "id": "100",
+        "logos": [
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Light.svg",
+            "rel": [
+              "light"
+            ]
+          },
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Dark.svg",
+            "rel": [
+              "dark"
+            ]
+          }
+        ],
+        "name": "DraftKings",
+        "priority": 1
+      },
+      "recomputed_result": "lost",
+      "saved_result": "lost",
+      "saved_sportsbook": "Unknown",
+      "score_reconciliation": {
+        "DEN": {
+          "header": 104,
+          "periods": 104,
+          "player_points": 104,
+          "scoring_formula": 104
+        },
+        "NOP": {
+          "header": 91,
+          "periods": 91,
+          "player_points": 91,
+          "scoring_formula": 91
+        }
+      },
+      "tipoff_utc": "2026-10-29T00:00:00Z",
+      "warnings": [
+        "spread_comparison_saved_after_game_projection",
+        "saved_sportsbook_unknown_raw_provider_name_is_DraftKings"
+      ]
+    },
+    {
+      "actual_home_margin": -6,
+      "away_team": "SAS",
+      "comparison_at_utc": "2026-10-28T00:41:03.469990+00:00",
+      "comparison_forecast_id": "spread-line-nba-2026-401909890",
+      "comparison_payload_sha256": "8d7d94dfb02f2a141703a3db61b6e0530b056bb53dfc2338d719cbafe35152d2",
+      "counterfactual_original_pick_latest_line_result": "won",
+      "counterfactual_reselect_with_latest_line_result": "won",
+      "cover_cushion": 6.5,
+      "event_id": "401909890",
+      "failures": [],
+      "final_away_score": 117,
+      "final_home_score": 111,
+      "forecast_age_at_tipoff_hours": 46.5449,
+      "forecast_at_utc": "2026-10-27T02:27:18.215541+00:00",
+      "forecast_id": "game-nba-2026-401909890",
+      "forecast_payload_sha256": "bd1024c8f2b6e43b83979781ba55044c1404bad75707208ab2c27cf7480d33b8",
+      "forecast_source_ids": [
+        22,
+        61,
+        8439,
+        8453,
+        8490
+      ],
+      "game_id": "nba-2026-401909890",
+      "game_row_source_artifact_id": 11687,
+      "grade_revision_count": 1,
+      "grade_revision_id": 66,
+      "grade_revision_sha256": "2c91ba917067dde97e24500dd269ea9f9523a92940c74578dc20649636d97e3d",
+      "grade_source_artifact_id": 11687,
+      "grade_source_sha256": "2c52f0fbee59a32e2c027e84b5182f10372f1dea7fe50f8473935083d2c27c2a",
+      "home_margin_error_actual_minus_projection": 3.03,
+      "home_team": "UTA",
+      "latest_home_spread_for_reference_only": 13.5,
+      "latest_source_artifact_id_for_reference_only": 11475,
+      "line_age_at_tipoff_hours": 24.3183,
+      "line_observed_at_utc": "2026-10-28T00:40:54.281656+00:00",
+      "line_source_artifact_id": 10067,
+      "line_source_sha256": "1898cded908193dc9ee8d60caf7bf5584286ab3432eb2c7ac930b892f0451482",
+      "matchup": "SAS@UTA",
+      "model_fingerprint": "79026f8a1c09b06e247bd5e2c0335d86f8930c92c416679299dadfc479cf4da4",
+      "model_version": "nba-research-1.1.0",
+      "original_away_spread": -12.5,
+      "original_game_forecast_home_spread": null,
+      "original_home_spread": 12.5,
+      "pick_line": 12.5,
+      "pick_price": -110,
+      "pick_side": "home",
+      "pick_team": "UTA",
+      "projected_cover_cushion": 3.47,
+      "projection_away_score": 124.75,
+      "projection_home_margin": -9.03,
+      "projection_home_score": 115.72,
+      "raw_provider": {
+        "id": "100",
+        "logos": [
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Light.svg",
+            "rel": [
+              "light"
+            ]
+          },
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Dark.svg",
+            "rel": [
+              "dark"
+            ]
+          }
+        ],
+        "name": "DraftKings",
+        "priority": 1
+      },
+      "recomputed_result": "won",
+      "saved_result": "won",
+      "saved_sportsbook": "Unknown",
+      "score_reconciliation": {
+        "SAS": {
+          "header": 117,
+          "periods": 117,
+          "player_points": 117,
+          "scoring_formula": 117
+        },
+        "UTA": {
+          "header": 111,
+          "periods": 111,
+          "player_points": 111,
+          "scoring_formula": 111
+        }
+      },
+      "tipoff_utc": "2026-10-29T01:00:00Z",
+      "warnings": [
+        "spread_comparison_saved_after_game_projection",
+        "saved_sportsbook_unknown_raw_provider_name_is_DraftKings",
+        "latest_market_differs_from_original_comparison"
+      ]
+    },
+    {
+      "actual_home_margin": 24,
+      "away_team": "OKC",
+      "comparison_at_utc": "2026-10-28T00:41:03.472612+00:00",
+      "comparison_forecast_id": "spread-line-nba-2026-401909891",
+      "comparison_payload_sha256": "088eab203a287db16ec88510043e319246ae3738879814afe4a2f3c938a7a81f",
+      "counterfactual_original_pick_latest_line_result": "lost",
+      "counterfactual_reselect_with_latest_line_result": "lost",
+      "cover_cushion": -29.5,
+      "event_id": "401909891",
+      "failures": [],
+      "final_away_score": 96,
+      "final_home_score": 120,
+      "forecast_age_at_tipoff_hours": 47.0449,
+      "forecast_at_utc": "2026-10-27T02:27:18.224253+00:00",
+      "forecast_id": "game-nba-2026-401909891",
+      "forecast_payload_sha256": "5def552acc642277bb1b6a1bcbbda97f81a94bdd1856a040ef763e54c9fb376b",
+      "forecast_source_ids": [
+        25,
+        73,
+        8439,
+        8492,
+        8494
+      ],
+      "game_id": "nba-2026-401909891",
+      "game_row_source_artifact_id": 11686,
+      "grade_revision_count": 1,
+      "grade_revision_id": 65,
+      "grade_revision_sha256": "76ec35f8b5cbaed06c12a7bca6b5aa6b1b1c8f0f10defb2ecd050b4aeef0fb9a",
+      "grade_source_artifact_id": 11686,
+      "grade_source_sha256": "a6e1ae3195ef5fd7c2c163441525a8ee3cac6e372f2f4a2ff0eb25de45f9e974",
+      "home_margin_error_actual_minus_projection": 31.43,
+      "home_team": "DAL",
+      "latest_home_spread_for_reference_only": 5.5,
+      "latest_source_artifact_id_for_reference_only": 11475,
+      "line_age_at_tipoff_hours": 24.8183,
+      "line_observed_at_utc": "2026-10-28T00:40:54.281656+00:00",
+      "line_source_artifact_id": 10067,
+      "line_source_sha256": "1898cded908193dc9ee8d60caf7bf5584286ab3432eb2c7ac930b892f0451482",
+      "matchup": "OKC@DAL",
+      "model_fingerprint": "79026f8a1c09b06e247bd5e2c0335d86f8930c92c416679299dadfc479cf4da4",
+      "model_version": "nba-research-1.1.0",
+      "original_away_spread": -5.5,
+      "original_game_forecast_home_spread": null,
+      "original_home_spread": 5.5,
+      "pick_line": -5.5,
+      "pick_price": -115,
+      "pick_side": "away",
+      "pick_team": "OKC",
+      "projected_cover_cushion": 1.93,
+      "projection_away_score": 120.73,
+      "projection_home_margin": -7.43,
+      "projection_home_score": 113.3,
+      "raw_provider": {
+        "id": "100",
+        "logos": [
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Light.svg",
+            "rel": [
+              "light"
+            ]
+          },
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Dark.svg",
+            "rel": [
+              "dark"
+            ]
+          }
+        ],
+        "name": "DraftKings",
+        "priority": 1
+      },
+      "recomputed_result": "lost",
+      "saved_result": "lost",
+      "saved_sportsbook": "Unknown",
+      "score_reconciliation": {
+        "DAL": {
+          "header": 120,
+          "periods": 120,
+          "player_points": 120,
+          "scoring_formula": 120
+        },
+        "OKC": {
+          "header": 96,
+          "periods": 96,
+          "player_points": 96,
+          "scoring_formula": 96
+        }
+      },
+      "tipoff_utc": "2026-10-29T01:30:00Z",
+      "warnings": [
+        "spread_comparison_saved_after_game_projection",
+        "saved_sportsbook_unknown_raw_provider_name_is_DraftKings"
+      ]
+    },
+    {
+      "actual_home_margin": -16,
+      "away_team": "LAL",
+      "comparison_at_utc": "2026-10-28T00:41:03.474215+00:00",
+      "comparison_forecast_id": "spread-line-nba-2026-401909892",
+      "comparison_payload_sha256": "b6a48888c3c228d3a8fd6f9783fb62739a6695c484de1161537ba88271c617b4",
+      "counterfactual_original_pick_latest_line_result": "lost",
+      "counterfactual_reselect_with_latest_line_result": "won",
+      "cover_cushion": -10.5,
+      "event_id": "401909892",
+      "failures": [],
+      "final_away_score": 103,
+      "final_home_score": 87,
+      "forecast_age_at_tipoff_hours": 46.9494,
+      "forecast_at_utc": "2026-10-27T03:33:02.230908+00:00",
+      "forecast_id": "game-nba-2026-401909892",
+      "forecast_payload_sha256": "942f316bec0b29464dbef453867bc4effe51a4d2d3be5271d72e01247a990338",
+      "forecast_source_ids": [
+        76,
+        88,
+        7033,
+        8439,
+        8457
+      ],
+      "game_id": "nba-2026-401909892",
+      "game_row_source_artifact_id": 11685,
+      "grade_revision_count": 1,
+      "grade_revision_id": 64,
+      "grade_revision_sha256": "b1050983911ca205f2c29316845ea0a83a6473c86af5969cb23b882a4e7eec21",
+      "grade_source_artifact_id": 11685,
+      "grade_source_sha256": "97b676f1b0b9c5fdbf9a01b68b6d6b57817026a0ae2be181ccd2c858566fb82b",
+      "home_margin_error_actual_minus_projection": -17.32,
+      "home_team": "LAC",
+      "latest_home_spread_for_reference_only": -1.5,
+      "latest_source_artifact_id_for_reference_only": 11498,
+      "line_age_at_tipoff_hours": 25.8183,
+      "line_observed_at_utc": "2026-10-28T00:40:54.281656+00:00",
+      "line_source_artifact_id": 10067,
+      "line_source_sha256": "1898cded908193dc9ee8d60caf7bf5584286ab3432eb2c7ac930b892f0451482",
+      "matchup": "LAL@LAC",
+      "model_fingerprint": "79026f8a1c09b06e247bd5e2c0335d86f8930c92c416679299dadfc479cf4da4",
+      "model_version": "nba-research-1.1.0",
+      "original_away_spread": -5.5,
+      "original_game_forecast_home_spread": null,
+      "original_home_spread": 5.5,
+      "pick_line": 5.5,
+      "pick_price": -115,
+      "pick_side": "home",
+      "pick_team": "LAC",
+      "projected_cover_cushion": 6.82,
+      "projection_away_score": 115.3,
+      "projection_home_margin": 1.32,
+      "projection_home_score": 116.62,
+      "raw_provider": {
+        "id": "100",
+        "logos": [
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Light.svg",
+            "rel": [
+              "light"
+            ]
+          },
+          {
+            "href": "https://a.espncdn.com/i/betting/Draftkings_Dark.svg",
+            "rel": [
+              "dark"
+            ]
+          }
+        ],
+        "name": "DraftKings",
+        "priority": 1
+      },
+      "recomputed_result": "lost",
+      "saved_result": "lost",
+      "saved_sportsbook": "Unknown",
+      "score_reconciliation": {
+        "LAC": {
+          "header": 87,
+          "periods": 87,
+          "player_points": 87,
+          "scoring_formula": 87
+        },
+        "LAL": {
+          "header": 103,
+          "periods": 103,
+          "player_points": 103,
+          "scoring_formula": 103
+        }
+      },
+      "tipoff_utc": "2026-10-29T02:30:00Z",
+      "warnings": [
+        "spread_comparison_saved_after_game_projection",
+        "saved_sportsbook_unknown_raw_provider_name_is_DraftKings",
+        "latest_market_differs_from_original_comparison"
+      ]
+    }
+  ],
+  "method": "Offline read-only SQLite transaction; independent raw ESPN parsing and arithmetic; no production imports or provider requests.",
+  "readiness": "RESEARCH_ONLY",
+  "result": {
+    "lost": 9,
+    "won": 3
+  },
+  "source_manifest": [
+    {
+      "body_bytes": 1460121,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 10,
+      "kind": "team-history",
+      "received_at": 1792502306.0655491,
+      "received_utc": "2026-10-20T13:18:26.065549+00:00",
+      "sha256": "9fb5bae5dab6f5195e4fe3247b5021687e25fa081fd8590f153021383e9af483",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/8/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1478335,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 16,
+      "kind": "team-history",
+      "received_at": 1792502306.6605818,
+      "received_utc": "2026-10-20T13:18:26.660582+00:00",
+      "sha256": "01cb20f960b3b25d414fe18f8754075eb4ecf2b23ebabb0744946f98200b64d1",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/18/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1457576,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 19,
+      "kind": "team-history",
+      "received_at": 1792502306.9691808,
+      "received_utc": "2026-10-20T13:18:26.969181+00:00",
+      "sha256": "fc5df04802f37ff127f1802b7d1f090f021bfdd473d66be83091497db32a1d66",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/20/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1485540,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 22,
+      "kind": "team-history",
+      "received_at": 1792502307.2265222,
+      "received_utc": "2026-10-20T13:18:27.226522+00:00",
+      "sha256": "0d032ab9ebbe83375801c92bd63963719394337189745566e45bb8095b19c7ea",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/24/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1477827,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 25,
+      "kind": "team-history",
+      "received_at": 1792502307.5305212,
+      "received_utc": "2026-10-20T13:18:27.530521+00:00",
+      "sha256": "ec41460c4e64e41d3cc49cb38add6e65b6265fb33d1377b21191a06e4537739e",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/25/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1458508,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 28,
+      "kind": "team-history",
+      "received_at": 1792502307.8070998,
+      "received_utc": "2026-10-20T13:18:27.807100+00:00",
+      "sha256": "230728404f92c58f6e0dfbb2f469d7ef9aae36a8d0d252ee19e395089662bc3b",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/19/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1461705,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 31,
+      "kind": "team-history",
+      "received_at": 1792502308.069912,
+      "received_utc": "2026-10-20T13:18:28.069912+00:00",
+      "sha256": "60645fdf3680a35cbaec86858ebc5dd15ad265aa790761184f3b2821dc81ba11",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/1/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1459974,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 34,
+      "kind": "team-history",
+      "received_at": 1792502308.379754,
+      "received_utc": "2026-10-20T13:18:28.379754+00:00",
+      "sha256": "01a7c422032c712d590c241f513f1deb2b2d60cc2799761cd2a3adb5955f5e76",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/27/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1473271,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 37,
+      "kind": "team-history",
+      "received_at": 1792502308.707208,
+      "received_utc": "2026-10-20T13:18:28.707208+00:00",
+      "sha256": "7dd8bde12a89179c4af9eabee028ab41b3c7ba0c45d655f7421ebcaed4e083ce",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/15/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1465826,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 40,
+      "kind": "team-history",
+      "received_at": 1792502308.964963,
+      "received_utc": "2026-10-20T13:18:28.964963+00:00",
+      "sha256": "20f141cda8f96817e58c541bcfeb4fd8a7f02c35bcd8865eef3b8a93a0cae2d7",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/14/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1474970,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 43,
+      "kind": "team-history",
+      "received_at": 1792502309.2117891,
+      "received_utc": "2026-10-20T13:18:29.211789+00:00",
+      "sha256": "6b3cda03e83952c5a69e6abd1f245fb649b9bc4be16ec145fad06fc6f7a336eb",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/16/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1457900,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 49,
+      "kind": "team-history",
+      "received_at": 1792502309.933753,
+      "received_utc": "2026-10-20T13:18:29.933753+00:00",
+      "sha256": "23a18a16d46f13e50913007d4beca1132a8d6fe4fb3a7614cb8183bb761409bc",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/30/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1462108,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 52,
+      "kind": "team-history",
+      "received_at": 1792502310.290451,
+      "received_utc": "2026-10-20T13:18:30.290451+00:00",
+      "sha256": "b45b5565f1a67b29b7b618ee2510ef62c7b0937713772da5bcf1da9f041642a7",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/28/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1463456,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 55,
+      "kind": "team-history",
+      "received_at": 1792502310.6523452,
+      "received_utc": "2026-10-20T13:18:30.652345+00:00",
+      "sha256": "e8bff2fcae7a650d247f6327744bc7f228644a5036d73b5bffe6528496b3db07",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/4/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1472664,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 61,
+      "kind": "team-history",
+      "received_at": 1792502311.3666,
+      "received_utc": "2026-10-20T13:18:31.366600+00:00",
+      "sha256": "acba403537baba1f3e8cabaffe64ff3e8fc88a4a96ac5c0e444d0e13bc66c528",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/26/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1474456,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 64,
+      "kind": "team-history",
+      "received_at": 1792502311.737932,
+      "received_utc": "2026-10-20T13:18:31.737932+00:00",
+      "sha256": "4ab3150e8a2cf944b3d03555ccf57a568007c61cbfc413d5b64bd91e61c95f04",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/3/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1459717,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 67,
+      "kind": "team-history",
+      "received_at": 1792502312.086617,
+      "received_utc": "2026-10-20T13:18:32.086617+00:00",
+      "sha256": "f2cf9f4b3cfa6f1dfbed0be670d3745a499f0dfeab0a7972295207d2531ead9c",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/11/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1459725,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 70,
+      "kind": "team-history",
+      "received_at": 1792502312.446787,
+      "received_utc": "2026-10-20T13:18:32.446787+00:00",
+      "sha256": "de6c6de5b3aa3e5d5c0b146868d3e363e5dff5b0ccef45e048035bf9d67c645e",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/10/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1480737,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 73,
+      "kind": "team-history",
+      "received_at": 1792502312.8275871,
+      "received_utc": "2026-10-20T13:18:32.827587+00:00",
+      "sha256": "92651482475f860641be6c0cdbbbdd5a53e917d8fc63e134a90406200cedffb0",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/6/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1468745,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 76,
+      "kind": "team-history",
+      "received_at": 1792502313.2044969,
+      "received_utc": "2026-10-20T13:18:33.204497+00:00",
+      "sha256": "f60c76ce89814ba832efa105aa021d10a4eabafae933a3bcdd037480151e7623",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/13/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1469309,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 79,
+      "kind": "team-history",
+      "received_at": 1792502313.578351,
+      "received_utc": "2026-10-20T13:18:33.578351+00:00",
+      "sha256": "21bcde92a4e73486369eb80b609adbc2d4bc40115de9f011f2097fd31e469c92",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/9/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1453017,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 88,
+      "kind": "team-history",
+      "received_at": 1792502314.667732,
+      "received_utc": "2026-10-20T13:18:34.667732+00:00",
+      "sha256": "24a5e687363b12b5001e7377b4745e1a9d4828be29896ff47fdf19af4459ad04",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/12/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1463500,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 1554,
+      "kind": "team-history",
+      "received_at": 1792537312.012214,
+      "received_utc": "2026-10-20T23:01:52.012214+00:00",
+      "sha256": "39bf4c4874775369451f7a2daf691a7867661e516300a398682a49b950c6c9ad",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/5/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 1470834,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 1637,
+      "kind": "team-history",
+      "received_at": 1792546703.785033,
+      "received_utc": "2026-10-21T01:38:23.785033+00:00",
+      "sha256": "402eb6eeeb62ed5e8c80cec99dcbbc5df10baf9a2bc22c834504402ba6c19771",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/7/schedule?season=2026&seasontype=2"
+    },
+    {
+      "body_bytes": 807856,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 7029,
+      "kind": "team-history",
+      "received_at": 1792966452.367027,
+      "received_utc": "2026-10-25T22:14:12.367027+00:00",
+      "sha256": "cd737df4c7cf46874e90b828c75150cde6a3dfa5e3e5015741697b69e55bad83",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/28/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 821427,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 7033,
+      "kind": "team-history",
+      "received_at": 1792966453.204479,
+      "received_utc": "2026-10-25T22:14:13.204479+00:00",
+      "sha256": "5eed6d9798af8307be965f8df84e7f49add0cc40f933207c98e8facaa5c333b8",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/12/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 821493,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 7888,
+      "kind": "team-history",
+      "received_at": 1793037927.948927,
+      "received_utc": "2026-10-26T18:05:27.948927+00:00",
+      "sha256": "ab8b38826498874e014bdfe3f9ed2365aa30abaea515974a81d5db2b9196bba0",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/30/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 819860,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 7890,
+      "kind": "team-history",
+      "received_at": 1793037928.225548,
+      "received_utc": "2026-10-26T18:05:28.225548+00:00",
+      "sha256": "771ad23755e820d307922413216761b42285ec594d1b329489752412ebfc614c",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/27/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 820885,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 7892,
+      "kind": "team-history",
+      "received_at": 1793037928.469663,
+      "received_utc": "2026-10-26T18:05:28.469663+00:00",
+      "sha256": "bf3bcb6bf29bdd8041808554ac8a8079c85c8b69e51c21830045594c662c31e1",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/5/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 819096,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 7900,
+      "kind": "team-history",
+      "received_at": 1793037929.275962,
+      "received_utc": "2026-10-26T18:05:29.275962+00:00",
+      "sha256": "cb3c0c6fbb82e0efebcfda9e89f546b3dd9dfe7b2c4d0de69a41d46afbbbceb0",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/14/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 824090,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 7906,
+      "kind": "team-history",
+      "received_at": 1793037930.0851781,
+      "received_utc": "2026-10-26T18:05:30.085178+00:00",
+      "sha256": "50e8a975c3442d22203d3f6b231c7ac15c626b734653de05d99d089ae9ff810f",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/11/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 814588,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 7914,
+      "kind": "team-history",
+      "received_at": 1793037931.01883,
+      "received_utc": "2026-10-26T18:05:31.018830+00:00",
+      "sha256": "140dcce48ecc98ed6d94c01f4a5604be8fbebec4d6c9d56515f6e26fd7f0d08a",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/1/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 818527,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 7928,
+      "kind": "team-history",
+      "received_at": 1793037932.6021812,
+      "received_utc": "2026-10-26T18:05:32.602181+00:00",
+      "sha256": "d9b6c33a87f548460755b0a5cad2d4f019b83cf99e7c5cfba9b04f494981f3dc",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/8/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 162738,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 7949,
+      "kind": "scoreboard",
+      "received_at": 1793038651.355787,
+      "received_utc": "2026-10-26T18:17:31.355787+00:00",
+      "sha256": "f00dad175e6dc5a26efb41b4e58c44c2834f5967c822dba180a1cc3098295a33",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20261028&limit=100"
+    },
+    {
+      "body_bytes": 832872,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 8382,
+      "kind": "team-history",
+      "received_at": 1793056288.5086699,
+      "received_utc": "2026-10-26T23:11:28.508670+00:00",
+      "sha256": "45e4b924410cffdf6a5996baa6d735a4d2cf161880b4063ce2025479eacbd90e",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/20/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 813701,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 8407,
+      "kind": "team-history",
+      "received_at": 1793065639.992812,
+      "received_utc": "2026-10-27T01:47:19.992812+00:00",
+      "sha256": "66a8a0f631146eee627e99190e067d8a9c66b8fa9d331d35afd00f87482e427c",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/19/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 169160,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 8439,
+      "kind": "scoreboard",
+      "received_at": 1793068023.011869,
+      "received_utc": "2026-10-27T02:27:03.011869+00:00",
+      "sha256": "cf1cc5276575ddb99a55e76caf7bfff36cdcd8ffe2b464d53dd829fa293f3857",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20261028&limit=100"
+    },
+    {
+      "body_bytes": 824692,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 8449,
+      "kind": "team-history",
+      "received_at": 1793068024.246033,
+      "received_utc": "2026-10-27T02:27:04.246033+00:00",
+      "sha256": "293602bbc44deb77aacf82024455c1cc671b193046eb02890b95751a65609626",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/18/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 832115,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 8453,
+      "kind": "team-history",
+      "received_at": 1793068024.952838,
+      "received_utc": "2026-10-27T02:27:04.952838+00:00",
+      "sha256": "25edd70b34d348e8b2bd04808b1692ce54ee2eda2722d03737d4ac0ba83d7b02",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/24/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 848050,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 8457,
+      "kind": "team-history",
+      "received_at": 1793068025.678198,
+      "received_utc": "2026-10-27T02:27:05.678198+00:00",
+      "sha256": "212ea3b744c3a23efe5c9b3dcc411a5b77613fd35b930f40b4593fab30547ed6",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/13/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 820240,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 8476,
+      "kind": "team-history",
+      "received_at": 1793068032.6082728,
+      "received_utc": "2026-10-27T02:27:12.608273+00:00",
+      "sha256": "b7317b2bcefe333f661a5a54a28d6959859183cf33bdf0b918d49e735745dc82",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/4/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 843108,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 8478,
+      "kind": "team-history",
+      "received_at": 1793068032.968842,
+      "received_utc": "2026-10-27T02:27:12.968842+00:00",
+      "sha256": "a0070f1a75a65a74cc55f14df1eba5abf24ed1553ea635bb1817d5b7703d91cd",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/15/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 828726,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 8480,
+      "kind": "team-history",
+      "received_at": 1793068033.4805381,
+      "received_utc": "2026-10-27T02:27:13.480538+00:00",
+      "sha256": "7af837082634cc532a257916fa8d5aa2d1283a38817fd9b59623348ce436d57e",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/10/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 843447,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 8482,
+      "kind": "team-history",
+      "received_at": 1793068033.764687,
+      "received_utc": "2026-10-27T02:27:13.764687+00:00",
+      "sha256": "f647c14cc42bd8331d4826a73818df8cb2ea223c14a1a0691c99098ac1f0789c",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/16/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 831357,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 8484,
+      "kind": "team-history",
+      "received_at": 1793068034.043776,
+      "received_utc": "2026-10-27T02:27:14.043776+00:00",
+      "sha256": "52c1fab61c81ae21328312579ab72a612dae1a7ff91faf1e40733e4a7aeb8b0f",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/9/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 840675,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 8486,
+      "kind": "team-history",
+      "received_at": 1793068034.458598,
+      "received_utc": "2026-10-27T02:27:14.458598+00:00",
+      "sha256": "3c648b79305def6c6077affab8b4b5d3ee71e7798b8d21255be23c41f2cebc69",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/3/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 822351,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 8488,
+      "kind": "team-history",
+      "received_at": 1793068034.7203798,
+      "received_utc": "2026-10-27T02:27:14.720380+00:00",
+      "sha256": "de76a872e9fe2836ef22eea33107de7b52671e797300d01d06394f3fd837beaf",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/7/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 844439,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 8490,
+      "kind": "team-history",
+      "received_at": 1793068035.042444,
+      "received_utc": "2026-10-27T02:27:15.042444+00:00",
+      "sha256": "4c08fce587a4de5ec355edb45123a12e182a071664d1d4d17e78a6ae6dc182a8",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/26/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 850738,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 8492,
+      "kind": "team-history",
+      "received_at": 1793068035.389951,
+      "received_utc": "2026-10-27T02:27:15.389951+00:00",
+      "sha256": "4c130061eccd3966631697b2ae920be755d42337ce652e36e0b045a9312d888d",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/6/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 852406,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 8494,
+      "kind": "team-history",
+      "received_at": 1793068035.702986,
+      "received_utc": "2026-10-27T02:27:15.702986+00:00",
+      "sha256": "f6b4a84e8e619a8374f983bc5fd395560a943db6413a7512a078449768beb55e",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/teams/25/schedule?season=2027&seasontype=2"
+    },
+    {
+      "body_bytes": 218783,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 9917,
+      "kind": "scoreboard",
+      "received_at": 1793144117.514349,
+      "received_utc": "2026-10-27T23:35:17.514349+00:00",
+      "sha256": "8e838f339269ef8446df63d1e5ce69d6de743e3208a1fc8dc10015f4761ddb89",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20261028&limit=100"
+    },
+    {
+      "body_bytes": 237446,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 10067,
+      "kind": "scoreboard",
+      "received_at": 1793148054.281656,
+      "received_utc": "2026-10-28T00:40:54.281656+00:00",
+      "sha256": "1898cded908193dc9ee8d60caf7bf5584286ab3432eb2c7ac930b892f0451482",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20261028&limit=100"
+    },
+    {
+      "body_bytes": 215746,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 11498,
+      "kind": "scoreboard",
+      "received_at": 1793240873.7953768,
+      "received_utc": "2026-10-29T02:27:53.795377+00:00",
+      "sha256": "9d64ac4aacc7666c66c1dc4f09825b2f2cb1da5b6017d9df96e15e39933ac47d",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/scoreboard?dates=20261028&limit=100"
+    },
+    {
+      "body_bytes": 404456,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 11555,
+      "kind": "final-boxscore",
+      "received_at": 1793240962.1539142,
+      "received_utc": "2026-10-29T02:29:22.153914+00:00",
+      "sha256": "e9d50f717b3e11c2756c73604e6ad3852970419c21d2080eb915f80b208770fa",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=401909887"
+    },
+    {
+      "body_bytes": 386392,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 11556,
+      "kind": "final-boxscore",
+      "received_at": 1793240962.270814,
+      "received_utc": "2026-10-29T02:29:22.270814+00:00",
+      "sha256": "60bc7436e932f1dd1203bc86c07b1d12c1535010dff0e2908228e02202ea9b2f",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=401909889"
+    },
+    {
+      "body_bytes": 452247,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 11557,
+      "kind": "final-boxscore",
+      "received_at": 1793240962.605082,
+      "received_utc": "2026-10-29T02:29:22.605082+00:00",
+      "sha256": "7e975f3bf7d007eb4a8d27ba643961b9633ae8d4f7d380a3e69df11979b0499e",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=401909885"
+    },
+    {
+      "body_bytes": 432019,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 11558,
+      "kind": "final-boxscore",
+      "received_at": 1793240962.6788962,
+      "received_utc": "2026-10-29T02:29:22.678896+00:00",
+      "sha256": "1b2dcb88b7622061bf038b2ef69a647aae30304a4d357b8a2b42ee27be0dad02",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=401909881"
+    },
+    {
+      "body_bytes": 438833,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 11559,
+      "kind": "final-boxscore",
+      "received_at": 1793240962.762549,
+      "received_utc": "2026-10-29T02:29:22.762549+00:00",
+      "sha256": "f5dcb8ed54208e763ca123a1530f8fc7cbbc487756b85d6aef62c4f4c61ece88",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=401909882"
+    },
+    {
+      "body_bytes": 430359,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 11560,
+      "kind": "final-boxscore",
+      "received_at": 1793240962.842583,
+      "received_utc": "2026-10-29T02:29:22.842583+00:00",
+      "sha256": "5a62deb2e9d85e14cad168d5f31ba775e27add8e2f9f8b1f002afa7f54133829",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=401909883"
+    },
+    {
+      "body_bytes": 490569,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 11561,
+      "kind": "final-boxscore",
+      "received_at": 1793240962.957691,
+      "received_utc": "2026-10-29T02:29:22.957691+00:00",
+      "sha256": "e4989bbabd85eb69279ddb9f4532208829b54cddc24b64abe15dec0a47ebec98",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=401909884"
+    },
+    {
+      "body_bytes": 458351,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 11685,
+      "kind": "final-boxscore",
+      "received_at": 1793273289.128026,
+      "received_utc": "2026-10-29T11:28:09.128026+00:00",
+      "sha256": "97b676f1b0b9c5fdbf9a01b68b6d6b57817026a0ae2be181ccd2c858566fb82b",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=401909892"
+    },
+    {
+      "body_bytes": 453840,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 11686,
+      "kind": "final-boxscore",
+      "received_at": 1793273289.378925,
+      "received_utc": "2026-10-29T11:28:09.378925+00:00",
+      "sha256": "a6e1ae3195ef5fd7c2c163441525a8ee3cac6e372f2f4a2ff0eb25de45f9e974",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=401909891"
+    },
+    {
+      "body_bytes": 452822,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 11687,
+      "kind": "final-boxscore",
+      "received_at": 1793273289.597833,
+      "received_utc": "2026-10-29T11:28:09.597833+00:00",
+      "sha256": "2c52f0fbee59a32e2c027e84b5182f10372f1dea7fe50f8473935083d2c27c2a",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=401909890"
+    },
+    {
+      "body_bytes": 517032,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 11688,
+      "kind": "final-boxscore",
+      "received_at": 1793273289.82353,
+      "received_utc": "2026-10-29T11:28:09.823530+00:00",
+      "sha256": "ba30e2cf444a75357aaeb88c4e2061b1bb00df7fb8428f62af7e975ca5885313",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=401909886"
+    },
+    {
+      "body_bytes": 519039,
+      "body_sha256_verified": true,
+      "http_status": 200,
+      "id": 11689,
+      "kind": "final-boxscore",
+      "received_at": 1793273290.021386,
+      "received_utc": "2026-10-29T11:28:10.021386+00:00",
+      "sha256": "478c0be0f3361d1682b2cd79c3a75f6c7c815e1639b013904464fb813773897a",
+      "url": "https://site.api.espn.com/apis/site/v2/sports/basketball/nba/summary?event=401909888"
+    }
+  ],
+  "summary": {
+    "comparison_line_age_hours_range": [
+      23.4118,
+      44.5492
+    ],
+    "counterfactual_original_pick_latest_line_record": {
+      "lost": 7,
+      "won": 5
+    },
+    "counterfactual_reselect_with_latest_line_record": {
+      "lost": 6,
+      "won": 6
+    },
+    "forecast_age_hours_range": [
+      45.5449,
+      47.8082
+    ],
+    "game_forecast_payloads_verified": 12,
+    "game_model_versions": {
+      "nba-research-1.1.0": 12
+    },
+    "half_point_losses": [
+      "WAS@CLE",
+      "CHA@DET"
+    ],
+    "latest_line_differs": 7,
+    "margin_mae": 12.6392,
+    "market_margin_mae_original": 11.1667,
+    "original_game_forecasts_without_spreads": 12,
+    "saved_sportsbook_unknown": 10,
+    "separate_immutable_spread_payloads_verified": 12,
+    "small_projected_cover_cushion_under_one_point": [
+      "WAS@CLE",
+      "PHI@IND",
+      "HOU@MIL",
+      "DEN@NOP"
+    ],
+    "source_artifacts_verified": 65
+  }
+}

@@ -1,0 +1,30 @@
+{
+  "cutoff": 1793281161.8542552,
+  "checks": {
+    "past_nba_forecasts": {
+      "rows": 242,
+      "sha256": "d0309b55f604d5fb0468f8aa0f7ae96184c5fae4f42801cdd496fe7196d6d9b4"
+    },
+    "past_nba_game_grades": {
+      "rows": 68,
+      "sha256": "b07abc4fde8ce94d9821ec38b6bbfa3fdfa7c820df5d09d5e866596e25427e9f"
+    },
+    "nba_selection_locks": {
+      "rows": 68,
+      "sha256": "fe1a31f922b14a6fd3e4258008916fd02e6d85769dbe76c2a6f3b5e01e9338d7"
+    },
+    "nba_selection_items": {
+      "rows": 340,
+      "sha256": "7d2d87fb98889c24b10fd5586152b1ce503657cc4a8bffd9e692b9e6b019e4fb"
+    },
+    "files": {
+      "edgeterminal/nba_model.py": "9a288425344b5da066cbc882bc53b1703053c0d243006dbaabcfe72a675bee4b",
+      "edgeterminal/nba_prop_model.py": "d52be87491504b85b7bad17f6f9ec7d50d1bdc0f6df11a53e179f8a4b103aa37",
+      "edgeterminal/pricing.py": "500b6f372f85e3e39607d83c2dc6dd157af699fa5f4286df01bc6078dc15c1f2",
+      "edgeterminal/analytics/nba.py": "f829dd0523746b2c46d2fc600744a21144003b7b0975d87aa62957e2b9bb206a",
+      "edgeterminal/nba_model_manifest.py": "9d5a4558e3c811b6512ffbed21bff4d62e989864019ef618c63f612a8e521f56",
+      "reports/nfl_model_v2/forward_2026_week03.json": "399566baa6ae059d8fac55050ab07201796837a91541000e482dcfa5b1b776d1",
+      "reports/nfl_model_v2/forward_2026_week08.json": "b149ac20c5d6fe6e6f869f6197d78f43871cb948c76e94c32b3dddc32ce56c3d"
+    }
+  }
+}
