@@ -53,6 +53,43 @@ def complete_context(monkeypatch):
     return case, contexts[0]
 
 
+def test_ready_contexts_uses_indexed_game_url_and_excludes_future_receipts(isolated, monkeypatch):
+    case, context = complete_context(monkeypatch)
+    original = context['final_source']
+    later = dict(original, received_at=original['received_at'] + 100.)
+    future_id = nba_store.save_artifact(later)
+    # An unrelated malformed response must never be parsed to locate this game.
+    import hashlib
+    raw = b'not json'
+    nba_store.save_artifact(dict(original, url=original['url'] + '999',
+        body=raw, sha256=hashlib.sha256(raw).hexdigest()))
+    queries = []
+    db.conn().set_trace_callback(queries.append)
+    try:
+        before = policy.ready_contexts(original['received_at'] + 1)
+        after = policy.ready_contexts(later['received_at'] + 1)
+    finally:
+        db.conn().set_trace_callback(None)
+    assert before[0]['final_source']['id'] == original['id']
+    assert after[0]['final_source']['id'] == future_id
+    lookups = [q for q in queries if "kind='final-boxscore'" in q]
+    assert lookups and all('json_extract' not in q and 'url=' in q for q in lookups)
+
+
+def test_ready_contexts_still_rejects_mismatched_final_body(isolated, monkeypatch):
+    import hashlib
+    case, context = complete_context(monkeypatch)
+    original = context['final_source']
+    body = json.loads(original['body'])
+    body['header']['id'] = '401999999'
+    raw = json.dumps(body).encode()
+    received_at = original['received_at'] + 1
+    nba_store.save_artifact(dict(original, received_at=received_at, body=raw,
+        sha256=hashlib.sha256(raw).hexdigest()))
+    with pytest.raises(ValueError, match='identity'):
+        policy.ready_contexts(received_at + 1)
+
+
 def test_policy_rows_replay_exact_final_and_both_frozen_fives(isolated, monkeypatch):
     from edgeterminal import nba_prop_role as role, nba_prop_quality as quality
     case, context = complete_context(monkeypatch)
@@ -179,6 +216,32 @@ def test_validation_cache_is_bounded_to_one_call_and_rechecks_receipt_limits(iso
         policy._context(context['context_id'])
         policy._final(first, source['id'], source['received_at'])
     assert calls == dict(context=2, final=2)
+
+
+def test_shared_sources_are_verified_once_per_review_and_receipts_are_rechecked(isolated, monkeypatch):
+    case, context = complete_context(monkeypatch)
+    ident = context['payload']['quote_source_id']
+    source = nba_store.get_artifact(ident)
+    original = nba_store.get_artifact
+    calls = []
+    def counted(source_id):
+        calls.append(source_id)
+        return original(source_id)
+    monkeypatch.setattr(nba_store, 'get_artifact', counted)
+    with policy.validation_scope():
+        policy._sources([ident], source['received_at'])
+        policy._sources([ident], source['received_at'] + 1)
+        with pytest.raises(ValueError, match='received after'):
+            policy._sources([ident], source['received_at'] - 1)
+    assert calls == [ident]
+    with policy.validation_scope():
+        policy._sources([ident], source['received_at'])
+    assert calls == [ident, ident]
+    def corrupt(source_id):
+        return dict(original(source_id), body=b'{}')
+    monkeypatch.setattr(nba_store, 'get_artifact', corrupt)
+    with policy.validation_scope(), pytest.raises(ValueError, match='hash'):
+        policy._sources([ident], source['received_at'])
 
 
 def test_one_context_failure_does_not_prevent_other_captured_games_from_locking(isolated, monkeypatch):

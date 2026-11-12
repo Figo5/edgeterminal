@@ -23,7 +23,7 @@ def validation_scope():
     if _VALIDATION_CACHE.get() is not None:
         yield
         return
-    token = _VALIDATION_CACHE.set(dict(contexts={}, finals={}))
+    token = _VALIDATION_CACHE.set(dict(contexts={}, finals={}, sources={}))
     try:
         yield
     finally:
@@ -36,6 +36,8 @@ def _json(value):
 
 def ensure_schema():
     nba_store.ensure_schema()
+    db.ex('CREATE INDEX IF NOT EXISTS ix_nba_sources_kind_url_time '
+          'ON nba_source_artifacts(kind,url,received_at)')
     db.ex('CREATE TABLE IF NOT EXISTS nba_prop_policy_contexts ('
           'context_id TEXT PRIMARY KEY,game_id TEXT NOT NULL REFERENCES nba_games(game_id),'
           'as_of REAL NOT NULL,tipoff_ts REAL NOT NULL,payload TEXT NOT NULL,sha256 TEXT NOT NULL)')
@@ -48,12 +50,22 @@ def ensure_schema():
           "BEGIN SELECT RAISE(ABORT,'NBA policy context must be contemporaneous before tipoff'); END")
 
 
-def _sources(ids, as_of):
+def _source_cache():
+    scope = _VALIDATION_CACHE.get()
+    return scope['sources'] if scope is not None else {}
+
+
+def _sources(ids, as_of, cache=None):
     from .nba_learning_data import verify_source
+    cache = _source_cache() if cache is None else cache
     rows = []
     for ident in sorted(set(ids)):
-        row = nba_store.get_artifact(ident)
-        verify_source(row, received_by=as_of)
+        if ident not in cache:
+            row = nba_store.get_artifact(ident)
+            cache[ident] = (row, verify_source(row, received_by=as_of))
+        row, _ = cache[ident]
+        if row['received_at'] > as_of:
+            raise ValueError('NBA policy source was received after its capture')
         rows.append(row)
     return rows
 
@@ -93,6 +105,11 @@ def _with_opponent(history, game, roster, observed_at, selector_artifact):
 
 def capture_context(game, quotes, roster, history, quote_source_id, now):
     """Archive a full replay context without another provider request."""
+    with validation_scope():
+        return _capture_context(game, quotes, roster, history, quote_source_id, now)
+
+
+def _capture_context(game, quotes, roster, history, quote_source_id, now):
     ensure_schema()
     actual = nba_store.get_game(game['game_id'])
     at = max(float(now), db.now())
@@ -115,7 +132,7 @@ def capture_context(game, quotes, roster, history, quote_source_id, now):
     from . import nba_learning_data as evidence
     # Cache values identify which immutable sources to read; their numeric
     # contents never become the captured model inputs.
-    history, _ = evidence.history_from_sources(ids, {}, at)
+    history, _ = evidence.history_from_sources(ids, _source_cache(), at)
     players = _roster(sources, actual, at, pids)
     quote_source = next(s for s in sources if s['id'] == quote_source_id)
     if quote_source['kind'] != 'player-quotes':
@@ -210,15 +227,15 @@ def _load_context(ident):
         raise ValueError('NBA policy context hash mismatch')
     payload = json.loads(row['payload'])
     current_game = nba_store.get_game(row['game_id'])
+    cache = _source_cache()
+    sources = _sources([s['id'] for s in payload['sources']], row['as_of'], cache)
     game = evidence.capture_game(dict(source_artifact_ids=json.dumps([s['id'] for s in payload['sources']]),
-                                      created_at=row['as_of']), current_game)
+                                      created_at=row['as_of']), current_game, cache)
     if payload.get('schema') != SCHEMA or payload.get('game_id') != game['game_id'] \
             or not row['as_of'] < row['tipoff_ts'] or row['tipoff_ts'] != game['tipoff_ts']:
         raise ValueError('NBA policy context identity or time mismatch')
-    sources = _sources([s['id'] for s in payload['sources']], row['as_of'])
     if [dict(id=s['id'], sha256=s['sha256'], received_at=s['received_at']) for s in sources] != payload['sources']:
         raise ValueError('NBA policy context source changed')
-    cache = {}
     history, used = evidence.history_from_sources([s['id'] for s in sources], cache, row['as_of'])
     eligible = set(payload['eligible_player_ids'])
     roster = _roster(sources, game, row['as_of'], eligible)
@@ -283,6 +300,13 @@ def _load_final(context, source_id, received_by):
 
 
 def ready_contexts(now, limit=120):
+    # Games share archived rosters, histories and quote batches. Verify each
+    # source once per review, with receipt checks on every use.
+    with validation_scope():
+        return _ready_contexts(now, limit)
+
+
+def _ready_contexts(now, limit):
     if not db.q1("SELECT name FROM sqlite_master WHERE type='table' AND name='nba_prop_policy_contexts'"):
         return []
     output = []
@@ -294,9 +318,12 @@ def ready_contexts(now, limit=120):
         game = context['game']
         if game['game_id'] in seen:
             continue
-        source = db.q1("SELECT * FROM nba_source_artifacts WHERE kind='final-boxscore' AND received_at<=? "
-                        "AND json_extract(CAST(body AS TEXT),'$.header.id')=? ORDER BY received_at DESC,id DESC LIMIT 1",
-                        (now, game['espn_event_id']))
+        # The archived URL already identifies the game and has an index. Do
+        # not parse every final response for each game; _final still verifies
+        # the selected body's hash, event, teams, tipoff and reconciled box.
+        source = db.q1("SELECT * FROM nba_source_artifacts WHERE kind='final-boxscore' AND url=? "
+                        "AND received_at<=? ORDER BY received_at DESC,id DESC LIMIT 1",
+                        (nba_data.summary_url(game['espn_event_id']), now))
         if not source:
             continue
         final_source, players = _final(context, source['id'], now)
