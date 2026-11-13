@@ -206,6 +206,11 @@ def project_current(datasets: dict, history: dict, validation: dict, batch_id: s
                    training_cutoff_at=active["training_cutoff"],
                    calibration_cutoff_at=artifact["calibration_cutoff"])
         row["input_context"]["probability_method"] = "weekly_empirical"
+    if artifact.get("price_anchor"):
+        from . import nfl_prop_anchor
+        for row in report["projections"]:
+            nfl_prop_anchor.apply(row, artifact)
+            row["price_anchor_candidate_id"] = active["candidate_id"]
     report["model_selection"] = {m: artifact["configurations"][m].get("kind", "ridge_role") for m in lab.MARKETS}
     report["model_metadata"] = _metadata(active)
     return report
@@ -647,6 +652,9 @@ def _score(rows, artifact=None):
             point, probabilities = _json_predict(config, row['features'], market, float(row['line']))
         row.update(projection=round(point, 4), probability_over=round(probabilities['over'], 6),
                    probability_under=round(probabilities['under'], 6), probability_push=round(probabilities['push'], 6))
+        if artifact and artifact.get('price_anchor'):
+            from . import nfl_prop_anchor
+            nfl_prop_anchor.apply(row, artifact)
     return output
 
 
@@ -733,6 +741,18 @@ def _fit_role_proposals(fit, residual_cal, incumbent):
         proposal[market] = (roles.fit_market(fit[market], residual_cal[market], market) if supported
                            else deepcopy(incumbent['configurations'][market] if incumbent else _baseline_config()))
     return proposal, coverage
+
+
+def build_quality_candidate(now: float | None = None) -> dict:
+    """Evaluated outer weeks are spent for every lane, so the price anchor is tried first."""
+    from . import nfl_prop_anchor
+    anchor = nfl_prop_anchor.build(now)
+    if anchor['status'] == 'ready':
+        return anchor
+    result = build_candidate(now)
+    if result.get('status') != 'ready':
+        result['anchor_proposal'] = {k: v for k, v in anchor.items() if k not in {'artifact', 'sources', 'evaluation'}}
+    return result
 
 
 def build_candidate(now: float | None = None) -> dict:

@@ -132,11 +132,13 @@ def coverage(game_ids: list[str], now: float | None = None) -> list[dict]:
 
 def rank(projections: list[dict]) -> list[dict]:
     """One strongest side per player/market, across observed main-line books."""
-    rows = sorted(projections, key=lambda r: (-max(r["probability_over"], r["probability_under"]),
+    # A price-anchored model ranks by its own score; rows without one rank as before.
+    score = lambda r, side: r.get("policy_probability_" + side, r["probability_" + side])
+    rows = sorted(projections, key=lambda r: (-max(score(r, "over"), score(r, "under")),
                                              r["player_id"], r["market"], r["sportsbook"], r["quote_id"]))
     seen, selected = set(), []
     for row in rows:
-        side = "over" if row["probability_over"] >= row["probability_under"] else "under"
+        side = "over" if score(row, "over") >= score(row, "under") else "under"
         key = (row["player_id"], row["market"])
         if row["side"] != side or key in seen:
             continue
