@@ -114,22 +114,50 @@ def props(season: int = 2026, now: float | None = None, *, include_replay: bool 
             'historical_count': sum(len(g['rows']) for g in games if g['basis'] != 'locked')}
 
 
+def _probability_bands(points: list[tuple[float, bool]]) -> list[dict]:
+    """Shared band shape for props and game-winner calibration displays."""
+    bands = []
+    for low, high in ((.5, .6), (.6, .7), (.7, .8), (.8, .9), (.9, 1.01)):
+        sample = [(probability, won) for probability, won in points if low <= probability < high]
+        bands.append({'label': f'{int(low*100)}–{min(100, round(high*100))}%',
+                      'count': len(sample),
+                      'average_probability': sum(p for p, _ in sample) / len(sample) if sample else None,
+                      'win_rate': sum(won for _, won in sample) / len(sample) if sample else None})
+    return bands
+
+
 def diagnostics(rows: list[dict]) -> dict:
     """Describe the selected sides only. Never fit or recalibrate a model here."""
     decided = [r for r in rows if r.get('result') in {'won', 'lost'} and
                isinstance(r.get('confidence'), (int, float)) and 0 <= r['confidence'] <= 1]
-    bands = []
-    for low, high in ((.5, .6), (.6, .7), (.7, .8), (.8, .9), (.9, 1.01)):
-        sample = [r for r in decided if low <= r['confidence'] < high]
-        bands.append({'label': f'{int(low*100)}–{min(100, round(high*100))}%',
-                      'count': len(sample),
-                      'average_probability': sum(r['confidence'] for r in sample) / len(sample) if sample else None,
-                      'win_rate': sum(r['result'] == 'won' for r in sample) / len(sample) if sample else None})
-    return {'graded_count': len(decided), 'probability_bands': bands,
+    return {'graded_count': len(decided),
+            'probability_bands': _probability_bands(
+                [(r['confidence'], r['result'] == 'won') for r in decided]),
             'brier_score': sum((r['confidence'] - (r['result'] == 'won'))**2 for r in decided) / len(decided) if decided else None,
             'by_market': {m: summary([r for r in rows if r.get('market') == m])
                           for m in sorted({r['market'] for r in rows if r.get('market')})},
             'note': 'Descriptive results for this selection policy; correlated props and small samples do not establish calibration or profitability.'}
+
+
+def winner_diagnostics(rows: list[dict]) -> dict:
+    """Score only decided game-winner picks that carry a saved probability."""
+    decided = []
+    for row in rows:
+        probability = row.get('winner_probability')
+        result = (row.get('results') or {}).get('winner')
+        if (result not in {'won', 'lost'} or isinstance(probability, bool) or
+                not isinstance(probability, (int, float)) or not math.isfinite(probability) or
+                not 0 <= probability <= 1):
+            continue
+        decided.append((probability, result == 'won'))
+    return {'graded_count': len(decided),
+            'brier_score': (sum((p - won)**2 for p, won in decided) / len(decided)
+                            if decided else None),
+            'log_loss': (-sum(won * math.log(max(p, 1e-12)) +
+                              (1 - won) * math.log(max(1 - p, 1e-12))
+                              for p, won in decided) / len(decided)
+                         if decided else None),
+            'probability_bands': _probability_bands(decided)}
 
 
 def _final_scores(season: int) -> dict:
@@ -215,14 +243,20 @@ def games(season: int = 2026) -> dict:
             results['total'] = ('unavailable' if line is None or total is None else
                                 'pass' if total == line else
                                 _result((h+a-line) * (1 if total > line else -1)))
+        winner_team = (home if probability is not None and probability >= .5 else
+                       identity.get('away_team') if probability is not None else None)
+        winner_probability = None
+        if (winner_team is not None and isinstance(probability, (int, float)) and
+                not isinstance(probability, bool) and math.isfinite(probability) and
+                0 <= probability <= 1):
+            winner_probability = probability if winner_team == home else 1 - probability
         rows.append({'game_id': game, 'week': int(game.split('-')[3]), 'saved_at': item['created_at'],
                      'model_version': item['model_version'], 'results': results,
                      'market_model_versions': {'winner': item['model_version'],
                          'total': item['model_version'],
                          'spread': component['version'] if component.get('used') else item['model_version']},
                      'input_policy_id': snapshot.get('forecast_policy_id'),
-                     'winner_team': home if probability is not None and probability >= .5 else
-                                    identity.get('away_team') if probability is not None else None,
+                     'winner_team': winner_team, 'winner_probability': winner_probability,
                      'projected_home_points': p.get('proj_home', item['projected_home_points']),
                      'projected_away_points': p.get('proj_away', item['projected_away_points']),
                      'spread_line': spread, 'total_line': line,
@@ -235,6 +269,7 @@ def games(season: int = 2026) -> dict:
         return {market: summary([{'result': r['results'][market]} for r in items])
                 for market in ('winner', 'spread', 'total')}
     return {'rows': rows, 'model_versions': _model_versions(rows, game_markets=True),
+            'winner_diagnostics': winner_diagnostics(rows),
             'legacy_game_count': sum(r.get('basis') == 'legacy_market' for r in rows), **sums(rows), 'weekly': {w: sums([r for r in rows if r['week'] == w])
                                                 for w in sorted({r['week'] for r in rows})}}
 
@@ -363,7 +398,7 @@ def _legacy_games(season, exclude):
         final = event['status'] == 'STATUS_FINAL'
         scores = (int(meta['home_score']), int(meta['away_score'])) if final else (None, None)
         winner, spread, total = predictions.get('moneyline'), predictions.get('spread'), predictions.get('total')
-        winner_team = None
+        winner_team = winner_probability = None
         for market, key in (('moneyline', 'winner'), ('spread', 'spread'), ('total', 'total')):
             p = predictions.get(market)
             if not p:
@@ -375,6 +410,11 @@ def _legacy_games(season, exclude):
             if market == 'moneyline':
                 winner_team = (p['selection'] if direction == 1 else
                                event['away_team'] if p['selection'] == event['home_team'] else event['home_team'])
+                probability = p.get('model_prob')
+                if (isinstance(probability, (int, float)) and not isinstance(probability, bool) and
+                        math.isfinite(probability) and 0 <= probability <= 1):
+                    winner_probability = (probability if winner_team == p['selection']
+                                          else 1 - probability)
             if not final:
                 results[key] = 'pending'
                 continue
@@ -400,6 +440,7 @@ def _legacy_games(season, exclude):
                          market_saved_at={key: predictions[market]['created_at'] if market in predictions else None
                                           for market, key in (('moneyline', 'winner'), ('spread', 'spread'), ('total', 'total'))},
                          results=results, winner_team=winner_team,
+                         winner_probability=winner_probability,
                          projected_home_points=None, projected_away_points=None,
                          spread_line=(spread['line'] * (1 if spread['selection'] == event['home_team'] else -1))
                                      if spread and spread['line'] is not None else None,

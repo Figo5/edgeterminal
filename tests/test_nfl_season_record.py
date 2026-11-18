@@ -1,6 +1,7 @@
 """Historical records preserve forecasts and cannot manufacture selections."""
 import hashlib
 import json
+import math
 
 import pytest
 
@@ -116,6 +117,52 @@ def test_game_record_uses_latest_pregame_and_its_lines_not_other_model_results(i
     assert result['winner']['record'] == dict(won=1)
 
 
+def test_winner_diagnostics_hand_computes_brier_and_log_loss():
+    rows = [{'results': {'winner': 'won'}, 'winner_probability': .8},
+            {'results': {'winner': 'lost'}, 'winner_probability': .6},
+            {'results': {'winner': 'won'}, 'winner_probability': .7}]
+    result = record.winner_diagnostics(rows)
+    assert result['graded_count'] == 3
+    assert result['brier_score'] == pytest.approx(
+        ((.8 - 1)**2 + (.6 - 0)**2 + (.7 - 1)**2) / 3)
+    assert result['log_loss'] == pytest.approx(
+        -(math.log(.8) + math.log(1 - .6) + math.log(.7)) / 3)
+    assert [b['label'] for b in result['probability_bands']] == [
+        '50–60%', '60–70%', '70–80%', '80–90%', '90–100%']
+    assert result['probability_bands'][1] == {
+        'label': '60–70%', 'count': 1, 'average_probability': .6, 'win_rate': 0.}
+    assert result['probability_bands'][3] == {
+        'label': '80–90%', 'count': 1, 'average_probability': .8, 'win_rate': 1.}
+
+
+def test_winner_diagnostics_excludes_pushes_pending_and_missing_probabilities():
+    rows = [{'results': {'winner': 'push'}, 'winner_probability': .6},
+            {'results': {'winner': 'pending'}, 'winner_probability': .7},
+            {'results': {'winner': 'won'}},
+            {'results': {'winner': 'lost'}, 'winner_probability': None},
+            {'results': {'winner': 'won'}, 'winner_probability': .8}]
+    result = record.winner_diagnostics(rows)
+    assert result['graded_count'] == 1
+    assert result['brier_score'] == pytest.approx(.04)
+    assert sum(b['count'] for b in result['probability_bands']) == 1
+
+
+@pytest.mark.parametrize('probability, winner, result', [
+    (.8, 'Green Bay Packers', 'won'), (.2, 'Atlanta Falcons', 'lost')])
+def test_game_row_records_probability_of_the_picked_winner(isolated, monkeypatch,
+                                                           probability, winner, result):
+    prediction(monkeypatch, 20., probability=probability)
+    monkeypatch.setattr(record, '_final_scores', lambda _: {GAME: (24, 21)})
+    scored = record.games()
+    item = scored['rows'][0]
+    assert item['winner_team'] == winner
+    assert item['results']['winner'] == result
+    assert item['winner_probability'] == pytest.approx(.8)
+    assert scored['winner_diagnostics']['graded_count'] == 1
+    assert scored['winner_diagnostics']['brier_score'] == pytest.approx(
+        (.8 - (result == 'won'))**2)
+
+
 def test_tie_and_missing_lines_are_not_losses(isolated, monkeypatch):
     prediction(monkeypatch, 20.)
     monkeypatch.setattr(record, '_final_scores', lambda _: {GAME: (21, 21)})
@@ -221,6 +268,32 @@ def test_legacy_markets_match_exact_schedule_without_recreating_forecasts(tmp_pa
     path.write_text('{}')
     with pytest.raises(ValueError, match='hash mismatch'):
         record._legacy_games(2026, set())
+
+
+@pytest.mark.parametrize('probability', [None, True], ids=['null', 'bool'])
+def test_legacy_moneyline_probability_is_guarded_when_not_scorable(tmp_path, monkeypatch, probability):
+    monkeypatch.setattr(record, 'ROOT', tmp_path)
+    event = dict(id='espn-1', home_team='Green Bay Packers', away_team='Atlanta Falcons',
+                 start_time='1970-01-01T00:01:40Z', status='STATUS_FINAL',
+                 meta=dict(season=2026, season_type=2, week=3, source='ESPN scoreboard',
+                           home_score='24', away_score='21'))
+    class Source:
+        def list_events_for_week(self, season, season_type, week):
+            return [event]
+    record.capture_legacy_results(weeks=(3,), provider=Source())
+    base = dict(event_id='old-id', home_team=event['home_team'], away_team=event['away_team'],
+                start_time=event['start_time'], meta='{}', created_at=30., model_version='old-model',
+                data_snapshot=json.dumps(dict(selected_quote_at=10.)))
+    saved = [{**base, 'market': 'moneyline', 'selection': event['away_team'],
+              'model_prob': probability, 'line': None},
+             {**base, 'market': 'spread', 'selection': event['away_team'],
+              'model_prob': .8, 'line': 3.5},
+             {**base, 'market': 'total', 'selection': 'Under', 'model_prob': .6, 'line': 44.5}]
+    monkeypatch.setattr(db, 'q', lambda *a: saved)
+    rows = record._legacy_games(2026, set())
+    assert len(rows) == 1
+    assert rows[0]['winner_probability'] is None
+    assert record.winner_diagnostics(rows)['graded_count'] == 0
 
 
 def test_pregame_lines_append_snapshot_once_without_rewriting_projection(isolated, monkeypatch):
