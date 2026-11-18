@@ -2,8 +2,8 @@
 
 November 3, 2026. Base `f69d4f38b7770a1952eeec64f232b11d68dd7a88`.
 Branch `fix/nfl-provider-suffix`, isolated worktree
-`/Users/giofiore/edgeterminal-nfl-identity-suffix`. Gate 1 was approved.
-Implementation is complete; commit and local release await Gate 2 confirmation.
+`/Users/giofiore/edgeterminal-nfl-identity-suffix`. The plan was confirmed.
+Implementation is complete; commit and local release await confirmation.
 
 ## Problem and resulting behavior
 
@@ -28,7 +28,7 @@ quotes, selections, freezes and grades are not rewritten. The broader model
 feature normalizer is unchanged. No model parameter, cutoff, probability logic,
 grading rule, quota, official-pick setting or acceptance gate changes.
 
-## Validation and independent review
+## Validation and review
 
 - **243 offline Python tests passed** across suffix cases, existing capture and
   source handling, frozen projection/roles, result ingestion/grading, historical
@@ -54,14 +54,13 @@ grading rule, quota, official-pick setting or acceptance gate changes.
   Their missing lines remain absent. The rehearsal does not claim five picks
   for every game or fabricate offers. Positive frozen-fixture cases separately
   prove incoming suffix names flow to quotes and projections when offers exist.
-- Independent code/security review approved the exact source and test hashes,
-  independently passed 172 offline tests and repeated the real-data rehearsal.
-  No remaining critical/high/medium findings. `git diff --check` passes.
+- Code/security review checked the exact source and test hashes, separately
+  passed 172 offline tests and repeated the real-data rehearsal. No remaining
+  critical/high/medium findings. `git diff --check` passes.
 
-Private receipts, RED/GREEN logs, exact raw-response hash, model-seal check and
-rehearsal results are in `output/suffix-review-2026-11-03/`; independent approval
-is in `output/independent-suffix-review/`. Test runs used temporary DB/cache state
-with networking disabled. Earlier rehearsal script argument/offer assumptions
+Receipts, RED/GREEN logs, the exact raw-response hash, model-seal check and
+rehearsal results were recorded with the review evidence. Test runs used
+temporary DB/cache state with networking disabled. Earlier rehearsal script argument/offer assumptions
 were corrected and are not represented as product-regression RED evidence.
 
 ## Results and live state checked today
@@ -81,19 +80,19 @@ successfully under the normal single-runner policy. The identity error still
 blocks new NFL capture until this repair is
 approved and released; a healthy worker tick is not used to conceal it.
 
-After approval: commit only the four enumerated files, release that exact commit
-locally, and retry actual missing-board capture through existing cooldown and
-quota guards. Verify supported selections, source health and preservation of
+After confirmation: commit only the four enumerated files, release that exact
+commit locally, and retry actual missing-board capture through existing cooldown
+and quota guards. Verify supported selections, source health and preservation of
 historical evidence. Unsupported markets still wait. Do not create a final state
 archive, transfer credentials, materialize migration symlinks or perform Windows
 cutover. The Mac must remain awake for local automatic work.
 
-## Gate 2
+## Release review
 
 Proposed commit: `fix(nfl): accept verified provider name suffixes`.
-Four files: parser, new focused test module, approved plan and this review.
-Exact diff and hash manifest are under `output/suffix-review-2026-11-03/`.
+Four files: parser, new focused test module, reviewed plan and this review.
+The exact diff and hash manifest were recorded with the review evidence.
 
-The requested `ecc:orch-pipeline` Gate 2 requires: **“Present the diff summary
-and proposed messages; do not commit until the user confirms.”** No staging,
-commit, installation or live identity edit has occurred for this repair.
+Commit requires confirmation after presenting the diff summary and proposed
+messages. No staging, commit, installation or live identity edit has occurred
+for this repair.

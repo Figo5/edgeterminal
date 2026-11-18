@@ -1,10 +1,13 @@
-# Independent final PLAN review — November 9, 2026
+# Final plan review — November 9, 2026
 
 Reviewed the consolidated `game_quality_2026_11_09.plan.md` and both specialized component plans at base `c7511fe`. Planning review only; no implementation, fitting, provider requests, live writes, jobs or service actions.
 
 ## Decision
 
-**PLAN: PASS.** The statistical plan is sound with the clarified inner/outer distinction and durable incomplete NFL stages. The source-maintenance lock/resource clarification below was added to task 1 and independently re-read in this amendment review; that blocker is resolved at plan level. Numerical improvement and immediate activation remain unproved.
+**Plan review: no blocking findings.** The statistical plan is sound with the
+clarified inner/outer distinction and durable incomplete NFL stages. The
+source-maintenance lock/resource clarification below was added to task 1 and
+re-read in this amendment review; that blocker is resolved at plan level. Numerical improvement and immediate activation remain unproved.
 
 ## Resolved distinctions
 
@@ -30,21 +33,25 @@ Predeclare and test endpoint/HTTPS/redirect policy, compressed and decompressed 
 - Verify original/adoption receipt separately, body digest, season/week/team/game identities, coverage and no synthetic receipt. A larger or newer-named file is not necessarily eligible evidence.
 - Predeclare fallback inclusion and preserve the same supported game universe. The algebraic invariance of a convex blend to the exact grading line remains; a point-MAE gain alone is not proof of more winning picks.
 - Old sealed artifacts/readers and historical snapshots/grades retain exact bytes and semantics. Any changed catalogue needs explicit version dispatch and archived-code verification, not resealing or relaxed fingerprints. Check active/pending state again immediately before release because live automatic work continues during development.
-- Retain outcome-blind cohort/stage membership, permanent consumed outer games/dates/weeks, no stage resets after corrections, compare-and-swap ownership, source/result-head rechecks and source-priority short publication. Complete offline fixture/archive replay and independent code/security reviews before Gate 2.
+- Retain outcome-blind cohort/stage membership, permanent consumed outer games/dates/weeks, no stage resets after corrections, compare-and-swap ownership, source/result-head rechecks and source-priority short publication. Complete offline fixture/archive replay and code/security reviews before release confirmation.
 
 No additional numerical blocker was found in the consolidated proposal. Exact phase coverage, future statistical improvement and validated activation dates remain evidence-dependent.
 
-## Final post-external amendment adjudication
+## Final amendment review
 
-**PLAN: PASS** for the final governing plan SHA-256:
+**Plan review: no blocking findings** for the final governing plan SHA-256:
 
 `9752126259e59631809848c79468330780df76b85a1ac7b5d19fde4b7d2efcf9`
 
-This native amendment review read that exact file and `output/game-quality-plan/external-review/claude-review.md`. No additional external review is claimed for these changed bytes. The final governing text overrides broader alternatives in the earlier component/safety planning notes.
+This amendment review read that exact file. No additional automated review is
+claimed for these changed bytes. The final governing text overrides broader
+alternatives in the earlier component/safety planning notes.
 
-- **Claude C1 — resolved.** Whole 2026 NFL Weeks 8 and 9 are excluded, including November 9 Monday night. NFL phases are regular-season only, and the six completed outer week blocks must belong to one named NFL season. The plan explicitly forbids cross-season outer pooling, requires `insufficient_season_remaining`, and permits carry-over of sealed inner work only with unchanged verified policy/contracts; otherwise an append-only invalidation is required. It honestly states that numerical NFL activation may not be possible in 2026. Source/forecast repairs can still release independently.
-- **Claude C2 — resolved.** NFL inner and outer incumbent formula/input-policy identities must match. Pre-repair examples require verified identical-policy replay of their original archived inputs; missing PBP seals/receipts/coverage cannot be inferred or reconstructed from newer PBP. Policy changes invalidate a stage/candidate. Candidate and incumbent must share the exact counted snapshot/quote revision, with a new matching pregame pair after a quote change. Declared fallback remains in the same evaluation universe. This avoids mixing stale-input fitting with a refreshed-input outer comparison under one unlabeled epoch.
-- **Claude C3 — resolved with an explicit stronger new rule.** New NBA retrospective development/calibration requires own-as-of feature availability and its original saved incumbent baseline. Other cutoff reconstructions are fit-only. The final text correctly rejects Claude's mistaken assertion that this was already v1 semantics: old v1 evidence/readers remain unchanged, and the stronger rule belongs to the new versioned stage/protocol. Stage source/implementation seals and immutable original baselines must carry through exact outer pairing; policy/code changes cannot silently continue an old stage.
-- **Operational clarifications — resolved at plan level.** Task 1 contains the independently approved bounded source process, authentic January season identity, incomplete-versus-corrupt source distinction, full-season resource headroom, immutable referenced-evidence retention and explicit legacy-analysis input freshness scope. If either sport selects its incumbent in development, the final text requires a terminal retained/no-improvement stage, a bounded next proposal and no consumption of an outer cohort for an identical incumbent.
+- **C1 — resolved.** Whole 2026 NFL Weeks 8 and 9 are excluded, including November 9 Monday night. NFL phases are regular-season only, and the six completed outer week blocks must belong to one named NFL season. The plan explicitly forbids cross-season outer pooling, requires `insufficient_season_remaining`, and permits carry-over of sealed inner work only with unchanged verified policy/contracts; otherwise an append-only invalidation is required. It honestly states that numerical NFL activation may not be possible in 2026. Source/forecast repairs can still release independently.
+- **C2 — resolved.** NFL inner and outer incumbent formula/input-policy identities must match. Pre-repair examples require verified identical-policy replay of their original archived inputs; missing PBP seals/receipts/coverage cannot be inferred or reconstructed from newer PBP. Policy changes invalidate a stage/candidate. Candidate and incumbent must share the exact counted snapshot/quote revision, with a new matching pregame pair after a quote change. Declared fallback remains in the same evaluation universe. This avoids mixing stale-input fitting with a refreshed-input outer comparison under one unlabeled epoch.
+- **C3 — resolved with an explicit stronger new rule.** New NBA retrospective development/calibration requires own-as-of feature availability and its original saved incumbent baseline. Other cutoff reconstructions are fit-only. The final text correctly rejects an inaccurate reviewer assertion that this was already v1 semantics: old v1 evidence/readers remain unchanged, and the stronger rule belongs to the new versioned stage/protocol. Stage source/implementation seals and immutable original baselines must carry through exact outer pairing; policy/code changes cannot silently continue an old stage.
+- **Operational clarifications — resolved at plan level.** Task 1 contains the separately reviewed bounded source process, authentic January season identity, incomplete-versus-corrupt source distinction, full-season resource headroom, immutable referenced-evidence retention and explicit legacy-analysis input freshness scope. If either sport selects its incumbent in development, the final text requires a terminal retained/no-improvement stage, a bounded next proposal and no consumption of an outer cohort for an identical incumbent.
 
-No further text blocker remains before Gate 1. The plan is not implementation approval, tested-code evidence, proof of complete phase coverage or a claim of improved numerical performance.
+No further text blocker remains before implementation. The plan is not
+implementation approval, tested-code evidence, proof of complete phase coverage
+or a claim of improved numerical performance.

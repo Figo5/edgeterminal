@@ -1,8 +1,8 @@
-# Planner review: NBA totals Gate 1
+# Planner review: NBA totals
 
-Planning only, in `/Users/giofiore/edgeterminal-nba-totals` at base `0082fa8f672bed0fbb6da09ff39fedf49ded5a41`. Read the ECC planner instructions, orch-pipeline, audit, relevant source and existing tests. No implementation, test execution, fitting, provider requests, DB initialization, service changes or commits performed.
+Planning only, in `/Users/giofiore/edgeterminal-nba-totals` at base `0082fa8f672bed0fbb6da09ff39fedf49ded5a41`. Read the established planning instructions, audit, relevant source and existing tests. No implementation, test execution, fitting, provider requests, DB initialization, service changes or commits performed.
 
-I recommend the consolidated `nba_totals_2026_11_05.plan.md` for Gate 1 approval. Its six tasks are the implementation task_list. The following source-specific details refine that plan without weakening its gates.
+I recommend the consolidated `nba_totals_2026_11_05.plan.md` for plan confirmation. Its six tasks are the implementation task_list. The following source-specific details refine that plan without weakening its gates.
 
 ## Concrete architecture
 
@@ -40,8 +40,8 @@ Seal outer games and full dates atomically **before reading labels or computing 
 
 Add `test_nba_totals_data/model/store/learning/integration/learning_isolation.py`. Cover season rollover/few current games; pace vs efficiency synthetic examples; OT/missing duration; duplicate/numeric-ID conflicts; tampered cached source bytes; future receipts; total-without-spread; supported score-without-line; integer pushes/ties; raw anchored-margin reconciliation; full-date late labels; seal-before-label access; consumed failed holdouts; stale active/code/result proof; near-tipoff capture priority; interruption/resume without refit; and synthetic restore preserving old NFL/props.
 
-After approval, use temporary DB/research/report roots and denied providers/network. Run relevant existing game-forecast/live integration, spread/anchor/isolation, worker/publication, grading/ops, model-version/pinned-NBA/common-learning, NFL five-minute, archive/runtime and NBA JavaScript regressions. Verify protected bytes independently of mocks. No live data symlinks or credentials reads.
+After confirmation, use temporary DB/research/report roots and denied providers/network. Run relevant existing game-forecast/live integration, spread/anchor/isolation, worker/publication, grading/ops, model-version/pinned-NBA/common-learning, NFL five-minute, archive/runtime and NBA JavaScript regressions. Verify protected bytes independently of mocks. No live data symlinks or credentials reads.
 
 Principal risks are inadequate historical pace evidence, correlated nightly errors, old outcomes leaking into fresh validation, source-seal invalidation and accidental capture-lock contention. The consolidated plan addresses them with baseline fallback, whole-date sealed holdouts, additive modules and the existing independent learner/publication architecture. Numerical activation may correctly remain waiting after code delivery.
 
-Gate 1 still requires user approval before implementation/tests; Gate 2 requires separate commit confirmation. The site, five-minute cadence, existing saved state and live numerical models remain unchanged during planning.
+Plan confirmation is still required before implementation/tests; commit requires separate confirmation. The site, five-minute cadence, existing saved state and live numerical models remain unchanged during planning.

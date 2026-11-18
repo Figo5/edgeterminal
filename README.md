@@ -45,7 +45,7 @@ Public ESPN responses are cached and archived with URLs, receipt times and
 hashes. SportsGameOdds NBA requests share NFL's quota/cooldown guards, with an
 additional limit of 48 batches per 30 days and two per rolling day. Capture
 starts on game day within eight hours of the first remaining tipoff. NBA also
-reserves shared request capacity for NFL. No Codex automation is needed.
+reserves shared request capacity for NFL.
 
 Final ESPN box scores must reconcile to team totals before statistical grading.
 The worker checks grading every five minutes and grades verified finals as soon

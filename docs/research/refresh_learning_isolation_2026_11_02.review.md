@@ -67,7 +67,7 @@ caused by fitting; isolation removes the demonstrated shared-lock bottleneck.
 Archived source rosters and exact captured quote events agree with all three
 saved player identities and teams. Each official gamebook matches the frozen
 game date, teams and final score and explicitly names the selected player
-inactive. Human inspection covered the relevant final pages.
+inactive. The relevant final pages were inspected directly.
 
 | Saved game | Player | Pending selections | Expected existing-rule result |
 |---|---|---:|---|
@@ -82,7 +82,7 @@ Official receipts:
 - [LAL–GSW gamebook](https://statsdmz.nba.com/pdfs/20261030/20261030_LALGSW.pdf)
 
 Exact receipt times, URLs, byte counts, SHA-256 values, PDFs, rendered pages and
-identity previews remain in private `output/pending-nba-2026-11-02/` evidence.
+identity previews remain in private review evidence.
 The copied-data release rehearsal yielded exactly four new void revisions,
 zero unresolved target props, and zero duplicate revisions on a second grading
 pass. All fifteen original selections, their forecasts/locks and earlier grades
@@ -94,7 +94,7 @@ limits downloads to 10 MB and bounded streaming time, tries at most two URL
 variants per game and four requests per grading cycle, and caches unsuccessful
 attempts for fifteen minutes. It requires frozen identity/hash, game/date/score
 and explicit inactive proof. Machine verification is labeled separately from
-human-reviewed proof. Day-To-Day display is corrected after the existing
+directly inspected proof. Day-To-Day display is corrected after the existing
 inactive eligibility guard, preserving who can be selected.
 
 ## Validation
@@ -125,11 +125,11 @@ All checks ran against isolated temporary state with networking disabled:
 - An actual browser fixture preview at 390 px had no horizontal document
   overflow or undefined/NaN/invalid-date output; queued and failed job states
   remained visible. Preview uses production CSS and rendering functions.
-- `git diff --check` passed. Independent code/security review includes the
+- `git diff --check` passed. Code/security review includes the
   offline runner, publication guards, official-source boundary and guarded
   evidence-only release script. Its final receipt is stored with the exact diff.
 
-Independent review resolved two publication/recovery findings before approval:
+Review resolved two publication/recovery findings before confirmation:
 old checkpoints surviving a later successful retry, and a legacy evaluation
 using a grade whose official final source had already been corrected. Both have
 regressions. The shared source fixture was made realistic; production did not
@@ -149,7 +149,7 @@ Day-To-Day display file participates in spread code seals; there is therefore
 no currently active learned artifact to invalidate in this release. Existing
 seal checks remain strict for any future artifacts.
 
-After commit/release approval, the intended local release is to apply only the
+After commit/release confirmation, the intended local release is to apply only the
 reviewed code, load the separate learning LaunchAgent, retain the existing web
 and five-minute source services, register the three reviewed receipts using the
 guarded evidence-only tool, and verify the ordinary grader's four void revisions
@@ -163,13 +163,12 @@ and both locks must be quiescent before any future final state archive. The
 archive tool remains unchanged; no symlinks were materialized, credentials sent
 or final archive created.
 
-## Gate 2
+## Release review
 
 Proposed commit: `fix(refresh): isolate learning and verify NBA participation`.
-The scoped manifest and exact diff are private review artifacts under
-`output/refresh-isolation-2026-11-02/`; only enumerated production, tests and
-research documentation are proposed for commit. No blanket staging.
+The scoped manifest and exact diff were recorded as review artifacts; only
+enumerated production, tests and research documentation are proposed for commit.
+No blanket staging.
 
-The requested `ecc:orch-fix-defect` delegates to `ecc:orch-pipeline` Gate 2:
-**“Present the diff summary and proposed messages; do not commit until the user
-confirms.”** Commit and local release are therefore awaiting confirmation.
+Commit requires confirmation after presenting the diff summary and proposed
+messages. Commit and local release are therefore awaiting confirmation.

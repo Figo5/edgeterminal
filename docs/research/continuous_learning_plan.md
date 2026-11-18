@@ -5,7 +5,7 @@ retuning, and automatic activation only after validation. The user approved
 moving future model versions beyond the original fixed training cutoffs.
 Original models, forecasts, main-line observations, five-prop locks and grades
 remain immutable. One active model serves each sport; this adds no separate
-user-facing challenger or Codex automation.
+user-facing challenger or additional automation.
 
 ## Implementation slices
 
@@ -47,4 +47,4 @@ prior version or the original baseline. Rollbacks retain all earlier forecasts
 and grades.
 
 No provider subscription, Odds API call, official pick, bankroll/stake feature,
-email, external notification or recurring Codex automation is introduced.
+email, external notification or recurring automation is introduced.

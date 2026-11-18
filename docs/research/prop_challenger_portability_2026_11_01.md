@@ -53,26 +53,25 @@ unchanged. No training was run.
   retain the existing untrained behavior. Directory handles close on success
   and errors. Original first-selection ordering is preserved, including ties.
 
-## Implementation and independent review
+## Implementation and review
 
-Codex coordinated the scoped plan, implementation and independent security/code
-review. Claude implemented tests and code with file tools only; test execution
+The scoped plan, implementation and security/code review were coordinated
+together. Tests and code were implemented with file tools only; test execution
 was controlled separately with networking disabled and temporary DB/cache paths.
 The user's no-commit instruction overrides the TDD skill's checkpoint commits.
 
-Independent review reproduced two medium issues in the first implementation:
+Review reproduced two medium issues in the first implementation:
 a regular-file base silently appeared untrained, and a directory substitution
 could bypass final-component no-follow protection. Both were fixed with new
 regressions and descriptor anchoring, including fresh-output writes. A separate
 regression prevented an unrelated filename tie-break from changing selection
-ordering. Native re-review finds no remaining blocker in this scoped change.
+ordering. Re-review found no remaining blocker in this scoped change.
 
-OpenCode Go final-review status: **unavailable, not approved**. The exact-hash
-Kimi review timed out after 240 seconds with only a `step_start` event and no
-review text or tool events. Local catalog/integration checks did not identify a
-specific provider error. The native independent review and its 167 offline
-tests passed. No output from incomplete external attempts is counted as review
-approval; this limitation is included in the commit-confirmation packet.
+An automated external final review was **unavailable**. The exact-hash review
+timed out after 240 seconds without review text or tool events. Local catalog/integration checks did not identify a specific
+provider error. Native review and its 167 offline tests passed. No output from
+incomplete external attempts is counted as a completed review; this limitation
+is included in the commit-confirmation packet.
 
 Reviewed production-file SHA-256:
 `e6633f82b09226f3aff92e98999ba889fb484047e126e7ea1dffdf4f14fe8d1e`.
@@ -102,9 +101,9 @@ Reviewed production-file SHA-256:
   started, no dependencies installed, and no live DB or credentials mounted.
   This is not a new Windows native image build or production deployment.
 
-Evidence: `output/portability-2026-11-01/` contains RED/GREEN logs, scoped tracing,
-the container receipt, immutable-byte comparisons, and independent review.
-No repository-wide test-suite pass is claimed.
+Evidence recorded with this review includes RED/GREEN logs, scoped tracing, the
+container receipt, immutable-byte comparisons and review findings. No
+repository-wide test-suite pass is claimed.
 
 ## Genuine worker results, inspected separately
 

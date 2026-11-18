@@ -1,8 +1,10 @@
 # NBA spread live update plan — October 29, 2026
 
-The user authorized implementation of the spread audit's improvements using the established orchestration method. They explicitly retained a selection for every supported game and asked for automatic updates while their Mac sleeps, then clarified that phone access is preferable. That authorization covers the model, serving, tests, and a reviewable hosting package; it does not select or purchase a cloud host.
+The user authorized implementation of the spread audit's improvements using the established implementation workflow. They explicitly retained a selection for every supported game and asked for automatic updates while their Mac sleeps, then clarified that phone access is preferable. That authorization covers the model, serving, tests, and a reviewable hosting package; it does not select or purchase a cloud host.
 
-Size: large. Workflow: ecc:orch-change-feature + ecc:mle-workflow. The existing approved improvement plan is Gate 1, amended to retain full selection coverage. Gate 2 remains pre-commit confirmation after concrete review.
+Size: large. The existing approved improvement plan is the planning baseline,
+amended to retain full selection coverage. Pre-commit confirmation remains
+separate and follows concrete review.
 
 ## Ordered work
 
@@ -12,7 +14,7 @@ Size: large. Workflow: ecc:orch-change-feature + ecc:mle-workflow. The existing 
 4. Add bounded scheduled game-model diagnostics and retuning. Require separate chronological fits and actual saved spread-line validation before promotion. Material margin/probability improvement, uncertainty checks, and unchanged supported-game coverage are gates. A failed candidate remains inactive; previous versions and cutoffs remain reproducible.
 5. Make freshness and game-model status visible in the responsive UI. Add mobile home-screen metadata, reconnect refresh, and explicit Mac-local versus hosted-worker status. Do not cache live forecasts as an offline substitute.
 6. Package an always-on deployment with one authoritative persistent data volume, one shared worker lock, five-minute worker cadence, health checks, secret isolation, and verified backup/restore. Prepare private HTTPS phone access and an explicit Mac-to-host cutover; never run independent local/cloud writers. No paid resource or public deployment until a host/access/cost is resolved.
-7. Run focused integrity and temporal regressions, full Python/JavaScript tests, independent code/security/ML review, local live checks, and mobile browser checks. Report activated behavior, waiting model gates, deployment status, and limits accurately.
+7. Run focused integrity and temporal regressions, full Python/JavaScript tests, code/security/ML review, local live checks, and mobile browser checks. Report activated behavior, waiting model gates, deployment status, and limits accurately.
 
 ## Prediction and data contract
 
@@ -22,12 +24,12 @@ Source receipts must precede forecast as-of, which must precede actual stored ti
 
 Initial serving improvement: freshness and schedule-rest correctness, with the retained baseline numeric algorithm where a stronger fitted artifact has not passed gates. New historical features are hypotheses, not grounds for automatic activation. October 28 outcomes are not a tuning target. No unvalidated injury point penalties, forced model promotion, fewer-picks policy, official picks, Odds API, bankroll, or stakes.
 
-## Team ownership
+## Workstreams
 
-- NBA serving agent: revision policy/storage/selection, evidence validation, focused immutability tests.
-- NBA model agent with OpenCode Go review: separate game component/data/learning modules and chronological gates/tests.
-- Deployment agent with Claude review: always-on runtime, secret/state migration safeguards, backup/restore, hosting/phone runbook and tests.
-- Codex: input freshness and schedule context, worker/API/UI integration, phone metadata, cross-module regressions, review reconciliation and live verification.
+- NBA serving: revision policy/storage/selection, evidence validation, focused immutability tests.
+- NBA model with automated review: separate game component/data/learning modules and chronological gates/tests.
+- Deployment with automated review: always-on runtime, secret/state migration safeguards, backup/restore, hosting/phone runbook and tests.
+- Integration: input freshness and schedule context, worker/API/UI integration, phone metadata, cross-module regressions, review reconciliation and live verification.
 
 ## Rollout and rollback
 

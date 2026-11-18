@@ -26,7 +26,7 @@ or activated. The Mac's live services and original saved records remain intact.
 4. **Selective automatic learning.** Each market must qualify before changing;
    retained markets use their original frozen scorer/configuration exactly.
    The built-in worker attempts the new protocol once, then respects its
-   recorded waiting/retry/weekly cadence. Reads never train. No new Codex
+   recorded waiting/retry/weekly cadence. Reads never train. No additional
    automation or public challenger was added.
 
 ## Evidence and operational protection
@@ -80,29 +80,29 @@ No accuracy gain is claimed. Once released, the existing worker collects the
 necessary evidence and evaluates updates automatically while retaining the
 incumbent unless a complete proposal passes.
 
-## Verification and orchestration
+## Verification and review
 
-Codex coordinated separate NBA props, NFL props and NBA spread agents. Claude
-and OpenCode Go reviewed the architecture and actual implementation. Cross-track
-read-only review checked NFL and NBA policy replay. Concrete findings were
-resolved: source-derived atomic contexts, incomplete-context eligibility,
-delayed-tip replay, conditional probabilities, market/selector schema checks,
-training-code hashes, global holdout reuse, retained-policy correspondence,
-baseline identity, development receipts and nonfinite diagnostic handling.
+Separate NBA props, NFL props and NBA spread workstreams produced disjoint
+implementation slices. Automated reviews examined the architecture and actual
+implementation. Cross-track read-only review checked NFL and NBA policy replay.
+Concrete findings were resolved: source-derived atomic contexts,
+incomplete-context eligibility, delayed-tip replay, conditional probabilities,
+market/selector schema checks, training-code hashes, global holdout reuse,
+retained-policy correspondence, baseline identity, development receipts and
+nonfinite diagnostic handling.
 
-An OpenCode run that returned orchestration output instead of a code review was
-stopped and discarded. The successful replacement used a standalone session
-and attached source files. Claude's conditional concern about pre-archive active
-models does not apply: the saved registry contains only two rejected legacy
-proposals and no activated candidates. Its suggested automatic ranking-change
-inference was not applied to calibration-only updates; exact fixed membership
-and side preservation are explicitly enforced instead.
+One review attempt returned workflow output instead of a code review and was
+discarded; the replacement examined attached source files. A conditional concern
+about pre-archive active models does not apply: the saved registry contains only
+two rejected legacy proposals and no activated candidates. A suggested automatic
+ranking-change inference was not applied to calibration-only updates; exact
+fixed membership and side preservation are explicitly enforced instead.
 
 Red/green regressions cover the new behaviors. The complete Python suite passed
 **1,190 tests** in 37.77 seconds; all **20 JavaScript tests** passed. Compilation
-and whitespace checks passed. Final test logs and file hashes
-are recorded in `output/model-quality-2026-10-30/`. That directory also contains
-the offline replay, protected-byte comparison and a synthetic power study.
+and whitespace checks passed. Final test logs and file hashes were recorded with
+the release evidence, which also contains the offline replay, protected-byte
+comparison and a synthetic power study.
 The power study is a sensitivity check under stated assumptions, not an estimate
 of a model's future performance. A test that assumed the checkout basename was
 `edgeterminal` now checks the configured root, allowing isolated worktrees.
@@ -118,9 +118,8 @@ reports, databases and review output are excluded from the source commit.
 Proposed commit:
 `feat(models): add role forecasts and guarded automatic learning`
 
-The approved four-track plan satisfied the plan gate. The invoked
-[`ecc:orch-pipeline`](../../../.codex/plugins/cache/ecc/ecc/2.2.3/skills/orch-pipeline/SKILL.md)
-requires: “Present the diff summary and proposed messages; do not commit until
-the user confirms.” Commit/release confirmation remains pending. Approval
-would release the tested code; it would not bypass any data or model-promotion
-gate or rewrite a saved result.
+The four-track plan was confirmed before implementation. The applied review
+workflow requires presenting the diff summary and proposed messages before
+commit. Commit/release confirmation remains pending. Confirmation would release
+the tested code; it would not bypass any data or model-promotion gate or rewrite
+a saved result.

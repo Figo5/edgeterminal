@@ -1,6 +1,6 @@
-# NBA totals and NFL game forecasts — Gate 1 plan
+# NBA totals and NFL game forecasts — implementation plan
 
-Large `ecc:orch-change-feature` change, with two confirmed data/refresh defects. Base `c7511fe490586bee8e1c76885fb0fa28aedec4b5`; isolated worktree `/Users/giofiore/edgeterminal-game-model-quality`, branch `feat/game-model-quality`. Planning and read-only investigation only. The Mac app, source/grading worker and offline learner remain running. No implementation, training, provider demonstration, model activation or commit has started.
+Large change with two confirmed data/refresh defects. Base `c7511fe490586bee8e1c76885fb0fa28aedec4b5`; isolated worktree `/Users/giofiore/edgeterminal-game-model-quality`, branch `feat/game-model-quality`. Planning and read-only investigation only. The Mac app, source/grading worker and offline learner remain running. No implementation, training, provider demonstration, model activation or commit has started.
 
 ## Intended result
 
@@ -14,9 +14,9 @@ Repair the inputs and automatic update paths first; make the installed totals le
 - NFL game serving reads a September 14 production PBP cache containing only Week 1, while a separately scheduled research archive has a verified November 4 copy through Week 8. A saved Week 9 input map shows seven scoring games but only one advanced-feature game. Normal production does not refresh that PBP cache.
 - The source worker's `ensure_weekly_projections` creates missing NFL projections; it does not refresh an existing projection as inputs advance. `save_missing_forecast_lines` enriches missing lines but does not regularly update already priced snapshots.
 
-Read-only baseline, source evidence and component plans are in `output/game-quality-plan/` and the linked planning reviews below. The live HEAD, existing three generated tracked changes and 14 symlinks were recorded without modifying them.
+Read-only baseline and source evidence informed the component plans linked below. The live HEAD, existing three generated tracked changes and 14 symlinks were recorded without modifying them.
 
-## Ordered task list after approval
+## Ordered task list after confirmation
 
 ### 1. Repair NFL source freshness with verified provenance
 
@@ -24,7 +24,7 @@ Add a bounded NFL game-input adapter that can reuse the genuine, already schedul
 
 Keep source maintenance automatic through the existing scheduled services and quota/cadence controls. Reuse verified fresh local archive bytes first. Only when completed-week coverage is missing, allow at most one normal guarded public nflverse archive refresh daily after finals, with bounded size/timeout/backoff and immutable persistence. Coordinate with the existing weekly job to avoid duplicate retrieval. No new feed, paid request, Odds API call or browser-triggered fetch. If verified current coverage cannot be established, report the actual source gap and retain the incumbent supported input; corruption must remain an error, not be relabeled missing data. Avoid full-file aggregation on every page or repeated five-minute tick when the content hash has not changed.
 
-The existing `research_refresh` outer lock covers `_run_locked`; the legacy annual PBP download helper buffers and overwrites its cache. Do not call that writer or perform network/decompression synchronously inside the capture/grading lock. Prepare sources in a separate bounded built-in maintenance process, with durable due/job state and a per-source OS lease shared with scheduled production, not a Codex automation. The five-minute tick only checks/enqueues due work and reads the verified prepared snapshot. Strip unrelated provider credentials from that process, use no shell invocation or inherited research-lock descriptor, bound compressed/decompressed bytes, CSV rows, redirects to the explicitly allowed HTTPS asset origins, time and retry rate, and recover interrupted jobs without duplicates. Hash/validate/aggregate outside writer and publication locks; switch only a small immutable-source pointer under the short guard after rechecking source head and target-week eligibility. Keep a stale/pending/error status visible while current supported forecasts and grading continue. The isolated numerical learner remains offline with socket denial.
+The existing `research_refresh` outer lock covers `_run_locked`; the legacy annual PBP download helper buffers and overwrites its cache. Do not call that writer or perform network/decompression synchronously inside the capture/grading lock. Prepare sources in a separate bounded built-in maintenance process, with durable due/job state and a per-source OS lease shared with scheduled production, not a separate automation. The five-minute tick only checks/enqueues due work and reads the verified prepared snapshot. Strip unrelated provider credentials from that process, use no shell invocation or inherited research-lock descriptor, bound compressed/decompressed bytes, CSV rows, redirects to the explicitly allowed HTTPS asset origins, time and retry rate, and recover interrupted jobs without duplicates. Hash/validate/aggregate outside writer and publication locks; switch only a small immutable-source pointer under the short guard after rechecking source head and target-week eligibility. Keep a stale/pending/error status visible while current supported forecasts and grading continue. The isolated numerical learner remains offline with socket denial.
 
 This is an original-contract source-refresh repair: keep the incumbent scoring arithmetic and parameters unchanged. Legitimate new prior-game observations may change future projections. Give the changed input/forecast policy an explicit identity and keep the original scoring/advanced sample counts, receipts and source hashes visible. Do not silently introduce reliability weights, injury/weather point adjustments or a learned numerical correction in this repair.
 
@@ -68,19 +68,19 @@ NFL eligibility is regular-season only; do not mix postseason games into these p
 
 If the incumbent wins either sport's development selection, record a terminal retained/no-improvement stage and the next bounded proposal date; do not open or consume an outer cohort for an identical incumbent. No daily repeated search on the same outcomes is permitted.
 
-### 5. Test, independently review and prepare a guarded release
+### 5. Test, review and prepare a guarded release
 
 Write changed-behavior and defect regressions first. Run fixture tests with network denied, then actual archived evidence replay on owned copies without live fitting or provider requests. Verify source/forecast hashes, unchanged historical records, every supported pick, exactly-once counting, per-component attribution, status/UI messages, idempotent staged progress, crash recovery and short publication locks.
 
 Cover late and equal-clock receipts/corrections, missing/incomplete/target-game data, sparse advanced coverage, tampered old/new source bodies, invalid season/team/home signs, duplicate dates/games, future evidence, after-tipoff writes, unchanged source digests, concurrent revisions, stage/candidate seal mismatch, changed result heads, competing activation, consumed holdout reuse, path traversal/symlink escapes and verified `/app` relocation. Preserve old contract readers and archived code reproduction; changed catalogued source bytes need a new explicit contract, never silent resealing or weakened hash checks.
 
-Run appropriate complete Python/JavaScript regression suites and independent code/security review, including genuine Claude and OpenCode Go review when available. Present the exact diff, test/replay results, remaining evidence gaps and proposed logical commits for separate Gate 2 approval. After approved release, verify real scheduled worker ticks and forecast/grading/learner health. Do not interrupt a genuine running learner during development or a source capture for deployment convenience.
+Run appropriate complete Python/JavaScript regression suites and code/security review. Present the exact diff, test/replay results, remaining evidence gaps and proposed logical commits for separate release confirmation. After release, verify real scheduled worker ticks and forecast/grading/learner health. Do not interrupt a genuine running learner during development or a source capture for deployment convenience.
 
 ## Scope and release limits
 
-- No live checkout implementation, model training or candidate activation during planning. All implementation stays isolated until reviewed release approval.
+- No live checkout implementation, model training or candidate activation during planning. All implementation stays isolated until reviewed release confirmation.
 - Keep all supported picks, full season counts and five-minute capture/final-only grading. Do not tune against last week, hide losses, force unsupported grades, loosen quotas or enable official picks. Preserve PASS / RESEARCH_ONLY.
-- Reuse the existing Python/NumPy/scikit-learn stack, SQLite append-only ledgers, source verifiers, offline learner and short publication mechanism. No new runtime dependency or Codex automation.
+- Reuse the existing Python/NumPy/scikit-learn stack, SQLite append-only ledgers, source verifiers, offline learner and short publication mechanism. No new runtime dependency or additional automation.
 - No blanket staging/reset, service shutdown, credential handling, Windows cutover, symlink materialization, final state archive or unrelated advisory work.
 - Code readiness and numerical improvement are separate. NBA development/calibration and the NFL six-week outer gate require real evidence; neither new numerical model can honestly be promised to activate immediately.
 
@@ -88,10 +88,12 @@ Run appropriate complete Python/JavaScript regression suites and independent cod
 
 - [NBA planner](game_quality_2026_11_09.nba-plan.md), including exact historical phase clocks and bounded current coverage. The consolidated plan above adopts receipt-safe existing inner examples when valid; its prospective-only inner staging option is not imposed.
 - [NFL planner](game_quality_2026_11_09.nfl-plan.md).
-- [Independent safety/statistical review](game_quality_2026_11_09.safety-plan.md).
-- [Genuine Claude/OpenCode Go snapshot reviews](../../output/game-quality-plan/external-review/REPORT.md) and [identity/completion receipts](../../output/game-quality-plan/external-review/review-receipt.json). Go passed the frozen snapshot; Claude passed conditionally on C1–C3. The explicit source-process paragraph and the C1–C3 clarifications above were added afterward and independently reviewed natively; neither external reviewer is claimed to have reviewed those later bytes. The current v1 fitter does not restrict reconstructed examples to fit-only; that stronger own-as-of/saved-baseline rule is openly introduced only for new staged inner development/calibration.
+- [Safety/statistical review](game_quality_2026_11_09.safety-plan.md).
+- Automated snapshot reviews: one found the frozen plan sound; the other made its finding conditional on C1–C3. The explicit source-process paragraph and the C1–C3 clarifications above were added afterward and reviewed separately; neither reviewer is claimed to have reviewed those later bytes. The current v1 fitter does not restrict reconstructed examples to fit-only; that stronger own-as-of/saved-baseline rule is openly introduced only for new staged inner development/calibration.
 - Public reuse: existing scikit-learn [Ridge](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Ridge.html) implementation and [time-ordered evaluation guidance](https://scikit-learn.org/stable/modules/cross_validation.html#time-series-split); the NBA [official stat definitions](https://www.nba.com/stats/help/glossary). Use whole-game/date/week receipt-aware groups rather than blindly applying equal-spacing assumptions. Local reuse research found the existing residual learners, integrity contracts and publication helpers cover the needed mechanics; no new framework is proposed.
 
 ## Required confirmation
 
-The requested [ecc:orch-pipeline Gate 1](/Users/giofiore/.codex/plugins/cache/ecc/ecc/2.2.3/skills/orch-pipeline/SKILL.md) requires: “do not write implementation code until the user approves.” Approve this concrete plan to start isolated TDD and review. Gate 2 separately requires “do not commit until the user confirms” before committing/releasing the exact reviewed changes.
+The implementation checkpoint requires plan confirmation before code is written.
+Confirm this concrete plan to start isolated TDD and review. Commit/release
+separately requires confirmation before the exact reviewed changes are released.

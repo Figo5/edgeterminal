@@ -26,7 +26,7 @@ from current cached files cannot be asserted. This does not change the
 committed freeze or its predictions. The model hash in this original freeze is
 a code/config proxy, not a saved fitted-coefficient artifact hash.
 
-The machine and Codex scheduler must stay awake and online for near-kickoff
+The machine and local scheduler must stay awake and online for near-kickoff
 captures. A missed capture cannot be recreated afterward. A kickoff change
 after the daily schedule refresh could make the local capture window stale;
 the health report flags known changes. ESPN identity or final-score corrections

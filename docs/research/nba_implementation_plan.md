@@ -2,9 +2,18 @@
 
 ## Scope and owners
 
-The user approved adding NBA through the existing orchestration workflow, with Claude, OpenCode Go, and Codex participating. Claude owns NBA identity, ESPN data parsing, and immutable SQLite storage. OpenCode Go (kimi-k3) owns the fixed baseline model, chronological evaluation, and statistical grading. Codex owns source bootstrap, shared provider quota enforcement, refresh integration, HTTP boundaries, daily NBA interface, and end-to-end integration.
+The user approved adding NBA through the established implementation workflow.
+The work was split into three streams: data and storage (NBA identity, ESPN data
+parsing, immutable SQLite storage); model (fixed baseline, chronological
+evaluation, statistical grading); and integration (source bootstrap, shared
+provider quota enforcement, refresh integration, HTTP boundaries, daily NBA
+interface, end-to-end integration).
 
-Each external agent works in an isolated temporary worktree. Neither agent may commit, read credentials, alter NFL research, or enable picks. Implement new fixture tests before behavior, cross-review the integrated implementation, resolve findings, then verify the real browser. The orchestration skill requires a concrete pre-commit review after implementation.
+Each implementation workstream worked in an isolated temporary worktree. No
+workstream may commit, read credentials, alter NFL research, or enable picks.
+New fixture tests precede behavior, changes are cross-reviewed, findings
+resolved, then the real browser verified. A concrete pre-commit review follows
+implementation.
 
 ## Research contract
 
@@ -16,7 +25,7 @@ Player markets: points, rebounds, assists, three-pointers made, and points+rebou
 
 ## Refresh contract
 
-Use the current built-in worker and shared lock, including when a page asks for due updates. Cache public sources and batch paid props across an NBA slate. NBA and NFL share SportsGameOdds request/object guards and provider cooldowns; NBA has an additional budget so daily games cannot exhaust NFL's allocation. Reads never trigger provider calls. Completed saved games are checked automatically and graded only from verified final box scores after the postgame delay. No Codex automation is enabled.
+Use the current built-in worker and shared lock, including when a page asks for due updates. Cache public sources and batch paid props across an NBA slate. NBA and NFL share SportsGameOdds request/object guards and provider cooldowns; NBA has an additional budget so daily games cannot exhaust NFL's allocation. Reads never trigger provider calls. Completed saved games are checked automatically and graded only from verified final box scores after the postgame delay. No additional automation is enabled.
 
 ## Acceptance checks
 

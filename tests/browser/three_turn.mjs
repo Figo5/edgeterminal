@@ -5,7 +5,7 @@
 // records exactly what the browser sent, so no model or provider is called.
 // Playwright is not a project dependency. Point NODE_PATH at an install that
 // has Chromium, e.g.:
-//   NODE_PATH=$HOME/.hermes/hermes-agent/node_modules \
+//   NODE_PATH=/path/to/node_modules \
 //     node tests/browser/three_turn.mjs
 // Requires EdgeTerminal running on 8799 (./tools/edgeterminal.sh start).
 import { createRequire } from 'node:module';

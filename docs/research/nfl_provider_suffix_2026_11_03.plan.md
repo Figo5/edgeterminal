@@ -34,12 +34,12 @@ Both cases fall within the approved suffix-only repair.
    historical quote, forecast, selection, freeze and grade. Retain the incoming
    sourced full name on new quotes. Verify replay idempotency and the future
    capture-to-projection path without changing model math or grading rules.
-4. Run offline positive, negative and immutability regressions and independent
+4. Run offline positive, negative and immutability regressions and
    code/security review. Expected scope is `edgeterminal/nfl_props.py`, focused
    tests and research documentation. Recheck seals: this parser is outside the
    current model feature seals and NFL learned code catalogs.
 5. Present the exact reviewed diff for separate commit/release confirmation.
-   After approval, deploy only that repair and retry the actual missing-board
+   After confirmation, deploy only that repair and retry the actual missing-board
    capture through existing cadence and quota guards. Keep services live.
 
 ## Results and operational status
@@ -57,9 +57,8 @@ services remain loaded. This repair does not alter learning settings or gates.
 
 ## Gates and exclusions
 
-`ecc:orch-fix-defect` delegates to `ecc:orch-pipeline`. Gate 1 requires:
-**“do not write implementation code until the user approves.”** Gate 2
-separately requires confirmation before committing.
+Plan confirmation is required before implementation code is written. Commit
+separately requires confirmation.
 
 No blanket staging, resets, quota changes, model tuning, forced grades,
 historical backfills, Windows cutover, credential transfer, symlink

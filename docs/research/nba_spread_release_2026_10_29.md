@@ -22,12 +22,12 @@ The always-on Docker package has one persistent authoritative state directory, s
 
 The user prefers free hosting. [The prepared Oracle guide](../../deploy/ORACLE_FREE.md) proposes one ARM A1 Free Tier VM, 1 OCPU/4 GB memory/50 GB boot disk, with private phone HTTPS access. The tested image is `linux/arm64`. Current Oracle limits and capacity/idle-reclamation caveats are linked in that guide. **No Oracle account, server, paid plan, public URL, remote upload, or local-to-cloud cutover has been created.** Account verification and available free capacity remain external prerequisites. The Mac remains the current authoritative host until a verified cutover.
 
-## Orchestration and review
+## Review
 
-- Codex coordinated the approved plan, integration, source freshness, UI, tests and live verification.
-- OpenCode Go (`opencode-go/kimi-k3`) completed a real read-only game-model architecture review.
-- Claude completed real read-only infrastructure and code/security critiques.
-- Separate serving/model agents independently reviewed cross-module source lineage, chronological boundaries, immutability and grading. Findings were reproduced and fixed: delayed physical writes, missing possession source IDs, mutable-cache availability, competitor identity conflicts, archived-input revalidation and cached training-source corruption.
+- The implementation coordinated the plan, integration, source freshness, UI, tests and live verification.
+- An automated read-only game-model architecture review covered model structure and evidence handling.
+- Automated read-only infrastructure and code/security critiques covered deployment and implementation boundaries.
+- Separate serving/model review checked cross-module source lineage, chronological boundaries, immutability and grading. Findings were reproduced and fixed: delayed physical writes, missing possession source IDs, mutable-cache availability, competitor identity conflicts, archived-input revalidation and cached training-source corruption.
 - The deployment review resolved clean-code drift, source shadowing, secret separation, actual worker health, shutdown and state-timestamp preservation. See [deployment review](../../deploy/REVIEW.md).
 
 ## Verification
@@ -38,7 +38,7 @@ The user prefers free hosting. [The prepared Oracle guide](../../deploy/ORACLE_F
 - Locked Linux image build, dependency consistency and Compose configuration passed. Isolated Docker smoke used dummy state and no network; web/worker health and blocked ingestion succeeded. It did not mount the live database or provider keys.
 - Live bounded NBA refresh succeeded; all 13 upcoming games have revisions. Historical bootstrap is complete with no further requests needed; spread learning correctly waits for 60 new verified future-policy games.
 - Integrity comparison preserved 242 past NBA forecast rows, 68 past game-grade rows at the snapshot boundary, all 68 prop locks and 340 locked items, plus seven protected source/freeze files. Immutable append-only result corrections may continue normally; no historical selection is reconstructed or replaced.
-- Pinned `nba_model.py`, `nba_prop_model.py`, `pricing.py`, NBA analytics/manifest bytes and original NFL Week 3/Week 8 freeze bytes are unchanged. PASS / RESEARCH_ONLY remain in force; no Codex automation or official picks were enabled.
+- Pinned `nba_model.py`, `nba_prop_model.py`, `pricing.py`, NBA analytics/manifest bytes and original NFL Week 3/Week 8 freeze bytes are unchanged. PASS / RESEARCH_ONLY remain in force; no additional automation or official picks were enabled.
 
 Machine-readable release/immutability evidence is under `reports/nba/spread_upgrade_2026_10_29/`.
 
@@ -46,4 +46,4 @@ Machine-readable release/immutability evidence is under `reports/nba/spread_upgr
 
 `feat(nba): refresh spread forecasts and prepare always-on mobile research`
 
-Only reviewed implementation, tests, deployment files and concise review documents belong in the commit. Exclude provider keys, databases, raw historical archives, generated NFL reports, old pending research artifacts and unrelated output. The user approved the orchestration pre-commit gate: “Commit the reviewed changes”.
+Only reviewed implementation, tests, deployment files and concise review documents belong in the commit. Exclude provider keys, databases, raw historical archives, generated NFL reports, old pending research artifacts and unrelated output. The pre-commit gate was confirmed with: “Commit the reviewed changes”.

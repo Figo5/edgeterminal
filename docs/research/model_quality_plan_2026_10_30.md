@@ -3,8 +3,8 @@
 The owner approved the four-track proposal on October 30: improve player-role
 forecasts, calibrate prop markets, extend NBA spread validation, and make
 automatic updates selective. Implementation is isolated from the live checkout.
-The orchestration plan gate is satisfied by that explicit approval; the final
-scoped commit still requires separate confirmation.
+That explicit confirmation established the implementation plan; the final scoped
+commit still requires separate confirmation.
 
 ## Iteration compact
 
@@ -47,7 +47,7 @@ scoped commit still requires separate confirmation.
    coverage. Retain global sample/uncertainty gates and reject unsupported ranking
    changes. Existing nightly diagnostics, weekly fitting and rollback stay in use.
 6. Run regression, chronology, poisoning, push/coverage and train/serve parity
-   tests; obtain independent ML/security reviews and reproducible evaluation.
+   tests; obtain ML/security reviews and reproducible evaluation.
    Ask for the scoped commit confirmation. Passing tests do not imply an artifact
    earned promotion; inadequate data remains an explicit waiting state.
 
@@ -69,10 +69,10 @@ Reference: scikit-learn's probability calibration guidance requires independent
 calibration evidence and distinguishes reliability from other probability-score
 components: https://scikit-learn.org/stable/modules/calibration.html.
 
-## Orchestration
+## Review and workstreams
 
-Codex coordinates registry/calibration integration. Separate NBA-prop, NFL-prop
-and NBA-spread agents own disjoint implementation slices. Claude and OpenCode Go
-are invoked for read-only architecture critiques; their actual outcomes are
-recorded rather than assumed. Live services and baseline model files stay intact
-while implementation is reviewed in the isolated worktree.
+Registry/calibration integration is coordinated across separate NBA-prop,
+NFL-prop and NBA-spread workstreams with disjoint implementation slices. Automated
+read-only architecture critiques are recorded by their actual outcomes rather
+than assumed. Live services and baseline model files stay intact while
+implementation is reviewed in the isolated worktree.

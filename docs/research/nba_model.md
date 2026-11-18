@@ -9,7 +9,7 @@ the tested game extensions did not improve historical accuracy.
 Status: **RESEARCH_ONLY / PASS**. No official picks, no live wagering, no
 provider calls, no database access. `edgeterminal/nba_model.py` and
 `edgeterminal/nba_grading.py` are pure functions over caller-supplied, sourced
-rows. The parent agent owns fetching, normalization, archival and storage.
+rows. The parent process owns fetching, normalization, archival and storage.
 
 Source context (2026-10-20 probes): `cdn.nba.com` schedule/scoreboard returned
 HTTP 403 and `stats.nba.com` leaguegamelog timed out; ESPN is the working

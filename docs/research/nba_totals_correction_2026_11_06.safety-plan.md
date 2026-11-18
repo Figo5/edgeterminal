@@ -1,6 +1,9 @@
-# NBA totals historical corrections: independent safety plan
+# NBA totals historical corrections: safety plan
 
-Planning review at base `0a23eef`, November 6, 2026. Gate 1 for this correction is not approved. This document recommends a narrow offline dataset reconstruction change; it does not authorize implementation, fitting, activation, or release.
+Planning review at base `0a23eef`, November 6, 2026. The plan for this correction
+is not yet confirmed. This document recommends a narrow offline dataset
+reconstruction change; it does not authorize implementation, fitting, activation,
+or release.
 
 ## Evidence and finding
 
@@ -33,7 +36,7 @@ Keep whole Eastern dates disjoint across fit/development/calibration and outer v
 
 Saved forecasts, selections, input maps, grades, original sources, model artifacts, reservations and evaluations are immutable. Corrections affecting a sealed candidate require the existing reject/wait lifecycle; never refit it under the same version or refresh its original source envelope. Already inspected November 4 and earlier outcomes, this November 6 audit and any other inspected/consumed games/dates remain development evidence. A name change, error, rejected candidate or reconstructed label cannot return a spent date to fresh validation. No validation-label access before the existing durable reservation/seal guard.
 
-## Concrete acceptance tests after Gate 1
+## Concrete acceptance tests after plan confirmation
 
 | Case | Required result |
 | --- | --- |
@@ -55,10 +58,10 @@ Saved forecasts, selections, input maps, grades, original sources, model artifac
 | Old saved forecast/input map and prospective reservation | Identical replay, hashes, forecast/grade/selection bytes and spent game/date membership. |
 | Protected prop/spread/model files and protocol | Byte-identical files; unchanged pinned verification and numerical gate contract. |
 
-Use synthetic isolated SQLite fixtures first. After approval, a bounded owned archive subset may reproduce the reported old/new evidence and demonstrate zero source/provider writes. Include test receipts and protected hashes in review. Do not fit a real model or interpret successful dataset replay as activation evidence.
+Use synthetic isolated SQLite fixtures first. After confirmation, a bounded owned archive subset may reproduce the reported old/new evidence and demonstrate zero source/provider writes. Include test receipts and protected hashes in review. Do not fit a real model or interpret successful dataset replay as activation evidence.
 
 ## Operational constraints
 
-Keep reconstruction in the existing offline learner, outside capture/grading, request/status reads, publication locks and SQLite writer transactions. Retain network denial, bounded source/body reads, deadline checks, existing failure visibility and incumbent fallback. Avoid new dependencies, new providers, requests for demonstration, quota overrides, schema-wide migrations or broad shared-parser rewrites. Any later approved release needs the established source/code seal checks and separate commit/release gate; current Mac services remain running throughout this planning stage.
+Keep reconstruction in the existing offline learner, outside capture/grading, request/status reads, publication locks and SQLite writer transactions. Retain network denial, bounded source/body reads, deadline checks, existing failure visibility and incumbent fallback. Avoid new dependencies, new providers, requests for demonstration, quota overrides, schema-wide migrations or broad shared-parser rewrites. Any later confirmed release needs the established source/code seal checks and separate commit/release confirmation; current Mac services remain running throughout this planning stage.
 
 For this review only the assigned safety-plan file and its planning receipt are written. No application/test changes, tests, fitting, database scans/writes, provider/network requests, staging, commits or service actions were performed.

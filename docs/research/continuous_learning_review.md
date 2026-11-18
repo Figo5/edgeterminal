@@ -4,16 +4,15 @@ The approved change adds controlled NBA/NFL learning to the existing built-in
 refresh. Future versions may advance their training cutoff. Saved forecasts,
 quotes, selections, grades and prior versions remain immutable.
 
-## Orchestration and review
+## Review and workstreams
 
-- Registry agent: immutable JSON/source/code archives; append-only decisions;
-  independent sourced metric gates; verified predecessor rollback.
-- NBA agent: season-aware production/minutes proposal, count uncertainty,
-  exact capture-source replay and daily cohort diagnostics. Independently
-  reviewed registry, controller and NFL serving/sealing.
-- NFL agent: chronological whole-week Ridge/calibration proposal and saved
-  selection diagnostics. Independently reviewed NBA source/serving and worker
-  wiring.
+- Registry workstream: immutable JSON/source/code archives; append-only decisions;
+  separate sourced metric gates; verified predecessor rollback.
+- NBA workstream: season-aware production/minutes proposal, count uncertainty,
+  exact capture-source replay and daily cohort diagnostics. Reviewed registry,
+  controller and NFL serving/sealing.
+- NFL workstream: chronological whole-week Ridge/calibration proposal and saved
+  selection diagnostics. Reviewed NBA source/serving and worker wiring.
 - Parent: built-in scheduling, serving/API/UI integration, source-priority
   ordering, per-cycle integrity recovery and live verification.
 
@@ -50,7 +49,7 @@ guard refuses a new weekly snapshot while model code changes are uncommitted.
 This review does not waive that guard or commit unrelated/pre-existing work.
 The source/prop grading and new learning cycle completed successfully.
 
-No new Codex automation, provider subscription, Odds API access, official pick,
+No new automation, provider subscription, Odds API access, official pick,
 external message, commit or push was introduced. PASS / RESEARCH_ONLY remains.
 
 ## Release follow-up

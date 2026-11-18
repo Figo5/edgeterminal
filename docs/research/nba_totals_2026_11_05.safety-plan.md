@@ -1,10 +1,12 @@
-# NBA totals: independent architecture and safety review for Gate 1
+# NBA totals: architecture and safety review
 
-Reviewed source at `0082fa8f672bed0fbb6da09ff39fedf49ded5a41` in the isolated totals worktree on November 5, 2026. This is a planning review, not an implementation or activation approval. Read the requested security-reviewer role and the saved totals audit. No application code, database, model, credential, provider, service, or existing research artifact was changed; no training or tests were run.
+Reviewed source at `0082fa8f672bed0fbb6da09ff39fedf49ded5a41` in the isolated totals worktree on November 5, 2026. This is a planning review, not an implementation or activation approval. Read the requested security-review scope and the saved totals audit. No application code, database, model, credential, provider, service, or existing research artifact was changed; no training or tests were run.
 
 ## Recommendation and concrete blockers
 
-Approve an **additive totals component** only after its evidence, identity, fallback, and evaluation contracts below are included in the Gate 1 plan. Do not implement before the user's Gate 1 approval. Keep the existing forecast policy and five-minute source/forecast/grading loop.
+Adopt an **additive totals component** only after its evidence, identity,
+fallback, and evaluation contracts below are included in the plan. Do not
+implement before plan confirmation. Keep the existing forecast policy and five-minute source/forecast/grading loop.
 
 Directly modifying or copying the spread path has three concrete blockers:
 
@@ -69,8 +71,8 @@ No weaker sample floor than the spread path's 60 whole games across seven distin
 
 ## Required evidence before later activation
 
-After Gate 1 permits implementation, targeted tests must prove: totals-only quotes enter totals validation; absent pace/duration/quote evidence retains supported-game coverage; regulation/one-OT/multiple-OT transforms preserve raw source values; source URL/event/team/season/hash/receipt mismatches and target/future rows fail; extra totals fields cannot bypass the mandatory verifier; a total-only change leaves every spread/winner value identical, including tiny raw spread edges; scores still reconcile; different total settings cannot share a version/seal; old forecasts/grades/pins/freeze bytes remain unchanged; current prop/spread artifacts still verify; moved owned directories replay without absolute paths; and unsafe paths fail.
+After plan confirmation permits implementation, targeted tests must prove: totals-only quotes enter totals validation; absent pace/duration/quote evidence retains supported-game coverage; regulation/one-OT/multiple-OT transforms preserve raw source values; source URL/event/team/season/hash/receipt mismatches and target/future rows fail; extra totals fields cannot bypass the mandatory verifier; a total-only change leaves every spread/winner value identical, including tiny raw spread edges; scores still reconcile; different total settings cannot share a version/seal; old forecasts/grades/pins/freeze bytes remain unchanged; current prop/spread artifacts still verify; moved owned directories replay without absolute paths; and unsafe paths fail.
 
 Add boundary tests for whole-date splits, delayed receipts, calibration/outer poisoning, family-renamed/rejected holdout reuse, simultaneous grade/source/active-event changes, registration/checkpoint rollback, resume without refit, and an intentionally stalled learner while real refresh/grading complete at the five-minute cadence. Retain existing regression suites, particularly `test_nba_game_forecasts.py`, `test_nba_live_game_integration.py`, `test_nba_spread_anchored_model.py`, `test_nba_spread_anchor_learning.py`, `test_learning_worker.py`, `test_learning_publication.py`, `test_model_learning_store.py`, and pinned-model/NFL freeze checks.
 
-No empirical superiority, promotion readiness, or production safety is established by this review. The immediate deliverable is an approved implementation/evaluation plan; later activation requires the sealed, untouched evaluation and operational evidence above.
+No empirical superiority, promotion readiness, or production safety is established by this review. The immediate deliverable is a confirmed implementation/evaluation plan; later activation requires the sealed, untouched evaluation and operational evidence above.

@@ -3,7 +3,7 @@
 The built-in worker's existing six-hour grading pass now checks official
 participation sources when a locked top-five selection lacks sufficient player
 statistics. Page visits reuse that worker and its cadence; they do not force
-additional source calls. No Codex automation is needed.
+additional source calls. No additional automation is needed.
 
 After ESPN confirms the final score and the existing four-hour postgame delay
 has elapsed, the grader:

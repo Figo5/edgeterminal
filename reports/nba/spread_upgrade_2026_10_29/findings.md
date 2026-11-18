@@ -36,8 +36,8 @@ The candidate must improve margin MAE by at least the greater of 0.25 point or 2
 
 **The new fitted candidate remains inactive.** Historical score metrics alone never activate it. One model stays live, with fresh append-only pretipoff revisions and the unchanged supported-game pick coverage.
 
-## Verification and orchestration
+## Verification and review
 
-OpenCode Go (`opencode-go/kimi-k3`) gave a read-only architecture review emphasizing isolated game versions, source receipts, actual-line validation, coverage preservation, and no guessed injury effects. The implementation uses compact project-native Python/SQLite modules rather than adding a parallel stack.
+An automated read-only architecture review emphasized isolated game versions, source receipts, actual-line validation, coverage preservation, and no guessed injury effects. The implementation uses compact project-native Python/SQLite modules rather than adding a parallel stack.
 
 The 24 focused regressions cover baseline parity, future-label poisoning, source receipts versus feature cutoffs, explicit complete/unknown rest, availability/possession context without numerical bumps, contradictory input rejection, invalid artifacts, source identity/hash/owner checks, chronological and materiality gates, paired day intervals, no duplicate validation games, failed activation SQL refusal, source-priority deferral, rollback, calibration-label isolation, receipt-bounded read-only box enrichment, bootstrap completion status, and fitting-path rehash of a source whose transform was already cached. No pinned `nba_model.py`, `nba_prop_model.py`, or `pricing.py` source bytes changed.

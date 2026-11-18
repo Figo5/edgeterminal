@@ -25,7 +25,7 @@ restores acceptance even with unrelated local research results still dirty.
 Required release assets include NBA's parameter JSON and code manifest, and
 NFL's fixed manifest, reviewed estimator and manifest checksum. Runtime
 candidate/source archives, the SQLite database, credentials, logs and generated
-capture ledgers remain local. No remote push or new Codex automation is needed.
+capture ledgers remain local. No remote push or new automation is needed.
 
 The operational verification is to generate Week 8's 14-game snapshot before
 the first kickoff, deeply verify its reproducibility bundle, run the shared

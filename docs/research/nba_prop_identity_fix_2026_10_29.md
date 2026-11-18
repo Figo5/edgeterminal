@@ -30,13 +30,13 @@ It does not consult newer mutable identities to verify an old capture.
 - The normal two-request rolling-day allowance was respected; both requests for
   this window are now used. No Odds API requests were made.
 
-Detailed local verification: `output/prop-identity-fix-2026-10-29/live_verified.json`.
+Detailed local verification was recorded with the release evidence.
 
 ## Validation
 
 77 focused Python tests and 19 JavaScript tests pass, including fresh capture,
 identity provenance persistence, automatic learning replay, and missing/future
-proof rejection. An independent code/security review found no blocking issue.
+proof rejection. A code/security review found no blocking issue.
 The full Python run also found an unrelated existing failure in
 `test_parlay_chat_uses_parlay_tool_without_openai_key`; the same failure was
 reproduced on unmodified committed HEAD. No chat behavior was changed here.

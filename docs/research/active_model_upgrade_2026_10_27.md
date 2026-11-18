@@ -61,8 +61,8 @@ Minutes MAE improves from 5.336 to 5.032. The fitted source sample covers player
 on current rosters and has survivorship bias. Its full historical distribution
 scores are saved in `reports/nba/model_upgrade_2026-10-27.json`.
 
-Validation: 911 Python tests and 16 JavaScript tests passed. Independent review
-covers source timing, training cutoffs, artifact/code integrity, probability
+Validation: 911 Python tests and 16 JavaScript tests passed. Review covers
+source timing, training cutoffs, artifact/code integrity, probability
 support, freeze metadata, unchanged saved forecasts and refresh integration.
 
 

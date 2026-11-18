@@ -20,7 +20,7 @@ describe that installation. No browser background timer is required for grading.
   offline learner. Existing source cadence, quota guards, append-only ledgers
   and shared publication lock remain in effect.
 - Keep every supported-game pick. This package adds no selection threshold,
-  official-pick activation, stakes, Odds API call, or Codex automation.
+  official-pick activation, stakes, Odds API call, or additional automation.
 - SQLite WAL and `fcntl` locks require a normal local Linux filesystem; do not
   place this state on NFS/SMB or share it between independently running hosts.
 - The read-only checkout includes genuine Git metadata for future NFL freezes.
@@ -206,9 +206,9 @@ Focused local checks:
 .venv/bin/python -m pytest -q tests/test_always_on_runtime.py tests/test_state_archive.py
 ```
 
-A read-only Claude CLI infrastructure/security critique was completed during
-preparation. The resulting package still requires code review, host selection,
-and actual cutover verification; it is not an already-running cloud deployment.
+A read-only infrastructure/security review was completed during preparation.
+The resulting package still requires code review, host selection, and actual
+cutover verification; it is not an already-running cloud deployment.
 
 Fly is possible with a different process supervisor, but its [volume model](https://docs.fly.io/volumes/overview)
 attaches a volume to one Machine. Separate web and worker Machines cannot share

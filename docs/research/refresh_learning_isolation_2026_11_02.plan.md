@@ -39,7 +39,7 @@ Official sources:
 - https://statsdmz.nba.com/pdfs/20261030/20261030_LALGSW.pdf
 
 Private PDF bytes, rendered first pages, exact source receipts and read-only
-validator evidence are under `output/pending-nba-2026-11-02/`.
+validator evidence were recorded as review evidence.
 
 ## Proposed implementation
 
@@ -72,7 +72,7 @@ validator evidence are under `output/pending-nba-2026-11-02/`.
    Verify the future automatic fallback through offline fixtures, not extra
    SportsGameOdds calls. If scoped, correct the `Day-To-Day` display label
    without changing selection eligibility.
-7. Run meaningful offline regressions and independent code/security review,
+7. Run meaningful offline regressions and code/security review,
    present the exact diff and obtain commit/release confirmation before changing
    the live checkout. No model parameters, training cutoffs, selection membership,
    quotas, grading rules, official-pick settings or Windows cutover are changed.
@@ -98,9 +98,9 @@ validator evidence are under `output/pending-nba-2026-11-02/`.
   learner. Future migration instructions must stop this additional writer before
   a final state archive; the archive tool remains unchanged.
 
-## Approval gates
+## Review checkpoints
 
-This document is a proposal, not completed implementation. `ecc:orch-fix-defect`
-delegates to `ecc:orch-pipeline`: Gate 1 requires plan approval before production
-implementation, and Gate 2 requires confirmation before committing. Live
+This document is a proposal, not completed implementation. Plan confirmation is
+required before production implementation, and separate confirmation is required
+before committing. Live
 services and their five-minute schedule continue while the work is prepared.

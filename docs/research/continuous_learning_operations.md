@@ -2,7 +2,7 @@
 
 EdgeTerminal uses its existing five-minute built-in research worker and a
 separate offline learning process. It does
-not require a Codex heartbeat, an open browser, or a user to request grading.
+not require an external heartbeat, an open browser, or a user to request grading.
 The Mac must be awake and online for source refresh and final grading. Fitting
 itself reads archived local data and makes no provider requests.
 

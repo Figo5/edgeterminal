@@ -16,7 +16,7 @@ The user approved the plan in this chat on November 2. Work is isolated in
    a reconstructed forecast to today's active model.
 5. Preserve weekly/daily history, pending results, and all immutable records.
 6. Test reconciliation, attribution, pregame selection, disclosure and escaping;
-   obtain independent code/security review before requesting commit approval.
+   obtain code/security review before requesting commit confirmation.
 
 No training, model parameter changes, new selection policy, provider quota
 changes or grading rule changes are included. No service deployment, Windows
@@ -93,10 +93,10 @@ pregame forecasts and saved lines, and **448 numerical prop outcomes**: zero
 calculation mismatches. This verifies settlement arithmetic, not the accuracy
 of every historical identity or the correctness of unverified missing stats.
 
-Private reproducible evidence is under `output/record-audit-2026-11-02/`:
-`audit_readonly.py`, `AUDIT.json`, original view fixtures and candidate parity
-fixtures. The auditing process used a consistent read transaction, SQLite
-`query_only`, and blocked networking. It did not run refresh, grade, fit or
+Private reproducible evidence includes the read-only audit script, its JSON
+result, original view fixtures and candidate parity fixtures. The auditing
+process used a consistent read transaction, SQLite `query_only`, and blocked
+networking. It did not run refresh, grade, fit or
 provider functions.
 
 ## Improvements supported by the evidence
@@ -158,22 +158,22 @@ prop cohorts use their lock time and game cohorts use forecast save time.
 | Frontend RED, before production edits | 15 passed, 6 intended failures |
 | Frontend mobile-metric / date-label RED | Intended markup and wording failures before the follow-up fix |
 | Final JavaScript suite | 23 passed |
-| Final focused independent Python review | 140 passed |
-| Independent final new/existing record cases | 30 passed |
+| Final focused Python review | 140 passed |
+| Final new/existing record cases | 30 passed |
 | Candidate against actual live stored records | Headline, weekly/daily totals unchanged; every version summary reconciles; zero DB changes |
 | New aggregation helper executable-line coverage | NFL 26/26, NBA 29/29 (100%; not branch or repository coverage) |
 | Shared NBA renderer line coverage | 93.46%; new version-renderer lines covered; not branch/repository coverage |
 | Stored-data browser previews | Desktop and 390px phone viewport; native history disclosure; no page overflow or invalid values |
 
-Independent native code/security review found no blockers. It checked saved
+Native code/security review found no blockers. It checked saved
 version attribution, missing-line exclusion, no duplicate counting, preserved
 evidence, hosted-access compatibility, HTML escaping and absence of source or
 state mutations. JavaScript and browser results and the final reviewed hashes
 are captured in the accompanying review artifacts before commit confirmation.
 
 Tests use temporary databases and blocked networking. TDD checkpoint commits
-were deferred to respect the orchestration requirement to obtain explicit
-pre-commit approval. No full-repository test result is claimed.
+were deferred to respect the review requirement to obtain explicit pre-commit
+confirmation. No full-repository test result is claimed.
 
 The isolated branch includes the already approved portability fix; neither that
 fix nor this feature has been installed into the running Mac checkout. The

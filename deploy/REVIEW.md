@@ -4,13 +4,13 @@ This is a deployment preparation and isolated validation record. No remote
 service was provisioned, no public URL was created, no paid storage was enabled,
 and neither local service was disabled or migrated.
 
-## Orchestration evidence
+## Review evidence
 
-Codex inspected the existing hosted-mode boundaries, Git freeze guard, SQLite
-research lock, persistent model/source paths and service backup logic. A bounded
-Claude CLI infrastructure critique completed with exit 0, followed by a separate
-bounded read-only code/security review, also exit 0. Both had tools disabled and
-received only the supplied architecture/source text; no credentials were supplied.
+The preparation inspected the existing hosted-mode boundaries, Git freeze guard,
+SQLite research lock, persistent model/source paths and service backup logic. A
+bounded infrastructure critique and a separate read-only code/security review
+were completed against the supplied architecture and source text. Both reviews
+had tools disabled and received no credentials.
 
 Review changes incorporated:
 

@@ -1,6 +1,6 @@
-# NBA totals upgrade — Gate 1 plan, November 5, 2026
+# NBA totals upgrade — implementation plan, November 5, 2026
 
-Large `ecc:orch-change-feature` change. Implementation has not started. Isolated worktree: `/Users/giofiore/edgeterminal-nba-totals`, branch `feat/nba-totals-learning`, base `0082fa8f672bed0fbb6da09ff39fedf49ded5a41`. The live app remains healthy and running.
+Large change. Implementation has not started. Isolated worktree: `/Users/giofiore/edgeterminal-nba-totals`, branch `feat/nba-totals-learning`, base `0082fa8f672bed0fbb6da09ff39fedf49ded5a41`. The live app remains healthy and running.
 
 ## Ordered tasks
 
@@ -9,7 +9,7 @@ Large `ecc:orch-change-feature` change. Implementation has not started. Isolated
 3. Compose totals after the spread projection in `nba_ops`, preserving raw margin, winner/spread probabilities and decisions. Reconcile projected scores with the new total and unchanged margin. Give totals its own version/hash/cutoff and source-bound input map, mandatorily verified before publication and independently replayed for evaluation.
 4. Add a dedicated append-only totals candidate/evidence/activation/holdout ledger and `NBA_TOTAL` jobs in the existing isolated offline learner. Calibrate residual uncertainty separately. Heavy fitting stays out of capture/grading and SQLite writer locks; publication is short, atomic and defers to capture/kickoff priority. Expose truthful last/next check, waiting/rejection/error, coverage and version status in NBA About & data.
 5. Keep one coherent full season record with totals-version attribution and a pick for every otherwise supported game. Preserve the five-minute forecast-refresh/final-only grading cadence and current total-side rule. Verify source/learner concurrency, crash recovery, idempotency, history preservation, fallback coverage, integer pushes, UI and portability in meaningful Python/JavaScript/offline replay checks.
-6. Obtain independent code/security review, resolve blockers, then present the exact scoped diff and evidence for separate Gate 2 commit/release approval. Verify genuine live worker/grade/job health after approved guarded release. Code release and validated numerical activation are distinct.
+6. Obtain code/security review, resolve blockers, then present the exact scoped diff and evidence for separate commit/release confirmation. Verify genuine live worker/grade/job health after a guarded release. Code release and validated numerical activation are distinct.
 
 ## Frozen acceptance requirements
 
@@ -22,14 +22,16 @@ Large `ecc:orch-change-feature` change. Implementation has not started. Isolated
 - Keep the incumbent live while a candidate lacks adequate evidence or fails the gate. No confidence-based pick suppression. A convex blend toward the exact comparison line cannot alone change the side or establish improved win rate.
 - Preserve historical model/cutoff, forecast, selection, snapshot, freeze and grade bytes. Prefer additive modules; keep pinned prop/model/pricing, existing forecast policy/parser and spread seal catalogs byte-identical. Any necessary boundary change requires an explicit new contract with old-reader support, never a weakened seal.
 - Mandatory totals verification must reject ambiguous/conflicting/tampered/future sources, path traversal and symlink escapes. Support verified relocation to `/app`; never trust a basename or saved absolute Mac path alone. Recheck sources, result heads, active state and code/artifact seals before publication.
-- Reuse scheduled archives, source verifiers, publication locks, SQLite, NumPy and installed scikit-learn. No new runtime dependency, paid feed, Odds API, demonstration requests or quota overrides. No NFL/prop/grading-rule change, Codex automation, Windows cutover, credential transfer, symlink materialization or final archive. Current Mac services stay running; this host still must be awake/online.
+- Reuse scheduled archives, source verifiers, publication locks, SQLite, NumPy and installed scikit-learn. No new runtime dependency, paid feed, Odds API, demonstration requests or quota overrides. No NFL/prop/grading-rule change, additional automation, Windows cutover, credential transfer, symlink materialization or final archive. Current Mac services stay running; this host still must be awake/online.
 
 ## Planning evidence
 
 - [Delegated planner review](nba_totals_2026_11_05.planner.md), recommending this consolidated plan.
-- [Independent safety plan](nba_totals_2026_11_05.safety-plan.md).
-- [Genuine Claude/OpenCode Go reviews](nba_totals_2026_11_05.external-plan.md): Claude `claude-opus-5-5` and Go `opencode-go/kimi-k3`; reconciled reviewer mistakes are identified explicitly.
-- [Prior audit](/Users/giofiore/edgeterminal/output/nba-totals-audit-2026-11-05/REPORT.md); live health/protected hashes are in `output/nba-totals-planning-2026-11-05/LIVE-BASELINE.json`.
+- [Safety plan](nba_totals_2026_11_05.safety-plan.md).
+- [Automated planning reviews](nba_totals_2026_11_05.external-plan.md); reconciled reviewer mistakes are identified explicitly.
+- The prior audit is development evidence; live health and protected hashes were recorded at planning time.
 - Public reuse research: scikit-learn [Ridge source](https://github.com/scikit-learn/scikit-learn/blob/59ec4fb22d2eccd8f6bcbe864c55379e0bcd68ff/sklearn/linear_model/_ridge.py), [official Ridge docs](https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.Ridge.html), [chronological validation guidance](https://scikit-learn.org/stable/modules/cross_validation.html#time-series-split), and NBA [official glossary](https://www.nba.com/stats/help/glossary).
 
-The requested [ecc:orch-pipeline Gate 1](/Users/giofiore/.codex/plugins/cache/ecc/ecc/2.2.3/skills/orch-pipeline/SKILL.md) requires: “do not write implementation code until the user approves.” Approve this plan to begin TDD in isolation; commit/release requires separate reviewed Gate 2 confirmation.
+The implementation checkpoint requires plan confirmation before code is written.
+Confirm this plan to begin TDD in isolation; commit/release requires separate
+review confirmation.
